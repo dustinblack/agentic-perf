@@ -138,26 +138,33 @@ class ZathrasSkillProvider(SkillProvider):
         if endpoints:
             host = endpoints[0].get("host", "")
 
-        command_args: dict[str, Any] = {
-            "tests": benchmark,
+        scenario_global: dict[str, Any] = {
+            "results_prefix": f"{benchmark}_test",
             "system_type": "local",
+            "test_iter": params.get("test_iter", 1),
+        }
+        if params.get("os_vendor"):
+            scenario_global["os_vendor"] = params["os_vendor"]
+        if params.get("ssh_key_file"):
+            scenario_global["ssh_key_file"] = params["ssh_key_file"]
+        if params.get("tuned_profiles"):
+            scenario_global["tuned_profiles"] = params["tuned_profiles"]
+
+        system_config: dict[str, Any] = {
+            "tests": benchmark,
             "host_config": host,
         }
-
-        if params.get("os_vendor"):
-            command_args["os_vendor"] = params["os_vendor"]
-        if params.get("ssh_key_file"):
-            command_args["ssh_key_file"] = params["ssh_key_file"]
         if params.get("test_user"):
-            command_args["test_user"] = params["test_user"]
-        if params.get("archive"):
-            command_args["archive"] = params["archive"]
-        if params.get("tuned_profiles"):
-            command_args["tuned_profiles"] = params["tuned_profiles"]
-        if params.get("scenario"):
-            command_args["scenario"] = params["scenario"]
+            system_config["test_user"] = params["test_user"]
 
-        local_config = None
+        scenario: dict[str, Any] = {
+            "global": scenario_global,
+            "systems": {
+                "system1": system_config,
+            },
+        }
+
+        local_config: dict[str, str] = {}
         if len(endpoints) > 1:
             server_ips = []
             client_ips = []
@@ -167,17 +174,18 @@ class ZathrasSkillProvider(SkillProvider):
                     server_ips.append(ep["host"])
                 else:
                     client_ips.append(ep["host"])
-            local_config = {
-                "server_ips": ",".join(server_ips),
-                "client_ips": ",".join(client_ips),
-            }
-            if params.get("storage"):
-                local_config["storage"] = params["storage"]
+            if server_ips:
+                local_config["server_ips"] = ",".join(server_ips)
+            if client_ips:
+                local_config["client_ips"] = ",".join(client_ips)
+        if params.get("storage"):
+            local_config["storage"] = params["storage"]
 
         template: dict[str, Any] = {
             "harness": "zathras",
-            "command_args": command_args,
-            "local_config": local_config,
+            "scenario": scenario,
+            "local_config": local_config or None,
+            "host_config_name": host,
         }
 
         if params.get("tags"):

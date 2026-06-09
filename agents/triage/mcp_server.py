@@ -118,6 +118,7 @@ def create_triage_tool_handlers(
                 "description": b.description,
                 "roles": b.roles,
                 "min_hosts": b.min_hosts,
+                "harness": b.harness,
             }
             for b in benchmarks
         ]
@@ -132,6 +133,7 @@ def create_triage_tool_handlers(
             "supported_params": b.supported_params,
             "roles": b.roles,
             "min_hosts": b.min_hosts,
+            "harness": b.harness,
         }
 
     async def resolve_benchmark(

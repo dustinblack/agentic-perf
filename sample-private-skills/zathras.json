@@ -1,12 +1,26 @@
 {
+    "constraints": {
+        "supported_os": ["rhel8", "rhel9", "rhel10", "fedora", "centos"],
+        "unsupported_os": ["ubuntu", "debian", "suse", "amazon"],
+        "os_reason": "Zathras install.sh requires dnf package manager. Only RHEL 8+, Fedora, and CentOS are supported.",
+        "controller_os_must_match": false,
+        "requires_epel": true,
+        "epel_reason": "install.sh expects EPEL repository to be pre-configured for ansible-core and other packages.",
+        "root_install_warning": "install.sh prompts for confirmation when run as root (EUID=0). Must pipe 'yes' or use a non-root user.",
+        "notes": "These constraints are for cross-agent negotiation. The resource agent should verify the controller OS is RHEL/Fedora before assigning. The provisioning agent should ensure EPEL is enabled before running install.sh. If constraints cannot be met, agents should report the conflict to the ticket for user arbitration."
+    },
     "execution": {
         "controller_required": true,
-        "run_command": "burden",
+        "run_command": "/opt/zathras/bin/burden",
+        "run_method": "scenario",
         "endpoint_type": "local",
         "endpoint_user": "root",
         "pre_run": ["ssh_key_setup"],
-        "run_file_format": "cli_args",
-        "results_dir_pattern": "/tmp/results_*"
+        "run_file_format": "yaml_scenario",
+        "results_dir_pattern": "/tmp/results_*",
+        "scenario_dir": "/opt/zathras",
+        "local_configs_dir": "/opt/zathras/local_configs",
+        "notes": "Zathras executes via scenario files. The benchmark agent should: (1) create a local_configs/<host>.config file on the controller with storage/network info, (2) create a scenario YAML file, (3) run burden --scenario <file>. For bare metal, system_type is 'local' and host_config is the hostname matching the local_configs file."
     },
     "provisioning": {
         "install_method": "git_clone",
@@ -16,14 +30,528 @@
         "verify_command": "/opt/zathras/bin/burden --usage",
         "update_command": "cd /opt/zathras && git pull && ./install.sh",
         "on_existing_install": "skip",
-        "prerequisites": [
+        "run_install_as_root": "yes | ./install.sh",
+        "pre_install_steps": [
+            "dnf install -y epel-release || true",
+            "dnf install -y git"
+        ],
+        "prerequisites_note": "install.sh handles most dependencies itself (ansible-core, jq, python3-pip, terraform, wget, unzip, boto, yq==2.10.0, ansible collections). The pre_install_steps ensure EPEL and git are available so install.sh can proceed. The prerequisites list below is what install.sh installs — listed here for agent awareness, not for pre-installation.",
+        "prerequisites_installed_by_script": [
             "ansible-core",
             "git",
             "jq",
-            "python3",
+            "python",
             "python3-pip",
-            "wget",
-            "unzip"
-        ]
+            "terraform",
+            "unzip",
+            "wget"
+        ],
+        "pip_packages_installed_by_script": [
+            "boto",
+            "boto3",
+            "yq==2.10.0"
+        ],
+        "ansible_collections_installed_by_script": [
+            "ansible.posix",
+            "community.aws",
+            "community.general",
+            "amazon.aws==9.1.0"
+        ],
+        "post_install_notes": "install.sh uses pip --user, so ~/.local/bin must be in PATH. When running as root, this is /root/.local/bin."
+    },
+    "scenario_template": {
+        "notes": "Scenario files are YAML with 'global' and 'systems' sections. Options map directly to CLI flags without dashes. Each system block specifies tests, host_config, and optional overrides.",
+        "bare_metal_example": {
+            "global": {
+                "results_prefix": "perf_test",
+                "system_type": "local",
+                "test_iter": 1
+            },
+            "systems": {
+                "system1": {
+                    "tests": "streams",
+                    "host_config": "TARGET_HOST"
+                }
+            }
+        },
+        "global_fields": {
+            "results_prefix": "Label for the results directory",
+            "system_type": "local | aws | azure | gcp | ibm",
+            "test_iter": "Number of test iterations (default: 1)",
+            "ssh_key_file": "Path to SSH private key",
+            "os_vendor": "rhel | ubuntu | amazon | suse",
+            "tuned_profiles": "Comma-separated tuned profiles (RHEL only)",
+            "tuned_reboot": "Set to 1 to reboot between tuned profile changes",
+            "use_pcp": "0 or 1, toggle Performance Co-Pilot (default: 1)",
+            "no_packages": "Skip all package installation",
+            "upload_rpms": "Comma-separated paths to RPMs to install on target"
+        },
+        "system_fields": {
+            "tests": "Test name(s), comma-separated (e.g., 'streams,fio')",
+            "host_config": "Hostname matching local_configs/<hostname>.config",
+            "tuned_profiles": "Override global tuned profiles for this system",
+            "java_version": "java-8 | java-11 | java-17 | java-21"
+        }
+    },
+    "local_config_format": {
+        "notes": "For bare metal (system_type: local), create local_configs/<hostname>.config on the controller. The hostname must match the host_config value in the scenario. CPU-only tests (streams, linpack, coremark) need no fields — the file can be empty.",
+        "fields": {
+            "storage": "Comma-separated block devices (e.g., /dev/nvme0n1,/dev/nvme1n1). Required for fio, iozone, hammerdb, speccpu2017.",
+            "server_ips": "Comma-separated IPs/hostnames for network test servers. Required for uperf.",
+            "client_ips": "Comma-separated IPs/hostnames for network test clients. Required for uperf."
+        },
+        "example": "storage: /dev/nvme0n1,/dev/nvme1n1\nserver_ips: 192.168.1.100\nclient_ips: 192.168.1.101"
+    },
+    "tests": {
+        "streams": {
+            "description": "STREAM memory bandwidth benchmark. Measures sustainable memory bandwidth (MB/s) for Copy, Scale, Add, Triad operations.",
+            "category": "memory",
+            "wrapper_repo": "redhat-performance/streams-wrapper",
+            "test_script": "streams_run",
+            "requirements": {
+                "storage": false,
+                "network": false,
+                "java": false
+            },
+            "parameters": {
+                "--iterations": {
+                    "type": "integer",
+                    "default": 5,
+                    "description": "Number of test iterations"
+                }
+            },
+            "min_hosts": 1,
+            "roles": ["client"],
+            "local_config_fields": []
+        },
+        "linpack": {
+            "description": "Standard LINPACK benchmark. Measures floating-point compute performance (GFLOPS).",
+            "category": "cpu",
+            "wrapper_repo": "redhat-performance/linpack-wrapper",
+            "test_script": "linpack_run",
+            "requirements": {
+                "storage": false,
+                "network": false,
+                "java": false
+            },
+            "parameters": {
+                "--interleave": {
+                    "type": "string",
+                    "default": "all",
+                    "description": "NUMA memory interleave policy"
+                },
+                "--iterations": {
+                    "type": "integer",
+                    "default": 1,
+                    "description": "Number of test iterations"
+                }
+            },
+            "os_packages": {
+                "rhel": ["bc", "numactl", "perf", "git", "unzip"],
+                "ubuntu": ["unzip", "zip", "numactl"],
+                "amazon": ["bc", "git", "zip", "unzip"]
+            },
+            "min_hosts": 1,
+            "roles": ["client"],
+            "local_config_fields": []
+        },
+        "auto_hpl": {
+            "description": "High Performance LINPACK (HPL). Auto-tuned variant for maximum GFLOPS.",
+            "category": "hpc",
+            "wrapper_repo": "redhat-performance/autohpl-wrapper",
+            "test_script": "auto_hpl",
+            "requirements": {
+                "storage": false,
+                "network": false,
+                "java": false
+            },
+            "parameters": {},
+            "min_hosts": 1,
+            "roles": ["client"],
+            "local_config_fields": []
+        },
+        "coremark": {
+            "description": "CoreMark CPU benchmark. Industry-standard embedded processor benchmark measuring CoreMark/MHz.",
+            "category": "cpu",
+            "wrapper_repo": "redhat-performance/coremark-wrapper",
+            "test_script": "coremark_run",
+            "requirements": {
+                "storage": false,
+                "network": false,
+                "java": false
+            },
+            "parameters": {
+                "--iterations": {
+                    "type": "integer",
+                    "default": 5,
+                    "description": "Number of test iterations"
+                }
+            },
+            "min_hosts": 1,
+            "roles": ["client"],
+            "local_config_fields": []
+        },
+        "coremark_pro": {
+            "description": "CoreMark-PRO CPU benchmark. Multi-threaded workloads testing integer and floating-point performance.",
+            "category": "cpu",
+            "wrapper_repo": "redhat-performance/coremark-pro-wrapper",
+            "test_script": "coremark_pro_run",
+            "requirements": {
+                "storage": false,
+                "network": false,
+                "java": false
+            },
+            "parameters": {
+                "--no-overrides": {
+                    "type": "flag",
+                    "default": true,
+                    "description": "Run without overriding default settings"
+                }
+            },
+            "min_hosts": 1,
+            "roles": ["client"],
+            "local_config_fields": []
+        },
+        "passmark": {
+            "description": "PassMark PerformanceTest. Comprehensive system benchmark covering CPU, memory, disk, and 2D/3D graphics.",
+            "category": "cpu",
+            "wrapper_repo": "redhat-performance/passmark-wrapper",
+            "test_script": "passmark_run",
+            "requirements": {
+                "storage": false,
+                "network": false,
+                "java": false
+            },
+            "parameters": {},
+            "min_hosts": 1,
+            "roles": ["client"],
+            "local_config_fields": []
+        },
+        "fio": {
+            "description": "Flexible I/O tester. Configurable storage benchmark supporting sequential/random read/write with various I/O engines.",
+            "category": "storage",
+            "wrapper_repo": "redhat-performance/fio-wrapper",
+            "test_script": "fio_run",
+            "requirements": {
+                "storage": true,
+                "network": false,
+                "java": false
+            },
+            "parameters": {
+                "--disks": {
+                    "type": "string",
+                    "default": "from local_config storage field",
+                    "description": "Comma-separated block devices to test. Populated from dyn_data.storage."
+                },
+                "--regression": {
+                    "type": "flag",
+                    "default": true,
+                    "description": "Run standard regression test suite"
+                }
+            },
+            "min_hosts": 1,
+            "roles": ["client"],
+            "local_config_fields": ["storage"]
+        },
+        "iozone": {
+            "description": "IOzone filesystem benchmark. Tests read, write, re-read, re-write, random read/write across filesystems.",
+            "category": "storage",
+            "wrapper_repo": "redhat-performance/iozone-wrapper",
+            "test_script": "iozone_run",
+            "requirements": {
+                "storage": true,
+                "network": false,
+                "java": false
+            },
+            "parameters": {
+                "--devices_to_use": {
+                    "type": "string",
+                    "description": "Block devices. Populated from dyn_data.storage."
+                },
+                "--filesys": {
+                    "type": "string",
+                    "default": "xfs,ext4,ext3",
+                    "description": "Comma-separated filesystems to test"
+                },
+                "--all_test": {
+                    "type": "flag",
+                    "default": true,
+                    "description": "Run all IOzone test types"
+                },
+                "--mount_location": {
+                    "type": "string",
+                    "default": "/iozone/iozone0",
+                    "description": "Mount point for test filesystems"
+                },
+                "--eatmem": {
+                    "type": "flag",
+                    "default": true,
+                    "description": "Consume free memory to force I/O (avoid page cache effects)"
+                },
+                "--auto": {
+                    "type": "flag",
+                    "default": true,
+                    "description": "Automatic mode"
+                }
+            },
+            "min_hosts": 1,
+            "roles": ["client"],
+            "local_config_fields": ["storage"]
+        },
+        "uperf": {
+            "description": "Unified Performance tool for network throughput and latency. Supports TCP/UDP with configurable message sizes, parallelism, and test patterns.",
+            "category": "network",
+            "wrapper_repo": "redhat-performance/uperf-wrapper",
+            "test_script": "uperf_run",
+            "requirements": {
+                "storage": false,
+                "network": true,
+                "java": false
+            },
+            "parameters": {
+                "--client_ips": {
+                    "type": "string",
+                    "description": "Client IP addresses. Populated from dyn_data.ct_uperf_client_list."
+                },
+                "--server_ips": {
+                    "type": "string",
+                    "description": "Server IP addresses. Populated from dyn_data.ct_uperf_server_ip."
+                },
+                "--tests": {
+                    "type": "string",
+                    "default": "stream,rr",
+                    "description": "Test patterns: 'stream' (throughput), 'rr' (request-response latency), or both comma-separated"
+                },
+                "--numb_jobs": {
+                    "type": "string",
+                    "default": "1,8,16",
+                    "description": "Comma-separated thread/process counts to test"
+                },
+                "--packet_type": {
+                    "type": "string",
+                    "default": "tcp",
+                    "description": "Protocol: 'tcp' or 'udp'"
+                },
+                "--packet_sizes": {
+                    "type": "string",
+                    "default": "64,16384",
+                    "description": "Comma-separated message sizes in bytes"
+                },
+                "--time": {
+                    "type": "integer",
+                    "default": 60,
+                    "description": "Test duration in seconds per combination"
+                }
+            },
+            "min_hosts": 2,
+            "roles": ["client", "server"],
+            "local_config_fields": ["server_ips", "client_ips"],
+            "notes": "Requires at least 2 hosts: one client, one server. The local_config must have server_ips and client_ips. Zathras populates dyn_data.ct_uperf_server_ip and dyn_data.ct_uperf_client_list from these."
+        },
+        "hammerdb": {
+            "description": "HammerDB database benchmark. Supports MariaDB, PostgreSQL, and MSSQL via TPC-C workload.",
+            "category": "database",
+            "wrapper_repo": "redhat-performance/hammerdb-wrapper",
+            "test_script": "hammerdb",
+            "requirements": {
+                "storage": true,
+                "network": false,
+                "java": false
+            },
+            "parameters": {
+                "--disks": {
+                    "type": "string",
+                    "description": "Block devices for database storage. Populated from dyn_data.storage."
+                },
+                "--sub_test": {
+                    "type": "string",
+                    "default": "mariadb",
+                    "description": "Database engine: 'mariadb', 'postgres', or 'mssql'"
+                }
+            },
+            "sub_tests": {
+                "hammerdb_mariadb": {"sub_test": "mariadb"},
+                "hammerdb_postgres": {"sub_test": "postgres"},
+                "hammerdb_mssql": {"sub_test": "mssql"}
+            },
+            "min_hosts": 1,
+            "roles": ["client"],
+            "local_config_fields": ["storage"]
+        },
+        "specjbb": {
+            "description": "SPECjbb Java server benchmark. Measures Java server-side performance.",
+            "category": "java",
+            "wrapper_repo": "redhat-performance/specjbb-wrapper",
+            "test_script": "specjbb_run",
+            "requirements": {
+                "storage": false,
+                "network": false,
+                "java": true
+            },
+            "parameters": {
+                "--java_version": {
+                    "type": "string",
+                    "description": "Java version: java-8, java-11, java-17, or java-21. Populated from config_info.java_version."
+                }
+            },
+            "min_hosts": 1,
+            "roles": ["client"],
+            "local_config_fields": []
+        },
+        "speccpu2017": {
+            "description": "SPEC CPU 2017 benchmark. Industry-standard CPU-intensive benchmark with intrate and fprate suites.",
+            "category": "cpu",
+            "wrapper_repo": "redhat-performance/speccpu2017-wrapper",
+            "test_script": "speccpu2017_run",
+            "requirements": {
+                "storage": true,
+                "network": false,
+                "java": false
+            },
+            "parameters": {
+                "--disks": {
+                    "type": "string",
+                    "description": "Block devices for build/scratch space. Populated from dyn_data.storage."
+                },
+                "--test": {
+                    "type": "string",
+                    "default": "intrate,fprate",
+                    "description": "Test suites to run: 'intrate', 'fprate', or both"
+                }
+            },
+            "min_hosts": 1,
+            "roles": ["client"],
+            "local_config_fields": ["storage"]
+        },
+        "pyperf": {
+            "description": "pyperformance Python benchmark suite. Measures Python runtime performance across multiple micro-benchmarks.",
+            "category": "python",
+            "wrapper_repo": "redhat-performance/pyperformance-wrapper",
+            "test_script": "pyperformance_run",
+            "requirements": {
+                "storage": false,
+                "network": false,
+                "java": false
+            },
+            "parameters": {},
+            "min_hosts": 1,
+            "roles": ["client"],
+            "local_config_fields": []
+        },
+        "pig": {
+            "description": "Bill Gray's pig test. Measures Linux scheduler efficiency under contention.",
+            "category": "scheduler",
+            "wrapper_repo": "redhat-performance/pig-wrapper",
+            "test_script": "pig_run",
+            "requirements": {
+                "storage": false,
+                "network": false,
+                "java": false
+            },
+            "parameters": {},
+            "min_hosts": 1,
+            "roles": ["client"],
+            "local_config_fields": []
+        },
+        "reboot_measure": {
+            "description": "Measure system reboot times. Runs locally on the controller, not on the SUT.",
+            "category": "boot",
+            "test_script": "run_reboot.sh",
+            "requirements": {
+                "storage": false,
+                "network": false,
+                "java": false
+            },
+            "parameters": {
+                "--working_dir": {
+                    "type": "string",
+                    "description": "Working directory. Populated from working_dir variable."
+                }
+            },
+            "min_hosts": 1,
+            "roles": ["client"],
+            "local_config_fields": [],
+            "notes": "Runs from the controller (test_run_from: local), not on the remote SUT."
+        },
+        "phoronix_stress-ng": {
+            "description": "Phoronix Test Suite: stress-ng. Stress testing and measuring system stability under load.",
+            "category": "stress",
+            "wrapper_repo": "redhat-performance/phoronix-wrapper",
+            "test_script": "run_phoronix.sh",
+            "phoronix_sub_test": "stress-ng",
+            "requirements": {"storage": false, "network": false, "java": false},
+            "parameters": {"--sub_test": {"type": "string", "default": "stress-ng"}},
+            "min_hosts": 1, "roles": ["client"], "local_config_fields": []
+        },
+        "phoronix_phpbench": {
+            "description": "Phoronix Test Suite: PHPBench. PHP performance benchmark.",
+            "category": "web",
+            "wrapper_repo": "redhat-performance/phoronix-wrapper",
+            "test_script": "run_phoronix.sh",
+            "phoronix_sub_test": "phpbench",
+            "requirements": {"storage": false, "network": false, "java": false},
+            "parameters": {"--sub_test": {"type": "string", "default": "phpbench"}},
+            "min_hosts": 1, "roles": ["client"], "local_config_fields": []
+        },
+        "phoronix_cassandra": {
+            "description": "Phoronix Test Suite: Cassandra. NoSQL database performance benchmark.",
+            "category": "database",
+            "wrapper_repo": "redhat-performance/phoronix-wrapper",
+            "test_script": "run_phoronix.sh",
+            "phoronix_sub_test": "cassandra",
+            "requirements": {"storage": false, "network": false, "java": false},
+            "parameters": {"--sub_test": {"type": "string", "default": "cassandra"}},
+            "min_hosts": 1, "roles": ["client"], "local_config_fields": []
+        },
+        "phoronix_openssl": {
+            "description": "Phoronix Test Suite: OpenSSL. Cryptographic performance benchmark.",
+            "category": "crypto",
+            "wrapper_repo": "redhat-performance/phoronix-wrapper",
+            "test_script": "run_phoronix.sh",
+            "phoronix_sub_test": "openssl",
+            "requirements": {"storage": false, "network": false, "java": false},
+            "parameters": {"--sub_test": {"type": "string", "default": "openssl"}},
+            "min_hosts": 1, "roles": ["client"], "local_config_fields": []
+        },
+        "phoronix_sqlite": {
+            "description": "Phoronix Test Suite: SQLite. Embedded database performance benchmark.",
+            "category": "database",
+            "wrapper_repo": "redhat-performance/phoronix-wrapper",
+            "test_script": "run_phoronix.sh",
+            "phoronix_sub_test": "sqlite",
+            "requirements": {"storage": false, "network": false, "java": false},
+            "parameters": {"--sub_test": {"type": "string", "default": "sqlite"}},
+            "min_hosts": 1, "roles": ["client"], "local_config_fields": []
+        },
+        "phoronix_nginx": {
+            "description": "Phoronix Test Suite: Nginx. Web server performance benchmark.",
+            "category": "web",
+            "wrapper_repo": "redhat-performance/phoronix-wrapper",
+            "test_script": "run_phoronix.sh",
+            "phoronix_sub_test": "nginx",
+            "requirements": {"storage": false, "network": false, "java": false},
+            "parameters": {"--sub_test": {"type": "string", "default": "nginx"}},
+            "min_hosts": 1, "roles": ["client"], "local_config_fields": []
+        },
+        "phoronix_cockroach": {
+            "description": "Phoronix Test Suite: CockroachDB. Distributed SQL database performance benchmark.",
+            "category": "database",
+            "wrapper_repo": "redhat-performance/phoronix-wrapper",
+            "test_script": "run_phoronix.sh",
+            "phoronix_sub_test": "cockroach",
+            "requirements": {"storage": false, "network": false, "java": false},
+            "parameters": {"--sub_test": {"type": "string", "default": "cockroach"}},
+            "min_hosts": 1, "roles": ["client"], "local_config_fields": []
+        },
+        "phoronix_redis": {
+            "description": "Phoronix Test Suite: Redis. In-memory data store performance benchmark.",
+            "category": "cache",
+            "wrapper_repo": "redhat-performance/phoronix-wrapper",
+            "test_script": "run_phoronix.sh",
+            "phoronix_sub_test": "redis",
+            "requirements": {"storage": false, "network": false, "java": false},
+            "parameters": {"--sub_test": {"type": "string", "default": "redis"}},
+            "min_hosts": 1, "roles": ["client"], "local_config_fields": []
+        }
     }
 }

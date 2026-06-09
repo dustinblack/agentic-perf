@@ -140,17 +140,19 @@ def get_provisioning_tools() -> list[ToolDefinition]:
         ToolDefinition(
             name="get_private_config",
             description=(
-                "Fetch private configuration for a benchmark suite. "
+                "Fetch private configuration for a benchmark harness. "
                 "Returns organization-specific data like install method, "
-                "repo paths, registry URLs. Returns null if no private config exists."
+                "repo paths, registry URLs, and constraints (supported OS, "
+                "prerequisites). Use key='constraints' to check OS and "
+                "platform requirements before attempting installation."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
-                    "suite_name": {"type": "string", "description": "Benchmark suite name (e.g., 'crucible')"},
-                    "key": {"type": "string", "description": "Config key to fetch"},
+                    "harness_name": {"type": "string", "description": "Harness name (e.g., 'crucible', 'zathras')"},
+                    "key": {"type": "string", "description": "Config key to fetch (e.g., 'constraints', 'provisioning', 'execution')"},
                 },
-                "required": ["suite_name", "key"],
+                "required": ["harness_name", "key"],
             },
         ),
         ToolDefinition(
@@ -233,6 +235,8 @@ def create_provisioning_tool_handlers(
         install_method = provisioning.get("install_method", "internal_repo")
         target_path = provisioning.get("install_target_path", f"/opt/{harness_name}")
 
+        constraints = private_config.get("constraints", {})
+
         if install_method == "git_clone":
             git_url = provisioning.get("git_url")
             if not git_url:
@@ -241,6 +245,15 @@ def create_provisioning_tool_handlers(
                     "status": "failed",
                     "message": f"No git_url in private config for {harness_name}",
                 }
+
+            pre_install_steps = provisioning.get("pre_install_steps", [])
+            for step in pre_install_steps:
+                logger.info(f"[provision] Pre-install step on {host}: {step}")
+                pre_result = await ssh.run(host, step, timeout=300)
+                if pre_result.exit_code != 0:
+                    logger.warning(
+                        f"[provision] Pre-install step failed (continuing): {pre_result.stderr}"
+                    )
 
             branch_flag = f"-b {branch}" if branch else ""
             logger.info(f"[provision] Cloning {git_url} to {host}:{target_path}")
@@ -257,8 +270,11 @@ def create_provisioning_tool_handlers(
                     "message": f"Git clone failed: {result.stderr}",
                 }
 
-            install_script = provisioning.get("install_script", "install.sh")
-            cmd = f"cd {target_path} && ./{install_script}"
+            install_cmd = provisioning.get("run_install_as_root")
+            if not install_cmd:
+                install_script = provisioning.get("install_script", "install.sh")
+                install_cmd = f"./{install_script}"
+            cmd = f"cd {target_path} && {install_cmd}"
             logger.info(f"[provision] Running install on {host}: {cmd}")
             result = await ssh.run(host, cmd, timeout=900)
 
@@ -268,6 +284,7 @@ def create_provisioning_tool_handlers(
                 "status": "success" if result.exit_code == 0 else "failed",
                 "exit_code": result.exit_code,
                 "install_path": target_path,
+                "constraints": constraints,
                 "output": result.stdout[-1000:] if result.stdout else "",
                 "error": result.stderr[-1000:] if result.stderr else "",
                 "message": f"{harness_name} installed" if result.exit_code == 0 else f"Install failed (exit {result.exit_code})",
@@ -395,10 +412,10 @@ def create_provisioning_tool_handlers(
             "message": f"Configuration applied on {host} (simulated)",
         }
 
-    async def get_private_config(suite_name: str, key: str) -> Any:
-        result = await skill_provider.get_private_config(suite_name, key)
+    async def get_private_config(harness_name: str, key: str) -> Any:
+        result = await skill_provider.get_private_config(harness_name, key)
         if result is None:
-            return {"key": key, "value": None, "message": f"No private config for {suite_name}.{key}"}
+            return {"key": key, "value": None, "message": f"No private config for {harness_name}.{key}"}
         return {"key": key, "value": result}
 
     async def request_clarification(question: str) -> str:

@@ -282,24 +282,31 @@ def create_benchmark_tool_handlers(
         harness_name = harness or run_file.get("harness", "crucible")
 
         if harness_name == "zathras":
-            command_args = run_file.get("command_args", {})
-            cmd_parts = [run_command or "burden"]
-            for key, value in command_args.items():
-                if value:
-                    cmd_parts.append(f"--{key}")
-                    cmd_parts.append(str(value))
-
+            scenario = run_file.get("scenario", {})
             local_config = run_file.get("local_config")
-            if local_config:
-                host = command_args.get("host_config", "")
-                if host:
-                    config_content = "\n".join(f"{k}: {v}" for k, v in local_config.items())
-                    await ssh.run(
-                        controller,
-                        f"mkdir -p /opt/zathras/local_configs && cat > /opt/zathras/local_configs/{host}.conf << 'ZEOF'\n{config_content}\nZEOF",
-                    )
+            host_config_name = run_file.get("host_config_name", "")
 
-            cmd = " ".join(cmd_parts)
+            if local_config and host_config_name:
+                config_content = "\n".join(f"{k}: {v}" for k, v in local_config.items())
+                await ssh.run(
+                    controller,
+                    f"mkdir -p /opt/zathras/local_configs && cat > /opt/zathras/local_configs/{host_config_name}.config << 'ZEOF'\n{config_content}\nZEOF",
+                )
+
+            try:
+                import yaml
+                scenario_yaml = yaml.dump(scenario, default_flow_style=False)
+            except ImportError:
+                scenario_yaml = json.dumps(scenario, indent=2)
+
+            scenario_path = f"/tmp/scenario-{run_uuid}.yml"
+            await ssh.run(
+                controller,
+                f"cat > {scenario_path} << 'ZEOF'\n{scenario_yaml}\nZEOF",
+            )
+
+            burden_cmd = run_command or "/opt/zathras/bin/burden"
+            cmd = f"cd /opt/zathras && {burden_cmd} --scenario {scenario_path}"
             logger.info(f"[benchmark] Executing zathras: {cmd}")
             result = await ssh.run(controller, cmd, timeout=3600)
 
