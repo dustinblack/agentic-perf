@@ -48,6 +48,6 @@ class SkillProvider(ABC):
         return None
 
     async def validate_runfile(
-        self, run_file: dict[str, Any]
+        self, run_file: dict[str, Any], harness: str | None = None
     ) -> dict[str, Any]:
         return {"valid": True, "errors": []}

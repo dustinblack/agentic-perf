@@ -213,7 +213,7 @@ class CrucibleSkillProvider(SkillProvider):
             return None
 
     async def validate_runfile(
-        self, run_file: dict[str, Any]
+        self, run_file: dict[str, Any], harness: str | None = None
     ) -> dict[str, Any]:
         schema = self._load_schema()
         if schema is None:

@@ -192,3 +192,76 @@ class ZathrasSkillProvider(SkillProvider):
             template["tags"] = params["tags"]
 
         return RunfileTemplate(benchmark=benchmark, template=template)
+
+    VALID_SYSTEM_TYPES = {"local", "aws", "azure", "gcp", "ibm"}
+
+    async def validate_runfile(
+        self, run_file: dict[str, Any], harness: str | None = None
+    ) -> dict[str, Any]:
+        errors: list[str] = []
+
+        scenario = run_file.get("scenario")
+        if not isinstance(scenario, dict):
+            return {"valid": False, "errors": ["Missing or invalid 'scenario' section"]}
+
+        global_section = scenario.get("global")
+        if not isinstance(global_section, dict):
+            errors.append("Missing 'global' section in scenario")
+        else:
+            system_type = global_section.get("system_type")
+            if not system_type:
+                errors.append("Missing 'system_type' in scenario global")
+            elif system_type not in self.VALID_SYSTEM_TYPES:
+                errors.append(
+                    f"Invalid system_type '{system_type}' — "
+                    f"must be one of: {', '.join(sorted(self.VALID_SYSTEM_TYPES))}"
+                )
+
+        systems = scenario.get("systems")
+        if not isinstance(systems, dict) or not systems:
+            errors.append("Missing or empty 'systems' section in scenario")
+        else:
+            available_tests = {e["test_name"] for e in self._parse_test_defs()}
+            test_meta = {e["test_name"]: e for e in self._parse_test_defs()}
+
+            for sys_name, sys_config in systems.items():
+                if not isinstance(sys_config, dict):
+                    errors.append(f"System '{sys_name}' is not a dict")
+                    continue
+
+                tests = sys_config.get("tests")
+                if not tests:
+                    errors.append(f"System '{sys_name}': missing 'tests' field")
+                else:
+                    for test_name in str(tests).split(","):
+                        test_name = test_name.strip()
+                        if available_tests and test_name not in available_tests:
+                            errors.append(
+                                f"System '{sys_name}': unknown test '{test_name}' — "
+                                f"not found in test_defs.yml"
+                            )
+
+                host_config = sys_config.get("host_config")
+                if not host_config:
+                    errors.append(f"System '{sys_name}': missing 'host_config' field")
+
+                if tests and available_tests:
+                    for test_name in str(tests).split(","):
+                        test_name = test_name.strip()
+                        meta = test_meta.get(test_name, {})
+                        if meta.get("network_required") == "yes":
+                            local_config = run_file.get("local_config")
+                            if not local_config or not local_config.get("server_ips"):
+                                errors.append(
+                                    f"Test '{test_name}' requires network — "
+                                    f"local_config must have 'server_ips' and 'client_ips'"
+                                )
+                        if meta.get("storage_required") == "yes":
+                            local_config = run_file.get("local_config")
+                            if not local_config or not local_config.get("storage"):
+                                errors.append(
+                                    f"Test '{test_name}' requires storage — "
+                                    f"local_config must have 'storage' field"
+                                )
+
+        return {"valid": len(errors) == 0, "errors": errors}

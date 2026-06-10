@@ -358,6 +358,22 @@ def create_benchmark_tool_handlers(
             )
 
             burden_cmd = run_command or "/opt/zathras/bin/burden"
+
+            preflight_cmd = f"cd /opt/zathras && {burden_cmd} --preflight_check --scenario {scenario_path}"
+            logger.info(f"[benchmark] Running zathras preflight: {preflight_cmd}")
+            preflight = await ssh.run(controller, preflight_cmd, timeout=120)
+            if preflight.exit_code != 0:
+                return {
+                    "status": "rejected",
+                    "harness": "zathras",
+                    "message": (
+                        "Scenario failed zathras preflight_check and was NOT executed. "
+                        "Fix the scenario and try again.\n"
+                        + (preflight.stdout[-2000:] if preflight.stdout else "")
+                        + (preflight.stderr[-1000:] if preflight.stderr else "")
+                    ),
+                }
+
             cmd = f"cd /opt/zathras && {burden_cmd} --scenario {scenario_path}"
             logger.info(f"[benchmark] Executing zathras: {cmd}")
             result = await ssh.run(controller, cmd, timeout=3600)
