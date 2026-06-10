@@ -1,5 +1,9 @@
 # Next Session Notes
 
+## LLM-Driven Run-File Generation (Priority: High)
+
+Redesign the benchmark agent to construct run.json directly from natural language instead of going through the `generate_run_file` template layer. Full design doc: [design-llm-runfile-generation.md](design-llm-runfile-generation.md).
+
 ## Triage Directives (Priority: Medium)
 
 The triage agent should extract operational directives from natural language:
