@@ -16,11 +16,11 @@ from tests.conftest import MockSecretsProvider, MockSkillProvider, MockSSHExecut
 
 ZATHRAS_PRIVATE_CONFIG = {
     "constraints": {
-        "supported_os": ["rhel8", "rhel9", "fedora"],
+        "supported_os": ["rhel8", "rhel9", "centos"],
         "requires_epel": True,
     },
     "platform_contract": {
-        "supported_os": ["rhel8", "rhel9", "fedora"],
+        "supported_os": ["rhel8", "rhel9", "centos"],
         "required_repos": ["epel"],
         "required_packages": ["git"],
     },

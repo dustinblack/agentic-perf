@@ -1,8 +1,8 @@
 {
     "constraints": {
-        "supported_os": ["rhel8", "rhel9", "rhel10", "fedora", "centos"],
-        "unsupported_os": ["ubuntu", "debian", "suse", "amazon"],
-        "os_reason": "Zathras install.sh requires dnf package manager. Only RHEL 8+, Fedora, and CentOS are supported.",
+        "supported_os": ["rhel8", "rhel9", "rhel10", "centos"],
+        "unsupported_os": ["ubuntu", "debian", "suse", "amazon", "fedora"],
+        "os_reason": "Zathras install.sh requires dnf (not dnf5) and EPEL. Fedora 41+ ships dnf5 which breaks dnf config-manager --add-repo. Only RHEL 8+, and CentOS are supported.",
         "controller_os_must_match": false,
         "requires_epel": true,
         "epel_reason": "install.sh expects EPEL repository to be pre-configured for ansible-core and other packages.",
@@ -60,7 +60,7 @@
         "post_install_notes": "install.sh uses pip --user, so ~/.local/bin must be in PATH. When running as root, this is /root/.local/bin."
     },
     "platform_contract": {
-        "supported_os": ["rhel8", "rhel9", "rhel10", "fedora", "centos"],
+        "supported_os": ["rhel8", "rhel9", "rhel10", "centos"],
         "required_repos": ["epel"],
         "required_packages": ["git"]
     },
