@@ -9,6 +9,40 @@ from providers.ssh import SSHExecutor
 logger = logging.getLogger(__name__)
 
 
+async def cleanup_harness(
+    ssh: SSHExecutor,
+    host: str,
+    harness_name: str,
+    install_path: str | None = None,
+    pre_uninstall_commands: list[str] | None = None,
+) -> dict:
+    """Remove a harness installation from a host."""
+    path = install_path or f"/opt/{harness_name}"
+
+    for cmd in (pre_uninstall_commands or []):
+        logger.info(f"[provision] Pre-uninstall on {host}: {cmd}")
+        await ssh.run(host, cmd, timeout=120)
+
+    logger.info(f"[provision] Uninstalling {harness_name} from {host}:{path}")
+    result = await ssh.run(host, f"rm -rf {path}", timeout=120)
+    if result.exit_code != 0:
+        return {
+            "host": host,
+            "harness": harness_name,
+            "status": "failed",
+            "message": f"Failed to remove {path}: {result.stderr}",
+        }
+
+    await ssh.run(host, f"rm -rf {path}-moved-on-*", timeout=60)
+
+    return {
+        "host": host,
+        "harness": harness_name,
+        "status": "success",
+        "message": f"{harness_name} uninstalled from {path}",
+    }
+
+
 def get_provisioning_tools() -> list[ToolDefinition]:
     return [
         ToolDefinition(
@@ -561,30 +595,13 @@ def create_provisioning_tool_handlers(
     ) -> dict:
         private_config = await skill_provider.get_all_private_config(harness_name)
         provisioning = private_config.get("provisioning", {})
-        path = provisioning.get("install_target_path", f"/opt/{harness_name}")
-
-        for cmd in provisioning.get("pre_uninstall_commands", []):
-            logger.info(f"[provision] Pre-uninstall on {host}: {cmd}")
-            await ssh.run(host, cmd, timeout=120)
-
-        logger.info(f"[provision] Uninstalling {harness_name} from {host}:{path}")
-        result = await ssh.run(host, f"rm -rf {path}", timeout=120)
-        if result.exit_code != 0:
-            return {
-                "host": host,
-                "harness": harness_name,
-                "status": "failed",
-                "message": f"Failed to remove {path}: {result.stderr}",
-            }
-
-        await ssh.run(host, f"rm -rf {path}-moved-on-*", timeout=60)
-
-        return {
-            "host": host,
-            "harness": harness_name,
-            "status": "success",
-            "message": f"{harness_name} uninstalled from {path}",
-        }
+        return await cleanup_harness(
+            ssh,
+            host,
+            harness_name,
+            install_path=provisioning.get("install_target_path"),
+            pre_uninstall_commands=provisioning.get("pre_uninstall_commands"),
+        )
 
     async def configure_host(
         host: str, config: dict, user: str = "root"

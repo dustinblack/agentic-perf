@@ -28,6 +28,12 @@ Your job is to analyze a performance test request ticket and:
    the user asked to test "performance" with no indication of what kind. Do NOT ask
    for benchmark parameters — the suite has defaults.
 
+6. Determine HOST CLEANUP policy. Default to "required" — this ensures SSH keys and
+   harness installations are removed from hosts during teardown. Set to "skip" only
+   if the user indicates the infrastructure will wipe hosts automatically (e.g., cloud
+   instances that are terminated, or bare-metal hosts that are fully reprovisioned).
+   When in doubt, use "required" — it's the safe default.
+
 When you have completed your analysis, call the submit_triage_result tool with your
-findings, including the min_hosts and roles from the benchmark details.
+findings, including the min_hosts, roles, and host_cleanup from the benchmark details.
 """

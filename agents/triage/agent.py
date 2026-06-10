@@ -90,6 +90,7 @@ class TriageAgent(AgentBase):
             "absent_suite": result.get("absent_suite", False),
             "required_roles": roles,
             "min_hosts": min_hosts,
+            "host_cleanup": result.get("host_cleanup", "required"),
         }
         await self._update_fields(ticket_id, fields)
 

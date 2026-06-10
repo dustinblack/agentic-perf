@@ -4,9 +4,12 @@ import logging
 from typing import Any
 
 from agents.base import AgentBase
+from agents.benchmark.mcp_server import cleanup_controller_ssh_keys
+from agents.provisioning.mcp_server import cleanup_harness
 from providers.events import EventBus
 from providers.llm.base import LLMProvider, LLMResponse
 from providers.secrets.base import SecretsProvider
+from providers.ssh import SSHExecutor
 
 from .mcp_server import create_resource_tool_handlers, get_resource_tools
 from .prompts import RESOURCE_SYSTEM_PROMPT
@@ -64,6 +67,10 @@ class ResourceAgent(AgentBase):
         ticket = await self._get_ticket(ticket_id)
         fields = ticket.get("custom_fields", {})
         assignment_id = fields.get("quads_assignment_id")
+        host_cleanup = fields.get("host_cleanup", "required")
+
+        if host_cleanup == "required":
+            await self._run_host_cleanup(ticket_id, fields)
 
         if assignment_id and self._secrets:
             try:
@@ -89,6 +96,61 @@ class ResourceAgent(AgentBase):
             ticket_id, "closed", comment="Resource teardown complete"
         )
         logger.info(f"[resource-agent] Teardown complete for {ticket_id}")
+
+    async def _run_host_cleanup(self, ticket_id: str, fields: dict) -> None:
+        hw = fields.get("assigned_hardware_ips", {})
+        controller = hw.get("controller")
+        targets = hw.get("targets", [])
+        ssh_key_path = fields.get("ssh_key_path")
+        harness_name = fields.get("harness_name")
+        all_hosts = ([controller] if controller else []) + targets
+
+        if not all_hosts:
+            logger.info("[resource-agent] No hosts to clean up")
+            return
+
+        ssh = SSHExecutor(user="root", key_path=ssh_key_path)
+        cleanup_summary = []
+
+        # Remove controller-to-endpoint SSH keys (benchmark agent's responsibility)
+        if controller and targets:
+            try:
+                result = await cleanup_controller_ssh_keys(ssh, controller, targets)
+                cleanup_summary.append(f"Controller SSH keys: {result['status']}")
+                logger.info(f"[resource-agent] Controller key cleanup: {result}")
+            except Exception as e:
+                cleanup_summary.append(f"Controller SSH keys: failed ({e})")
+                logger.exception("[resource-agent] Controller key cleanup failed")
+
+        # Uninstall harness (provisioning agent's responsibility)
+        if harness_name:
+            for host in all_hosts:
+                try:
+                    result = await cleanup_harness(ssh, host, harness_name)
+                    cleanup_summary.append(f"Harness on {host}: {result['status']}")
+                    logger.info(f"[resource-agent] Harness cleanup on {host}: {result}")
+                except Exception as e:
+                    cleanup_summary.append(f"Harness on {host}: failed ({e})")
+                    logger.exception(f"[resource-agent] Harness cleanup on {host} failed")
+
+        # Remove QUADS provisioning SSH keys (resource agent's responsibility)
+        if fields.get("quads_assignment_id") and self._secrets:
+            try:
+                from providers.quads import QuadsClient
+                client = await QuadsClient.from_secrets(self._secrets)
+                result = await client.cleanup_ssh_keys(all_hosts)
+                await client.close()
+                cleanup_summary.append(f"QUADS SSH keys: {result['status']}")
+                logger.info(f"[resource-agent] QUADS key cleanup: {result}")
+            except Exception as e:
+                cleanup_summary.append(f"QUADS SSH keys: failed ({e})")
+                logger.exception("[resource-agent] QUADS key cleanup failed")
+
+        if cleanup_summary:
+            await self._add_comment(
+                ticket_id,
+                "**Host Cleanup**\n\n" + "\n".join(f"- {s}" for s in cleanup_summary),
+            )
 
     def _system_prompt(self) -> str:
         return RESOURCE_SYSTEM_PROMPT

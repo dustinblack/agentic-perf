@@ -12,6 +12,38 @@ from providers.ssh import SSHExecutor
 
 logger = logging.getLogger(__name__)
 
+CONTROLLER_KEY_COMMENT = "agentic-perf-controller-key"
+
+
+async def cleanup_controller_ssh_keys(
+    ssh: SSHExecutor,
+    controller: str,
+    endpoints: list[str],
+) -> dict:
+    """Remove agentic-perf SSH keys from endpoints and the controller."""
+    logger.info(f"[benchmark] Cleaning up SSH keys: {controller} -> {endpoints}")
+    results = {}
+
+    for endpoint in endpoints:
+        result = await ssh.run(
+            endpoint,
+            f"sed -i '/{CONTROLLER_KEY_COMMENT}/d' /root/.ssh/authorized_keys",
+        )
+        results[endpoint] = "cleaned" if result.exit_code == 0 else f"failed: {result.stderr}"
+
+    check = await ssh.run(
+        controller,
+        f"grep -q '{CONTROLLER_KEY_COMMENT}' /root/.ssh/id_rsa.pub 2>/dev/null && "
+        f"rm -f /root/.ssh/id_rsa /root/.ssh/id_rsa.pub && echo REMOVED || echo SKIPPED",
+    )
+    controller_key = check.stdout.strip()
+    results[f"{controller} (key pair)"] = "removed" if controller_key == "REMOVED" else "skipped (not ours)"
+
+    return {
+        "status": "success",
+        "results": results,
+    }
+
 
 def get_benchmark_tools() -> list[ToolDefinition]:
     return [
@@ -189,23 +221,21 @@ def create_benchmark_tool_handlers(
     ) -> dict:
         logger.info(f"[benchmark] Setting up SSH keys: {controller} -> {endpoints}")
 
-        KEY_COMMENT = "agentic-perf-controller-key"
-
         pubkey_result = await ssh.run(controller, "cat /root/.ssh/id_rsa.pub 2>/dev/null")
         if pubkey_result.exit_code != 0 or not pubkey_result.stdout.strip():
             keygen_result = await ssh.run(
                 controller,
-                f'ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -C "{KEY_COMMENT}" -N ""',
+                f'ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -C "{CONTROLLER_KEY_COMMENT}" -N ""',
             )
             if keygen_result.exit_code != 0:
                 return {"status": "failed", "message": f"Key generation failed: {keygen_result.stderr}"}
             pubkey_result = await ssh.run(controller, "cat /root/.ssh/id_rsa.pub")
 
         pubkey = pubkey_result.stdout.strip()
-        if KEY_COMMENT not in pubkey:
+        if CONTROLLER_KEY_COMMENT not in pubkey:
             await ssh.run(
                 controller,
-                f'rm -f /root/.ssh/id_rsa /root/.ssh/id_rsa.pub && ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -C "{KEY_COMMENT}" -N ""',
+                f'rm -f /root/.ssh/id_rsa /root/.ssh/id_rsa.pub && ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -C "{CONTROLLER_KEY_COMMENT}" -N ""',
             )
             pubkey_result = await ssh.run(controller, "cat /root/.ssh/id_rsa.pub")
             pubkey = pubkey_result.stdout.strip()
@@ -223,7 +253,7 @@ def create_benchmark_tool_handlers(
 
             inject = await ssh.run(
                 endpoint,
-                f'mkdir -p /root/.ssh && grep -qF "{KEY_COMMENT}" /root/.ssh/authorized_keys 2>/dev/null || echo "{pubkey}" >> /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys',
+                f'mkdir -p /root/.ssh && grep -qF "{CONTROLLER_KEY_COMMENT}" /root/.ssh/authorized_keys 2>/dev/null || echo "{pubkey}" >> /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys',
             )
             if inject.exit_code != 0:
                 results[endpoint] = {"status": "failed", "message": inject.stderr}

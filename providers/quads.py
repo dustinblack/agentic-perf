@@ -311,6 +311,32 @@ class QuadsClient:
             "hosts": results,
         }
 
+    PROVISIONING_KEY_COMMENT = "host-key-do-not-remove"
+
+    async def cleanup_ssh_keys(self, hosts: list[str]) -> dict[str, Any]:
+        """Remove the QUADS provisioning key from authorized_keys on each host."""
+        results: dict[str, str] = {}
+        for host in hosts:
+            try:
+                ssh_result = await asyncio.create_subprocess_exec(
+                    "ssh", "-o", "ConnectTimeout=10",
+                    "-o", "BatchMode=yes",
+                    "-o", "StrictHostKeyChecking=accept-new",
+                    "-i", self.ssh_key_path,
+                    f"root@{host}",
+                    f"sed -i '/{self.PROVISIONING_KEY_COMMENT}/d' /root/.ssh/authorized_keys",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await ssh_result.communicate()
+                results[host] = "cleaned" if ssh_result.returncode == 0 else f"failed: {stderr.decode().strip()}"
+            except Exception as e:
+                results[host] = f"failed: {e}"
+        return {
+            "status": "success" if all("cleaned" in v for v in results.values()) else "partial",
+            "hosts": results,
+        }
+
     async def _copy_ssh_key(self, host: str, pubkey: str) -> str:
         remote_cmd = (
             f"mkdir -p ~/.ssh && chmod 700 ~/.ssh && "

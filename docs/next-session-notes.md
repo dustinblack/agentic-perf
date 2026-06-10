@@ -50,10 +50,6 @@ The LLM modifies the run-file between `generate_run_file` and `execute_benchmark
 - Tell the benchmark agent via prompt to pass the run-file through unmodified
 - Make `generate_run_file` produce a complete, valid run-file every time (it mostly does, but the LLM adds extra fields like `endpoint_user`)
 
-## Crucible GitHub Issue
-
-File an issue on perftool-incubator/crucible about `_ssh-key-cleaner` removing non-crucible keys. The legacy cleanup (`sed -i "/${LEGACY_KEY_COMMENT}/d"`) deletes any key with comment `root@$(hostname -f)`, which is the default ssh-keygen comment. This breaks any automation that adds SSH keys to a crucible controller.
-
 ## Checkpoint/Restart on Tickets
 
 Instead of resubmitting from scratch when a phase fails, support rewinding a ticket to a previous state. The ticket has all accumulated context (hardware IPs, SSH key, harness version). A `rewind` CLI command would transition the ticket back and let the dispatcher re-run just the failed phase. Need to define which custom_fields to clear on rewind.
@@ -66,10 +62,6 @@ The QUADS terminate API returns 500 for assignments with expired schedules (0 ho
 3. Catch 500 and log as warning, not failure
 
 Also file QUADS issue — RFE #605 mentions auto-cleanup of orphaned assignments.
-
-## SSH Key Cleanup
-
-After a run completes and the ticket closes, the teardown agent should remove the `agentic-perf-controller-key` from authorized_keys on all hosts. We're currently responsible tenants but not cleaning up after ourselves.
 
 ## Zathras-Specific Issues
 

@@ -95,6 +95,14 @@ def get_triage_tools() -> list[ToolDefinition]:
                         "items": {"type": "string"},
                         "description": "Required host roles (e.g. ['client'] or ['client', 'server'])",
                     },
+                    "host_cleanup": {
+                        "type": "string",
+                        "enum": ["required", "skip"],
+                        "description": (
+                            "Whether to clean up SSH keys and harness installations "
+                            "from hosts during teardown. Default: required."
+                        ),
+                    },
                     "notes": {
                         "type": "string",
                         "description": "Additional notes about the triage",
