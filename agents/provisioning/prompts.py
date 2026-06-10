@@ -12,16 +12,22 @@ Your tasks:
    the harness field in benchmark metadata, or "crucible" if not specified) and key
    "provisioning" to learn the harness's provisioning requirements.
 
-2. Check prerequisites on the controller host using check_host_prerequisites.
+2. Call check_platform_contract with the host and harness_name to verify the host's
+   OS, repos, and packages are compatible with the harness. If the platform is
+   incompatible (status "failed"), report the mismatch — do not attempt installation.
+   If missing_packages are reported (status "ok"), install them in step 3.
+
+3. Check prerequisites on the controller host using check_host_prerequisites.
    The provisioning config may list harness-specific prerequisites.
 
-3. If any prerequisites are missing, install them using install_packages.
+4. If any prerequisites are missing (from step 3 or missing_packages from step 2),
+   install them using install_packages.
 
-4. Check the ticket for the "fresh_host" field. If fresh_host is true, the host was
+5. Check the ticket for the "fresh_host" field. If fresh_host is true, the host was
    freshly provisioned (e.g., via QUADS) and has no harness installed. Skip
    check_existing_install entirely and proceed directly to install_harness.
 
-5. If fresh_host is NOT set, check for an existing installation using
+6. If fresh_host is NOT set, check for an existing installation using
    check_existing_install with the harness_name. Look at the "installed"
    field in the result:
    - If installed is FALSE: the harness is NOT installed. You MUST proceed
@@ -34,11 +40,11 @@ Your tasks:
        then call install_harness for a clean install.
      - "ask_user": use request_clarification to present the options.
 
-6. Install using install_harness with the harness_name.
+7. Install using install_harness with the harness_name.
 
-7. Verify the installation using verify_harness_install with the harness_name.
+8. Verify the installation using verify_harness_install with the harness_name.
 
-8. If any step fails, report the error details.
+9. If any step fails, report the error details.
 
 Important:
 - Only install on the CONTROLLER host, not on target/client/server hosts.

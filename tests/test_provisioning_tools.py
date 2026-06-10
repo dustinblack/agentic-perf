@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from providers.skills.base import RunfileTemplate
-from agents.provisioning.mcp_server import create_provisioning_tool_handlers
+from agents.provisioning.mcp_server import (
+    create_provisioning_tool_handlers,
+    validate_platform_contract,
+    _parse_os_release,
+)
 
 from tests.conftest import MockSecretsProvider, MockSkillProvider, MockSSHExecutor, SSHResult
 
@@ -14,6 +18,11 @@ ZATHRAS_PRIVATE_CONFIG = {
     "constraints": {
         "supported_os": ["rhel8", "rhel9", "fedora"],
         "requires_epel": True,
+    },
+    "platform_contract": {
+        "supported_os": ["rhel8", "rhel9", "fedora"],
+        "required_repos": ["epel"],
+        "required_packages": ["git"],
     },
     "provisioning": {
         "install_method": "git_clone",
@@ -32,6 +41,10 @@ ZATHRAS_PRIVATE_CONFIG = {
 }
 
 CRUCIBLE_PRIVATE_CONFIG = {
+    "platform_contract": {
+        "supported_os": ["rhel8", "rhel9", "rhel10", "fedora", "centos"],
+        "required_packages": ["podman", "git", "jq", "curl"],
+    },
     "provisioning": {
         "install_method": "public_install",
         "installer_url": "https://raw.githubusercontent.com/perftool-incubator/crucible/master/crucible-install.sh",
@@ -218,3 +231,119 @@ async def test_contract_absent_is_ok(mock_provider):
     """Harnesses without install_contract (like zathras) have no contract to validate."""
     config = await mock_provider.get_all_private_config("zathras")
     assert "install_contract" not in config
+
+
+# --- Platform contract tests ---
+
+RHEL9_OS_RELEASE = """\
+NAME="Red Hat Enterprise Linux"
+VERSION="9.4 (Plow)"
+ID="rhel"
+VERSION_ID="9.4"
+PLATFORM_ID="platform:el9"
+"""
+
+UBUNTU_OS_RELEASE = """\
+NAME="Ubuntu"
+VERSION="22.04.3 LTS (Jammy Jellyfish)"
+ID=ubuntu
+VERSION_ID="22.04"
+"""
+
+ROCKY9_OS_RELEASE = """\
+NAME="Rocky Linux"
+VERSION="9.3 (Blue Onyx)"
+ID="rocky"
+VERSION_ID="9.3"
+"""
+
+
+def test_parse_os_release_rhel():
+    assert _parse_os_release(RHEL9_OS_RELEASE) == "rhel9"
+
+
+def test_parse_os_release_ubuntu():
+    assert _parse_os_release(UBUNTU_OS_RELEASE) == "ubuntu22"
+
+
+def test_parse_os_release_rocky_normalizes_to_rhel():
+    assert _parse_os_release(ROCKY9_OS_RELEASE) == "rhel9"
+
+
+@pytest.mark.asyncio
+async def test_platform_contract_os_match():
+    """Platform validation passes when OS matches supported list."""
+    ssh = MockSSHExecutor(results={
+        "os-release": SSHResult(stdout=RHEL9_OS_RELEASE),
+        "repolist": SSHResult(stdout="repo id              repo name\nepel               Extra Packages"),
+        "which git": SSHResult(stdout="/usr/bin/git"),
+    })
+    config = {"platform_contract": {
+        "supported_os": ["rhel8", "rhel9"],
+        "required_repos": ["epel"],
+        "required_packages": ["git"],
+    }}
+    result = await validate_platform_contract(ssh, "testhost", config)
+    assert result["status"] == "ok"
+    assert result["detected_os"] == "rhel9"
+    assert result["os_match"] is True
+    assert result["missing_repos"] == []
+    assert result["missing_packages"] == []
+
+
+@pytest.mark.asyncio
+async def test_platform_contract_os_mismatch():
+    """Platform validation fails when OS is not in supported list."""
+    ssh = MockSSHExecutor(results={
+        "os-release": SSHResult(stdout=UBUNTU_OS_RELEASE),
+    })
+    config = {"platform_contract": {
+        "supported_os": ["rhel8", "rhel9", "fedora"],
+    }}
+    result = await validate_platform_contract(ssh, "testhost", config)
+    assert result["status"] == "failed"
+    assert result["detected_os"] == "ubuntu22"
+    assert result["os_match"] is False
+    assert "ubuntu22" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_platform_contract_missing_repo():
+    """Platform validation fails when required repo is missing."""
+    ssh = MockSSHExecutor(results={
+        "os-release": SSHResult(stdout=RHEL9_OS_RELEASE),
+        "repolist": SSHResult(stdout="repo id              repo name\nbaseos             BaseOS"),
+    })
+    config = {"platform_contract": {
+        "supported_os": ["rhel9"],
+        "required_repos": ["epel"],
+    }}
+    result = await validate_platform_contract(ssh, "testhost", config)
+    assert result["status"] == "failed"
+    assert "epel" in result["missing_repos"]
+
+
+@pytest.mark.asyncio
+async def test_platform_contract_missing_package_is_warning():
+    """Missing packages produce a warning (ok status), not a failure."""
+    ssh = MockSSHExecutor(results={
+        "os-release": SSHResult(stdout=RHEL9_OS_RELEASE),
+        "which podman": SSHResult(exit_code=1, stdout=""),
+        "rpm -q podman": SSHResult(exit_code=1, stdout=""),
+    })
+    config = {"platform_contract": {
+        "supported_os": ["rhel9"],
+        "required_packages": ["podman"],
+    }}
+    result = await validate_platform_contract(ssh, "testhost", config)
+    assert result["status"] == "ok"
+    assert "podman" in result["missing_packages"]
+
+
+@pytest.mark.asyncio
+async def test_platform_contract_absent():
+    """No platform_contract in config means no validation (passthrough)."""
+    ssh = MockSSHExecutor()
+    result = await validate_platform_contract(ssh, "testhost", {"provisioning": {}})
+    assert result["status"] == "ok"
+    assert ssh.calls == []

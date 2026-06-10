@@ -59,6 +59,11 @@
         ],
         "post_install_notes": "install.sh uses pip --user, so ~/.local/bin must be in PATH. When running as root, this is /root/.local/bin."
     },
+    "platform_contract": {
+        "supported_os": ["rhel8", "rhel9", "rhel10", "fedora", "centos"],
+        "required_repos": ["epel"],
+        "required_packages": ["git"]
+    },
     "install_contract": {
         "secret_files": [],
         "pre_install_commands": [

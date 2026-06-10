@@ -1,12 +1,118 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from providers.llm.base import ToolDefinition
 from providers.ssh import SSHExecutor
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_os_release(text: str) -> str:
+    """Parse /etc/os-release output into a normalized OS string like 'rhel9' or 'fedora41'."""
+    fields: dict[str, str] = {}
+    for line in text.strip().splitlines():
+        m = re.match(r'^(\w+)="?([^"]*)"?$', line)
+        if m:
+            fields[m.group(1)] = m.group(2)
+
+    os_id = fields.get("ID", "unknown").lower()
+    version = fields.get("VERSION_ID", "")
+
+    # Normalize: "rhel" stays "rhel", "rocky" -> "rhel" (RHEL-compatible)
+    rhel_compat = {"rocky", "almalinux", "ol", "scientific"}
+    if os_id in rhel_compat:
+        os_id = "rhel"
+
+    major = version.split(".")[0] if version else ""
+    return f"{os_id}{major}" if major else os_id
+
+
+def _os_matches(detected: str, supported: list[str]) -> bool:
+    """Check if detected OS matches any entry in supported list (prefix match)."""
+    for s in supported:
+        if detected.startswith(s) or s.startswith(detected):
+            return True
+    return False
+
+
+async def validate_platform_contract(
+    ssh: SSHExecutor,
+    host: str,
+    private_config: dict,
+) -> dict:
+    """Validate host OS, repos, and packages against platform_contract."""
+    contract = private_config.get("platform_contract")
+    if not contract:
+        return {"status": "ok", "message": "No platform contract to validate"}
+
+    result: dict[str, Any] = {
+        "status": "ok",
+        "detected_os": "",
+        "os_match": True,
+        "missing_repos": [],
+        "missing_packages": [],
+        "message": "",
+    }
+    failures = []
+
+    # OS detection
+    supported_os = contract.get("supported_os", [])
+    if supported_os:
+        os_result = await ssh.run(host, "cat /etc/os-release")
+        if os_result.exit_code != 0:
+            result["status"] = "failed"
+            result["message"] = f"Could not detect OS on {host}: {os_result.stderr}"
+            return result
+
+        detected = _parse_os_release(os_result.stdout)
+        result["detected_os"] = detected
+
+        if not _os_matches(detected, supported_os):
+            result["os_match"] = False
+            result["status"] = "failed"
+            failures.append(
+                f"OS '{detected}' is not in supported list: {supported_os}"
+            )
+
+    # Repo validation
+    required_repos = contract.get("required_repos", [])
+    if required_repos:
+        repo_result = await ssh.run(host, "dnf repolist --enabled 2>/dev/null || yum repolist 2>/dev/null")
+        repo_output = repo_result.stdout.lower() if repo_result.exit_code == 0 else ""
+        for repo in required_repos:
+            if repo.lower() not in repo_output:
+                result["missing_repos"].append(repo)
+        if result["missing_repos"]:
+            result["status"] = "failed"
+            failures.append(f"Missing required repos: {result['missing_repos']}")
+
+    # Package validation (soft warning, not fatal)
+    required_packages = contract.get("required_packages", [])
+    if required_packages:
+        for pkg in required_packages:
+            pkg_result = await ssh.run(host, f"which {pkg} 2>/dev/null || rpm -q {pkg} 2>/dev/null")
+            if pkg_result.exit_code != 0:
+                result["missing_packages"].append(pkg)
+        if result["missing_packages"]:
+            logger.info(
+                f"[provision] Missing packages on {host} (can be installed): "
+                f"{result['missing_packages']}"
+            )
+
+    if failures:
+        result["message"] = "; ".join(failures)
+    elif result["missing_packages"]:
+        result["message"] = (
+            f"Platform compatible. Missing packages (installable): "
+            f"{result['missing_packages']}"
+        )
+    else:
+        result["message"] = "Platform contract satisfied"
+
+    return result
 
 
 async def cleanup_harness(
@@ -45,6 +151,28 @@ async def cleanup_harness(
 
 def get_provisioning_tools() -> list[ToolDefinition]:
     return [
+        ToolDefinition(
+            name="check_platform_contract",
+            description=(
+                "Check if a host meets the platform requirements (OS, repos, packages) "
+                "for a benchmark harness. Call this before attempting installation to "
+                "verify compatibility. Returns detected OS, missing repos, and missing "
+                "packages. OS or repo mismatches are hard failures; missing packages "
+                "are warnings (they can be installed)."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string", "description": "IP or hostname"},
+                    "harness_name": {
+                        "type": "string",
+                        "description": "Harness name (e.g., 'crucible', 'zathras')",
+                    },
+                    "user": {"type": "string", "description": "SSH user (default: root)"},
+                },
+                "required": ["host", "harness_name"],
+            },
+        ),
         ToolDefinition(
             name="check_host_prerequisites",
             description=(
@@ -327,6 +455,12 @@ def create_provisioning_tool_handlers(
             "message": f"Contract satisfied: {len(deployed)} file(s) deployed",
         }
 
+    async def check_platform_contract(
+        host: str, harness_name: str, user: str = "root"
+    ) -> dict:
+        private_config = await skill_provider.get_all_private_config(harness_name)
+        return await validate_platform_contract(ssh, host, private_config)
+
     async def check_host_prerequisites(host: str, user: str = "root") -> dict:
         prereqs = {}
         for cmd in ["podman", "git", "jq", "curl"]:
@@ -370,6 +504,16 @@ def create_provisioning_tool_handlers(
         install_method = provisioning.get("install_method", "git_clone")
         target_path = provisioning.get("install_target_path", f"/opt/{harness_name}")
         constraints = private_config.get("constraints", {})
+
+        platform_result = await validate_platform_contract(ssh, host, private_config)
+        if platform_result["status"] == "failed":
+            return {
+                "host": host,
+                "harness": harness_name,
+                "status": "platform_incompatible",
+                "message": platform_result["message"],
+                "detected_os": platform_result.get("detected_os"),
+            }
 
         contract_result = await _validate_and_deploy_contract(host, private_config)
         if contract_result["status"] == "failed":
@@ -626,6 +770,7 @@ def create_provisioning_tool_handlers(
         return "Clarification requested. Ticket paused for human input."
 
     handlers = {
+        "check_platform_contract": check_platform_contract,
         "check_host_prerequisites": check_host_prerequisites,
         "install_packages": install_packages,
         "check_existing_install": check_existing_install,

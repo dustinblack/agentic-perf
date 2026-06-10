@@ -1,30 +1,5 @@
 # Next Session Notes
 
-## Platform & Install Contracts (Priority: High)
-
-The install_contract pattern works for secrets. Extend it to platform requirements:
-
-**Crucible platform contract:**
-```json
-"platform_contract": {
-    "packages": ["git", "podman", "jq", "curl"],
-    "os": ["rhel8", "rhel9", "rhel10", "fedora"]
-}
-```
-
-**Zathras platform contract:**
-```json
-"platform_contract": {
-    "os": ["rhel8", "rhel9"],
-    "repos": ["epel"],
-    "notes": "dnf5 (Fedora 41+) breaks install.sh. Zathras installs its own deps (ansible, terraform, yq, pip) but needs EPEL enabled first."
-}
-```
-
-The provisioning agent validates platform_contract before attempting install. If the platform doesn't match, it escalates back to the resource agent to find a compatible host — this is the negotiation loop between agents.
-
-Key design question: how far do we go? Validate OS + repos (simple), or also validate individual packages (complex, overlaps with what the install script should do)?
-
 ## Triage Directives (Priority: Medium)
 
 The triage agent should extract operational directives from natural language:
