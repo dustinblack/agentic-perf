@@ -46,7 +46,7 @@ If the directives include resource_provider (e.g., "quads" or "aws"):
 ## Submitting the Result
 
 Always call submit_resource_result with:
-- assigned_hardware_ips: {controller: <first host>, targets: [<remaining hosts>]}
+- assigned_hardware_ips: {controller: <dedicated controller host>, targets: [<endpoint hosts>]}
 - ssh_user and ssh_key_path from the reservation result
 - resource_provider: the provider name ("quads", "aws", "user_provided")
 - resource_reservation_id: from the reservation result (null for user-provided)
@@ -54,13 +54,25 @@ Always call submit_resource_result with:
 - fresh_host: true for managed providers (hosts need full harness install)
 - lease_expiration: from the reservation result (null if not applicable)
 
+## Host Count
+
+The ticket's min_hosts field counts ENDPOINT hosts only. For managed
+providers (quads, aws), always provision min_hosts + 1:
+- 1 dedicated controller host (runs the benchmark framework)
+- min_hosts endpoint hosts (where workloads actually run)
+
+The controller must NOT also serve as an endpoint. This is a hard
+requirement — do not combine them to save resources.
+
+The "Total hosts to provision" in the Resource Requirements section
+already includes the controller — use that number directly.
+
 ## Important Notes
 
 - Cloud instances (AWS, etc.) do not expire automatically — teardown is
   critical to avoid ongoing costs. Always set resource_provider and
   resource_reservation_id so teardown can terminate them.
 - QUADS policy: max 10 hosts per assignment, max 5-day lifetime.
-- Map the ticket's min_hosts and required_roles to the number of hosts needed.
 
 ## If something fails
 

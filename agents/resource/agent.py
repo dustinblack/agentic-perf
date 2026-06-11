@@ -235,7 +235,9 @@ class ResourceAgent(AgentBase):
             if roles:
                 content += f"- **Roles:** {roles}\n"
             if min_hosts:
-                content += f"- **Minimum hosts:** {min_hosts}\n"
+                total = min_hosts + 1
+                content += f"- **Endpoint hosts needed:** {min_hosts}\n"
+                content += f"- **Total hosts to provision:** {total} (1 dedicated controller + {min_hosts} endpoints)\n"
 
         if ticket.get("comments"):
             content += "\n## Previous Comments\n"
