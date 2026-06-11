@@ -39,6 +39,8 @@ Your job is to analyze a performance test request ticket and:
    - "these are cloud instances, no cleanup needed" → host_cleanup: "skip"
    - "use AWS" / "deploy on EC2" / "use cloud instances" → resource_provider: "aws"
    - "use the Scale Lab" / "reserve from QUADS" → resource_provider: "quads"
+   - "run on kubernetes" / "use kube endpoints" / "run in pods" → endpoint_type: "kube"
+   - "run on bare metal" / "use remotehosts" → endpoint_type: "remotehosts"
 
    If the user does not mention a directive, omit it — downstream agents will use
    their own defaults. Do NOT invent directives the user didn't ask for.

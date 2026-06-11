@@ -294,6 +294,23 @@ def get_provisioning_tools() -> list[ToolDefinition]:
             },
         ),
         ToolDefinition(
+            name="install_k3s",
+            description=(
+                "Install K3s (lightweight Kubernetes) on a host. K3s provides "
+                "a single-node Kubernetes cluster that crucible uses for kube "
+                "endpoints. Call this BEFORE install_harness when the ticket's "
+                "directives include endpoint_type: kube."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string", "description": "Target host IP or hostname"},
+                    "user": {"type": "string", "description": "SSH user (default: root)"},
+                },
+                "required": ["host"],
+            },
+        ),
+        ToolDefinition(
             name="configure_host",
             description=(
                 "Apply OS-level configuration for optimal benchmark performance. "
@@ -358,6 +375,14 @@ def get_provisioning_tools() -> list[ToolDefinition]:
                     "harness_version": {"type": "string"},
                     "harness_name": {"type": "string"},
                     "configuration_applied": {"type": "object"},
+                    "k3s_installed": {
+                        "type": "boolean",
+                        "description": "Whether K3s was installed on the controller (kube endpoints only)",
+                    },
+                    "k3s_version": {
+                        "type": "string",
+                        "description": "K3s version string (if installed)",
+                    },
                     "notes": {"type": "string"},
                 },
                 "required": ["provisioning_complete", "hosts_provisioned"],
@@ -747,6 +772,56 @@ def create_provisioning_tool_handlers(
             pre_uninstall_commands=provisioning.get("pre_uninstall_commands"),
         )
 
+    async def install_k3s(host: str, user: str = "root") -> dict:
+        logger.info(f"[provision] Installing K3s on {host}")
+
+        selinux_result = await ssh.run(host, "getenforce 2>/dev/null")
+        if selinux_result.exit_code == 0 and selinux_result.stdout.strip() == "Enforcing":
+            logger.info(f"[provision] Setting SELinux to permissive on {host}")
+            await ssh.run(host, "setenforce 0")
+
+        result = await ssh.run(
+            host,
+            "curl -sfL https://get.k3s.io | sh -",
+            timeout=300,
+        )
+        if result.exit_code != 0:
+            return {
+                "host": host,
+                "status": "failed",
+                "message": f"K3s install failed: {result.stderr[-500:] if result.stderr else ''}",
+            }
+
+        for attempt in range(12):
+            check = await ssh.run(host, "k3s kubectl cluster-info 2>/dev/null")
+            if check.exit_code == 0:
+                break
+            await ssh.run(host, "sleep 5")
+        else:
+            return {
+                "host": host,
+                "status": "failed",
+                "message": "K3s API server did not become ready within 60s",
+            }
+
+        await ssh.run(
+            host,
+            "k3s kubectl wait --for=condition=ready pod -l k8s-app=kube-dns "
+            "-n kube-system --timeout=120s",
+            timeout=150,
+        )
+
+        node_result = await ssh.run(host, "k3s kubectl get nodes -o wide --no-headers")
+        version_result = await ssh.run(host, "k3s --version 2>/dev/null | head -1")
+
+        return {
+            "host": host,
+            "status": "success",
+            "k3s_version": version_result.stdout.strip() if version_result.exit_code == 0 else "unknown",
+            "node_info": node_result.stdout.strip() if node_result.exit_code == 0 else "",
+            "message": "K3s installed and cluster ready",
+        }
+
     async def configure_host(
         host: str, config: dict, user: str = "root"
     ) -> dict:
@@ -777,6 +852,7 @@ def create_provisioning_tool_handlers(
         "update_install": update_install,
         "uninstall_harness": uninstall_harness,
         "install_harness": install_harness,
+        "install_k3s": install_k3s,
         "verify_harness_install": verify_harness_install,
         "configure_host": configure_host,
         "get_private_config": get_private_config,

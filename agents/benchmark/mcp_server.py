@@ -114,6 +114,11 @@ def get_benchmark_tools() -> list[ToolDefinition]:
                         },
                     },
                     "controller": {"type": "string", "description": "Controller hostname or IP. Required so the run-file can set controller-ip-address when controller is also an endpoint."},
+                    "endpoint_type": {
+                        "type": "string",
+                        "enum": ["remotehosts", "kube"],
+                        "description": "Endpoint type. 'remotehosts' for bare-metal/VM, 'kube' for Kubernetes pods (K3s).",
+                    },
                     "tags": {"type": "object", "description": "Run tags", "additionalProperties": {"type": "string"}},
                     "userenv": {"type": "string", "description": "User environment / container image (crucible)"},
                     "osruntime": {"type": "string", "description": "OS runtime (crucible: 'podman', 'chroot')"},
@@ -394,6 +399,7 @@ def create_benchmark_tool_handlers(
         endpoints: list[dict],
         harness: str | None = None,
         controller: str | None = None,
+        endpoint_type: str | None = None,
         tags: dict | None = None,
         userenv: str | None = None,
         osruntime: str | None = None,
@@ -402,6 +408,7 @@ def create_benchmark_tool_handlers(
         harness_name = harness or "crucible"
         exec_config = await skill_provider.get_all_private_config(harness_name)
         execution = exec_config.get("execution", {})
+        resolved_type = endpoint_type or execution.get("endpoint_type", "remotehosts")
 
         resolved_endpoints = []
         resolve_host = controller or endpoints[0]["host"]
@@ -419,6 +426,7 @@ def create_benchmark_tool_handlers(
         params: dict[str, Any] = {
             "endpoints": resolved_endpoints,
             "harness": harness_name,
+            "endpoint_type": resolved_type,
             "endpoint_user": execution.get("endpoint_user", "root"),
         }
 
@@ -436,6 +444,16 @@ def create_benchmark_tool_handlers(
                     f"[benchmark] Controller is also an endpoint — "
                     f"setting controller-ip-address={controller_ip}"
                 )
+
+            if resolved_type == "kube":
+                ip_result = await ssh.run(
+                    controller,
+                    "ip route get 1 2>/dev/null | awk '{print $7; exit}'",
+                )
+                kube_controller_ip = ip_result.stdout.strip() if ip_result.exit_code == 0 else controller_ip
+                params["controller_ip"] = kube_controller_ip
+                params["kube_host"] = kube_controller_ip
+                logger.info(f"[benchmark] Kube endpoint: host={kube_controller_ip}")
 
         if tags:
             params["tags"] = tags

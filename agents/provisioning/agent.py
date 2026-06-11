@@ -117,6 +117,9 @@ class ProvisioningAgent(AgentBase):
             "harness_name": result.get("harness_name", "unknown"),
             "configuration_applied": result.get("configuration_applied", {}),
         }
+        if result.get("k3s_installed"):
+            fields["k3s_installed"] = True
+            fields["k3s_version"] = result.get("k3s_version", "unknown")
         await self._update_fields(ticket_id, fields)
 
         summary = (

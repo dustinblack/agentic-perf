@@ -47,11 +47,16 @@ Your tasks:
        then call install_harness for a clean install.
      - "ask_user": use request_clarification to present the options.
 
-7. Install using install_harness with the harness_name.
+7. If the ticket's directives include `endpoint_type: kube`, call `install_k3s`
+   on the controller host BEFORE `install_harness`. K3s provides the Kubernetes
+   cluster that crucible uses for kube endpoints. Do NOT create a
+   `/usr/local/bin/kubectl` symlink — crucible auto-detects `k3s kubectl`.
 
-8. Verify the installation using verify_harness_install with the harness_name.
+8. Install using install_harness with the harness_name.
 
-9. If any step fails, report the error details.
+9. Verify the installation using verify_harness_install with the harness_name.
+
+10. If any step fails, report the error details.
 
 Important:
 - Only install on the CONTROLLER host, not on target/client/server hosts.

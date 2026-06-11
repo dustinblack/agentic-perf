@@ -79,6 +79,23 @@ Endpoint structure (remotehosts type):
 }
 ```
 
+Endpoint structure (kube type — flat, no remotes/settings):
+```json
+{
+  "type": "kube",
+  "controller-ip-address": "<controller private IP>",
+  "host": "<kube host IP (same as controller for single-node K3s)>",
+  "user": "root",
+  "engines": {"client": "1-2", "server": "1-2"},
+  "config": {"targets": "default", "userenv": "default"}
+}
+```
+
+When `endpoint_type` is "kube", pass it to `generate_run_file`. The generator builds the
+flat kube endpoint structure automatically. For kube endpoints, controller-ip-address is
+the controller's private/default-route IP, and the single K3s node serves as both
+controller and kube host.
+
 mv-params structure:
 ```json
 {

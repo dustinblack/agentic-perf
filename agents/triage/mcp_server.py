@@ -138,6 +138,17 @@ def get_triage_tools() -> list[ToolDefinition]:
                                     "from hosts during teardown. Default: required."
                                 ),
                             },
+                            "endpoint_type": {
+                                "type": "string",
+                                "enum": ["remotehosts", "kube"],
+                                "description": (
+                                    "Endpoint type for the benchmark. 'remotehosts' runs "
+                                    "directly on bare-metal/VM hosts. 'kube' runs in "
+                                    "Kubernetes pods (K3s installed on the controller). "
+                                    "Set to 'kube' when user mentions Kubernetes, K8s, "
+                                    "pods, containers, or cloud-native."
+                                ),
+                            },
                         },
                         "additionalProperties": True,
                     },

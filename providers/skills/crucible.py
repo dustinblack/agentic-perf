@@ -115,9 +115,21 @@ class CrucibleSkillProvider(SkillProvider):
 
         return max(scored, key=scored.get)
 
-    def _load_example_runfile(self, benchmark: str) -> dict[str, Any] | None:
-        for pattern in [f"{benchmark}.json", f"{benchmark}-remotehost-runfile.json",
-                        f"{benchmark}-remotehosts-runfile.json"]:
+    def _load_example_runfile(
+        self, benchmark: str, endpoint_type: str = "remotehosts"
+    ) -> dict[str, Any] | None:
+        patterns = [
+            f"{benchmark}.json",
+            f"{benchmark}-remotehost-runfile.json",
+            f"{benchmark}-remotehosts-runfile.json",
+        ]
+        if endpoint_type == "kube":
+            patterns = [
+                f"{benchmark}.kube.json",
+                f"{benchmark}-k8s-runfile.json",
+                f"{benchmark}-kube-runfile.json",
+            ] + patterns
+        for pattern in patterns:
             path = self._examples_dir / benchmark / pattern
             if path.exists():
                 try:
@@ -134,13 +146,20 @@ class CrucibleSkillProvider(SkillProvider):
                         pass
         return None
 
+    _GENERATE_INTERNAL_KEYS = frozenset({
+        "name", "endpoints", "tags", "userenv", "osruntime", "harness",
+        "endpoint_type", "endpoint_user", "controller", "controller_ip",
+        "kube_host",
+    })
+
     async def generate_runfile(
         self, benchmark: str, params: dict[str, Any]
     ) -> RunfileTemplate:
-        example = self._load_example_runfile(benchmark)
+        endpoint_type = params.get("endpoint_type", "remotehosts")
+        example = self._load_example_runfile(benchmark, endpoint_type)
         bench_params = {
             k: v for k, v in params.items()
-            if k not in ("name", "endpoints", "tags", "userenv", "osruntime", "harness")
+            if k not in self._GENERATE_INTERNAL_KEYS
         }
         if example:
             template = dict(example)
@@ -165,41 +184,85 @@ class CrucibleSkillProvider(SkillProvider):
 
         endpoints = params.get("endpoints", [])
         if endpoints:
-            userenv = params.get("userenv", "default")
-            osruntime = params.get("osruntime", "podman")
-            ep_user = params.get("endpoint_user", "root")
-            controller = params.get("controller")
-
-            controller = params.get("controller")
-            controller_ip = params.get("controller_ip")
-
-            remotes = []
-            for ep in endpoints:
-                roles = ep.get("roles", ["client"])
-                engines = [{"role": r, "ids": [1]} for r in roles]
-                settings: dict[str, Any] = {"osruntime": osruntime}
-                if controller_ip and controller and ep["host"] == controller:
-                    settings["controller-ip-address"] = controller_ip
-                remotes.append({
-                    "engines": engines,
-                    "config": {
-                        "host": ep["host"],
-                        "settings": settings,
-                    },
-                })
-
-            template["endpoints"] = [
-                {
-                    "type": "remotehosts",
-                    "settings": {"user": ep_user, "userenv": userenv},
-                    "remotes": remotes,
-                }
-            ]
+            if endpoint_type == "kube":
+                self._build_kube_endpoints(template, params, endpoints, benchmark)
+            else:
+                self._build_remotehosts_endpoints(template, params, endpoints)
 
         if params.get("tags"):
             template["tags"] = params["tags"]
 
         return RunfileTemplate(benchmark=benchmark, template=template)
+
+    def _build_remotehosts_endpoints(
+        self,
+        template: dict[str, Any],
+        params: dict[str, Any],
+        endpoints: list[dict[str, Any]],
+    ) -> None:
+        userenv = params.get("userenv", "default")
+        osruntime = params.get("osruntime", "podman")
+        ep_user = params.get("endpoint_user", "root")
+        controller = params.get("controller")
+        controller_ip = params.get("controller_ip")
+
+        remotes = []
+        for ep in endpoints:
+            roles = ep.get("roles", ["client"])
+            engines = [{"role": r, "ids": [1]} for r in roles]
+            settings: dict[str, Any] = {"osruntime": osruntime}
+            if controller_ip and controller and ep["host"] == controller:
+                settings["controller-ip-address"] = controller_ip
+            remotes.append({
+                "engines": engines,
+                "config": {
+                    "host": ep["host"],
+                    "settings": settings,
+                },
+            })
+
+        template["endpoints"] = [
+            {
+                "type": "remotehosts",
+                "settings": {"user": ep_user, "userenv": userenv},
+                "remotes": remotes,
+            }
+        ]
+
+    def _build_kube_endpoints(
+        self,
+        template: dict[str, Any],
+        params: dict[str, Any],
+        endpoints: list[dict[str, Any]],
+        benchmark: str,
+    ) -> None:
+        ep_user = params.get("endpoint_user", "root")
+        userenv = params.get("userenv", "default")
+        controller_ip = params.get("controller_ip", "")
+        kube_host = params.get("kube_host", "")
+
+        all_roles: list[str] = []
+        for ep in endpoints:
+            all_roles.extend(ep.get("roles", ["client"]))
+        seen: set[str] = set()
+        unique_roles = [r for r in all_roles if r not in seen and not seen.add(r)]
+
+        engines: dict[str, str] = {}
+        for role in unique_roles:
+            engines[role] = "1-2"
+
+        kube_ep: dict[str, Any] = {
+            "type": "kube",
+            "controller-ip-address": controller_ip or kube_host,
+            "host": kube_host or controller_ip,
+            "user": ep_user,
+            "engines": engines,
+        }
+
+        if userenv:
+            kube_ep["config"] = {"targets": "default", "userenv": userenv}
+
+        template["endpoints"] = [kube_ep]
 
     def _load_schema(self) -> dict[str, Any] | None:
         schema_path = (

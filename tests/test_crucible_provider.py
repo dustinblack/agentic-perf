@@ -105,6 +105,78 @@ async def test_get_example_runfile_missing():
     assert example is None
 
 
+@pytest.mark.skipif(not HAS_CRUCIBLE, reason="CRUCIBLE_HOME not available")
+@pytest.mark.asyncio
+async def test_generate_runfile_kube_endpoint(provider: CrucibleSkillProvider):
+    """Kube endpoint with client+server roles produces correct flat structure."""
+    result = await provider.generate_runfile("uperf", {
+        "endpoint_type": "kube",
+        "endpoints": [
+            {"host": "10.0.0.1", "roles": ["client"]},
+            {"host": "10.0.0.2", "roles": ["server"]},
+        ],
+        "controller_ip": "10.0.0.1",
+        "kube_host": "10.0.0.1",
+        "userenv": "default",
+    })
+    template = result.template
+    assert "endpoints" in template
+    ep = template["endpoints"][0]
+    assert ep["type"] == "kube"
+    assert ep["host"] == "10.0.0.1"
+    assert ep["controller-ip-address"] == "10.0.0.1"
+    assert ep["user"] == "root"
+    assert "client" in ep["engines"]
+    assert "server" in ep["engines"]
+    assert "remotes" not in ep
+    assert "settings" not in ep
+
+
+@pytest.mark.skipif(not HAS_CRUCIBLE, reason="CRUCIBLE_HOME not available")
+@pytest.mark.asyncio
+async def test_generate_runfile_kube_single_role(provider: CrucibleSkillProvider):
+    """Kube endpoint with only client role omits server from engines."""
+    result = await provider.generate_runfile("fio", {
+        "endpoint_type": "kube",
+        "endpoints": [{"host": "10.0.0.1", "roles": ["client"]}],
+        "controller_ip": "10.0.0.1",
+        "kube_host": "10.0.0.1",
+    })
+    ep = result.template["endpoints"][0]
+    assert ep["engines"] == {"client": "1-2"}
+    assert "server" not in ep["engines"]
+
+
+@pytest.mark.skipif(not HAS_CRUCIBLE, reason="CRUCIBLE_HOME not available")
+@pytest.mark.asyncio
+async def test_generate_runfile_remotehosts_unchanged(provider: CrucibleSkillProvider):
+    """Remotehosts generation still works when endpoint_type is not specified."""
+    result = await provider.generate_runfile("fio", {
+        "endpoints": [{"host": "10.0.0.1", "roles": ["client"]}],
+        "userenv": "alma8",
+        "osruntime": "podman",
+    })
+    ep = result.template["endpoints"][0]
+    assert ep["type"] == "remotehosts"
+    assert "remotes" in ep
+    assert ep["settings"]["userenv"] == "alma8"
+
+
+@pytest.mark.skipif(not HAS_CRUCIBLE, reason="CRUCIBLE_HOME not available")
+@pytest.mark.asyncio
+async def test_generate_runfile_kube_has_config(provider: CrucibleSkillProvider):
+    """Kube endpoint includes config block with userenv when specified."""
+    result = await provider.generate_runfile("fio", {
+        "endpoint_type": "kube",
+        "endpoints": [{"host": "10.0.0.1", "roles": ["client"]}],
+        "controller_ip": "10.0.0.1",
+        "kube_host": "10.0.0.1",
+        "userenv": "alma8",
+    })
+    ep = result.template["endpoints"][0]
+    assert ep["config"] == {"targets": "default", "userenv": "alma8"}
+
+
 ALLOWED_RUNFILE_KEYS = {"benchmarks", "endpoints", "run-params", "schema", "tags", "tool-params"}
 
 
