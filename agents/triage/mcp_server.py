@@ -95,13 +95,51 @@ def get_triage_tools() -> list[ToolDefinition]:
                         "items": {"type": "string"},
                         "description": "Required host roles (e.g. ['client'] or ['client', 'server'])",
                     },
-                    "host_cleanup": {
-                        "type": "string",
-                        "enum": ["required", "skip"],
+                    "directives": {
+                        "type": "object",
                         "description": (
-                            "Whether to clean up SSH keys and harness installations "
-                            "from hosts during teardown. Default: required."
+                            "Operational directives extracted from the user's request. "
+                            "Only include directives the user explicitly or clearly implied. "
+                            "Omit any directive that was not mentioned."
                         ),
+                        "properties": {
+                            "on_existing_install": {
+                                "type": "string",
+                                "enum": ["reinstall", "update", "skip", "ask_user"],
+                                "description": (
+                                    "What to do if the harness is already installed. "
+                                    "'reinstall' = uninstall then clean install, "
+                                    "'update' = update in place, "
+                                    "'skip' = use existing installation, "
+                                    "'ask_user' = ask the user what to do."
+                                ),
+                            },
+                            "harness": {
+                                "type": "string",
+                                "description": (
+                                    "Which benchmark harness to use (e.g. 'crucible', 'zathras'). "
+                                    "Only set if the user explicitly names a harness."
+                                ),
+                            },
+                            "user_pre_run_approval": {
+                                "type": "boolean",
+                                "description": (
+                                    "Whether to ask the user for approval before starting "
+                                    "the benchmark run. Defaults to true if not specified. "
+                                    "Set to false if the user says something like "
+                                    "'don't ask me for approval' or 'just run it'."
+                                ),
+                            },
+                            "host_cleanup": {
+                                "type": "string",
+                                "enum": ["required", "skip"],
+                                "description": (
+                                    "Whether to clean up SSH keys and harness installations "
+                                    "from hosts during teardown. Default: required."
+                                ),
+                            },
+                        },
+                        "additionalProperties": True,
                     },
                     "notes": {
                         "type": "string",

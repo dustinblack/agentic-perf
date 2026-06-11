@@ -77,6 +77,8 @@ class ProvisioningAgent(AgentBase):
             content += f"**SSH Key:** {cf['ssh_key_path']}\n"
         if cf.get("fresh_host"):
             content += f"\n**Fresh Host:** true (freshly provisioned, no existing harness)\n"
+        if cf.get("directives"):
+            content += f"\n## User Directives\n```json\n{json.dumps(cf['directives'], indent=2)}\n```\n"
         if cf.get("parsed_specs"):
             content += f"\n## Parsed Specifications\n```json\n{json.dumps(cf['parsed_specs'], indent=2)}\n```\n"
         if cf.get("benchmark_suite"):

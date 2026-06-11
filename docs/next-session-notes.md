@@ -4,15 +4,12 @@
 
 Redesign the benchmark agent to construct run.json directly from natural language instead of going through the `generate_run_file` template layer. Full design doc: [design-llm-runfile-generation.md](design-llm-runfile-generation.md).
 
-## Triage Directives (Priority: Medium)
+## ~~Triage Directives~~ (Done)
 
-The triage agent should extract operational directives from natural language:
-- `on_existing_install: reinstall` — "reinstall crucible before running"
-- `fresh_host: true` — inferred when QUADS is used
-- `user_pre_run_approval: true/false` — "don't ask me for approval to start the tests"
-- `harness: zathras` — "use zathras, not crucible"
-
-Some of these already work naturally (triage extracted `reinstall_crucible: true` from request text). Formalize with a `directives` field in the triage submit schema.
+Implemented: `directives` field in triage submit schema with `on_existing_install`,
+`harness`, `user_pre_run_approval`, `host_cleanup`, plus arbitrary keys for extensibility.
+Provisioning and benchmark agents check directives before falling back to skill config defaults.
+Benchmark agent now asks for user approval before executing (unless `user_pre_run_approval: false`).
 
 ## Remote Skills Loading (Priority: Medium)
 

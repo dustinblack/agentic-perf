@@ -83,6 +83,10 @@ class TriageAgent(AgentBase):
 
         roles = result.get("roles", [])
         min_hosts = result.get("min_hosts", 1)
+        directives = result.get("directives", {})
+        # Backward compat: top-level host_cleanup moves into directives
+        if "host_cleanup" in result and "host_cleanup" not in directives:
+            directives["host_cleanup"] = result["host_cleanup"]
         fields = {
             "parsed_specs": result.get("parsed_specs", {}),
             "hypothesis": result.get("hypothesis", ""),
@@ -90,7 +94,7 @@ class TriageAgent(AgentBase):
             "absent_suite": result.get("absent_suite", False),
             "required_roles": roles,
             "min_hosts": min_hosts,
-            "host_cleanup": result.get("host_cleanup", "required"),
+            "directives": directives,
         }
         await self._update_fields(ticket_id, fields)
 
@@ -101,6 +105,8 @@ class TriageAgent(AgentBase):
             f"- **Required Hosts:** {min_hosts} ({', '.join(roles) if roles else 'unknown'})\n"
             f"- **Absent Suite:** {fields['absent_suite']}\n"
         )
+        if directives:
+            summary += f"- **Directives:** {', '.join(f'{k}={v}' for k, v in directives.items())}\n"
         if result.get("notes"):
             summary += f"- **Notes:** {result['notes']}\n"
 

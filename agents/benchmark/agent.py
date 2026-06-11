@@ -80,6 +80,8 @@ class BenchmarkAgent(AgentBase):
             content += f"\n## Assigned Hardware\n```json\n{json.dumps(cf['assigned_hardware_ips'], indent=2)}\n```\n"
         if cf.get("ssh_user"):
             content += f"\n**SSH User:** {cf['ssh_user']}\n"
+        if cf.get("directives"):
+            content += f"\n## User Directives\n```json\n{json.dumps(cf['directives'], indent=2)}\n```\n"
 
         if ticket.get("comments"):
             content += "\n## Previous Comments\n"

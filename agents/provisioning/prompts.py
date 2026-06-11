@@ -8,9 +8,11 @@ benchmark_suite field, along with any harness metadata from the triage agent, te
 which harness to install.
 
 Your tasks:
-1. Call get_private_config with the harness name (from the ticket context — look for
-   the harness field in benchmark metadata, or "crucible" if not specified) and key
-   "provisioning" to learn the harness's provisioning requirements.
+1. Determine the harness name. Check the ticket's "directives" section for a "harness"
+   field first — this is the user's explicit preference. If not present, look for the
+   harness field in benchmark metadata, or default to "crucible". Then call
+   get_private_config with that harness name and key "provisioning" to learn the
+   harness's provisioning requirements.
 
 2. Call check_platform_contract with the host and harness_name to verify the host's
    OS, repos, and packages are compatible with the harness. If the platform is
@@ -32,7 +34,12 @@ Your tasks:
    field in the result:
    - If installed is FALSE: the harness is NOT installed. You MUST proceed
      to install_harness. Ignore on_existing_install — it does not apply.
-   - If installed is TRUE: read the provisioning config's "on_existing_install":
+   - If installed is TRUE: determine the on_existing_install policy. Check the
+     ticket's "directives" section FIRST — if the user specified
+     directives.on_existing_install, use that value (the user's explicit
+     instruction overrides the skill config default). If not present in
+     directives, fall back to the provisioning config's "on_existing_install".
+     Then act on the resolved value:
      - "skip": proceed directly to submit_provisioning_result with
        provisioning_complete=true. Do NOT ask the user.
      - "update": run update_install without asking.
