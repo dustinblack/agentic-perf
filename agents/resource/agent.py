@@ -142,7 +142,7 @@ class ResourceAgent(AgentBase):
             )
 
     async def _run_host_cleanup(self, ticket_id: str, fields: dict) -> None:
-        hw = fields.get("assigned_hardware_ips", {})
+        hw = fields.get("ssh_hardware_ips") or fields.get("assigned_hardware_ips", {})
         controller = hw.get("controller")
         targets = hw.get("targets", [])
         ssh_key_path = fields.get("ssh_key_path")
