@@ -59,6 +59,52 @@ async def test_generate_runfile_no_endpoints(provider: CrucibleSkillProvider):
     assert "endpoints" not in result.template
 
 
+@pytest.mark.skipif(not HAS_CRUCIBLE, reason="CRUCIBLE_HOME not available")
+@pytest.mark.asyncio
+async def test_get_runfile_schema(provider: CrucibleSkillProvider):
+    schema = await provider.get_runfile_schema()
+    assert schema is not None
+    assert "properties" in schema
+    assert "benchmarks" in schema["properties"]
+
+
+@pytest.mark.skipif(not HAS_CRUCIBLE, reason="CRUCIBLE_HOME not available")
+@pytest.mark.asyncio
+async def test_get_benchmark_params(provider: CrucibleSkillProvider):
+    params = await provider.get_benchmark_params("uperf")
+    if params is not None:
+        assert isinstance(params, dict)
+
+
+@pytest.mark.skipif(not HAS_CRUCIBLE, reason="CRUCIBLE_HOME not available")
+@pytest.mark.asyncio
+async def test_get_example_runfile(provider: CrucibleSkillProvider):
+    example = await provider.get_example_runfile("fio")
+    if example is not None:
+        assert "benchmarks" in example
+
+
+@pytest.mark.asyncio
+async def test_get_runfile_schema_missing():
+    provider = CrucibleSkillProvider("/nonexistent")
+    schema = await provider.get_runfile_schema()
+    assert schema is None
+
+
+@pytest.mark.asyncio
+async def test_get_benchmark_params_nonexistent():
+    provider = CrucibleSkillProvider("/nonexistent")
+    params = await provider.get_benchmark_params("fio")
+    assert params is None
+
+
+@pytest.mark.asyncio
+async def test_get_example_runfile_missing():
+    provider = CrucibleSkillProvider("/nonexistent")
+    example = await provider.get_example_runfile("fio")
+    assert example is None
+
+
 ALLOWED_RUNFILE_KEYS = {"benchmarks", "endpoints", "run-params", "schema", "tags", "tool-params"}
 
 

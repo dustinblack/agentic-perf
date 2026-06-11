@@ -47,6 +47,15 @@ class SkillProvider(ABC):
     ) -> Any | None:
         return None
 
+    async def get_runfile_schema(self) -> dict[str, Any] | None:
+        return None
+
+    async def get_benchmark_params(self, benchmark: str) -> dict[str, Any] | None:
+        return None
+
+    async def get_example_runfile(self, benchmark: str) -> dict[str, Any] | None:
+        return None
+
     async def validate_runfile(
         self, run_file: dict[str, Any], harness: str | None = None
     ) -> dict[str, Any]:

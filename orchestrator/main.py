@@ -29,6 +29,9 @@ def create_llm_provider(config: OrchestratorConfig):
         return ClaudeLLMProvider(
             api_key=config.anthropic_api_key,
             model=config.llm_model,
+            backend=config.llm_backend,
+            project_id=config.llm_project_id,
+            region=config.llm_region,
         )
     return MockLLMProvider()
 

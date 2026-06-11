@@ -42,6 +42,15 @@ class CompositeSkillProvider(SkillProvider):
     ) -> RunfileTemplate:
         return await self._public.generate_runfile(benchmark, params)
 
+    async def get_runfile_schema(self) -> dict[str, Any] | None:
+        return await self._public.get_runfile_schema()
+
+    async def get_benchmark_params(self, benchmark: str) -> dict[str, Any] | None:
+        return await self._public.get_benchmark_params(benchmark)
+
+    async def get_example_runfile(self, benchmark: str) -> dict[str, Any] | None:
+        return await self._public.get_example_runfile(benchmark)
+
     async def get_private_config(
         self, suite_name: str, key: str
     ) -> Any | None:

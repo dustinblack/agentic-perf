@@ -167,6 +167,118 @@ def get_benchmark_tools() -> list[ToolDefinition]:
             },
         ),
         ToolDefinition(
+            name="get_runfile_schema",
+            description=(
+                "Get the JSON schema that defines the structure of a valid run-file. "
+                "Use this to understand what top-level keys, benchmark objects, endpoint "
+                "structures, and mv-params formats are allowed. The schema enforces "
+                "additionalProperties: false, so only documented keys are permitted."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "harness": {
+                        "type": "string",
+                        "description": "Benchmark harness (default: 'crucible')",
+                    },
+                },
+                "required": [],
+            },
+        ),
+        ToolDefinition(
+            name="get_benchmark_params",
+            description=(
+                "Get the parameter definitions (multiplex.json) for a specific benchmark. "
+                "Returns presets (named parameter sets like 'basic', 'default') and "
+                "validations (regex patterns for allowed values per argument). Use this "
+                "to understand what mv-params arguments are valid and what values they accept."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "benchmark": {
+                        "type": "string",
+                        "description": "Benchmark name (e.g., 'uperf', 'fio', 'trafficgen')",
+                    },
+                    "harness": {
+                        "type": "string",
+                        "description": "Benchmark harness (default: 'crucible')",
+                    },
+                },
+                "required": ["benchmark"],
+            },
+        ),
+        ToolDefinition(
+            name="get_example_runfile",
+            description=(
+                "Get an example run-file for a benchmark. Use this as a structural "
+                "reference when constructing your own run-file. The example shows "
+                "the correct format for endpoints, mv-params, and benchmark configuration."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "benchmark": {
+                        "type": "string",
+                        "description": "Benchmark name (e.g., 'uperf', 'fio', 'trafficgen')",
+                    },
+                    "harness": {
+                        "type": "string",
+                        "description": "Benchmark harness (default: 'crucible')",
+                    },
+                },
+                "required": ["benchmark"],
+            },
+        ),
+        ToolDefinition(
+            name="validate_run_file",
+            description=(
+                "Validate a run-file against the harness schema. Use this to check your "
+                "constructed run-file before presenting it to the user for approval. "
+                "Returns {valid: true/false, errors: [...]}. Fix any errors and re-validate."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "run_file": {
+                        "type": "object",
+                        "description": "The complete run-file to validate",
+                    },
+                    "harness": {
+                        "type": "string",
+                        "description": "Benchmark harness (default: 'crucible')",
+                    },
+                },
+                "required": ["run_file"],
+            },
+        ),
+        ToolDefinition(
+            name="present_runfile_for_approval",
+            description=(
+                "Present the constructed run-file to the user for review and approval. "
+                "The user can approve, request changes, or reject. Only call this after "
+                "the run-file passes validate_run_file. Returns a status string."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "run_file": {
+                        "type": "object",
+                        "description": "The complete run-file to present",
+                    },
+                    "benchmark": {
+                        "type": "string",
+                        "description": "Benchmark name for context",
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": "Brief summary of what this run-file will do",
+                    },
+                },
+                "required": ["run_file"],
+            },
+        ),
+        ToolDefinition(
             name="submit_benchmark_result",
             description="Submit the benchmark execution result when the run completes or fails.",
             input_schema={
@@ -254,7 +366,7 @@ def create_benchmark_tool_handlers(
 
             inject = await ssh.run(
                 endpoint,
-                f'mkdir -p /root/.ssh && grep -qF "{CONTROLLER_KEY_COMMENT}" /root/.ssh/authorized_keys 2>/dev/null || echo "{pubkey}" >> /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys',
+                f'mkdir -p /root/.ssh && sed -i "/{CONTROLLER_KEY_COMMENT}/d" /root/.ssh/authorized_keys 2>/dev/null; echo "{pubkey}" >> /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys',
             )
             if inject.exit_code != 0:
                 results[endpoint] = {"status": "failed", "message": inject.stderr}
@@ -362,6 +474,8 @@ def create_benchmark_tool_handlers(
                 )
             run_file = _last_generated_runfile["run_file"]
             harness_name = _last_generated_runfile.get("harness", harness_name)
+        else:
+            logger.info("[benchmark] Using LLM-constructed run-file (no generate_run_file stash)")
 
         validation = await skill_provider.validate_runfile(run_file, harness_name)
         if not validation.get("valid", True):
@@ -528,6 +642,65 @@ def create_benchmark_tool_handlers(
             "status": "ok" if log_result.exit_code == 0 else "error",
         }
 
+    async def handle_get_runfile_schema(harness: str | None = None) -> dict:
+        harness_name = harness or "crucible"
+        if hasattr(skill_provider, "get_provider"):
+            provider = skill_provider.get_provider(harness_name)
+            schema = await provider.get_runfile_schema() if provider else None
+        else:
+            schema = await skill_provider.get_runfile_schema()
+        if schema is None:
+            return {"found": False, "message": f"No run-file schema for harness '{harness_name}'"}
+        return {"found": True, "harness": harness_name, "schema": schema}
+
+    async def handle_get_benchmark_params(
+        benchmark: str, harness: str | None = None
+    ) -> dict:
+        harness_name = harness or "crucible"
+        if hasattr(skill_provider, "get_provider"):
+            provider = skill_provider.get_provider(harness_name)
+            params = await provider.get_benchmark_params(benchmark) if provider else None
+        else:
+            params = await skill_provider.get_benchmark_params(benchmark)
+        if params is None:
+            return {"found": False, "message": f"No parameter definitions for '{benchmark}' in '{harness_name}'"}
+        return {"found": True, "benchmark": benchmark, "harness": harness_name, "params": params}
+
+    async def handle_get_example_runfile(
+        benchmark: str, harness: str | None = None
+    ) -> dict:
+        harness_name = harness or "crucible"
+        if hasattr(skill_provider, "get_provider"):
+            provider = skill_provider.get_provider(harness_name)
+            example = await provider.get_example_runfile(benchmark) if provider else None
+        else:
+            example = await skill_provider.get_example_runfile(benchmark)
+        if example is None:
+            return {"found": False, "message": f"No example run-file for '{benchmark}' in '{harness_name}'"}
+        return {"found": True, "benchmark": benchmark, "harness": harness_name, "run_file": example}
+
+    async def handle_validate_run_file(
+        run_file: dict, harness: str | None = None
+    ) -> dict:
+        harness_name = harness or "crucible"
+        result = await skill_provider.validate_runfile(run_file, harness_name)
+        return {"harness": harness_name, **result}
+
+    async def handle_present_runfile_for_approval(
+        run_file: dict,
+        benchmark: str | None = None,
+        summary: str | None = None,
+    ) -> str:
+        bench_label = f" for {benchmark}" if benchmark else ""
+        summary_line = f"\n\n{summary}" if summary else ""
+        question = (
+            f"Please review this run-file{bench_label}{summary_line}\n\n"
+            f"```json\n{json.dumps(run_file, indent=2)}\n```\n\n"
+            "Do you approve this configuration? (approve / request changes / reject)"
+        )
+        await request_clarification_fn(question)
+        return "Clarification requested. Ticket paused for user approval of run-file."
+
     async def request_clarification(question: str) -> str:
         await request_clarification_fn(question)
         return "Clarification requested. Ticket paused for human input."
@@ -539,4 +712,9 @@ def create_benchmark_tool_handlers(
         "execute_benchmark": execute_benchmark,
         "get_run_logs": get_run_logs,
         "request_clarification": request_clarification,
+        "get_runfile_schema": handle_get_runfile_schema,
+        "get_benchmark_params": handle_get_benchmark_params,
+        "get_example_runfile": handle_get_example_runfile,
+        "validate_run_file": handle_validate_run_file,
+        "present_runfile_for_approval": handle_present_runfile_for_approval,
     }, ssh

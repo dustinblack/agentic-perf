@@ -109,6 +109,45 @@ class MultiHarnessSkillProvider(SkillProvider):
     ) -> dict[str, Any]:
         return await self._private.get_all_private_config(suite_name)
 
+    async def get_runfile_schema(
+        self, harness: str | None = None
+    ) -> dict[str, Any] | None:
+        harness_name = harness or self._default
+        provider = self._harnesses.get(harness_name)
+        if provider:
+            return await provider.get_runfile_schema()
+        return None
+
+    async def get_benchmark_params(
+        self, benchmark: str, harness: str | None = None
+    ) -> dict[str, Any] | None:
+        if harness and harness in self._harnesses:
+            return await self._harnesses[harness].get_benchmark_params(benchmark)
+
+        suite = await self.get_benchmark(benchmark)
+        if suite and suite.harness and suite.harness in self._harnesses:
+            return await self._harnesses[suite.harness].get_benchmark_params(benchmark)
+
+        if self._default in self._harnesses:
+            return await self._harnesses[self._default].get_benchmark_params(benchmark)
+
+        return None
+
+    async def get_example_runfile(
+        self, benchmark: str, harness: str | None = None
+    ) -> dict[str, Any] | None:
+        if harness and harness in self._harnesses:
+            return await self._harnesses[harness].get_example_runfile(benchmark)
+
+        suite = await self.get_benchmark(benchmark)
+        if suite and suite.harness and suite.harness in self._harnesses:
+            return await self._harnesses[suite.harness].get_example_runfile(benchmark)
+
+        if self._default in self._harnesses:
+            return await self._harnesses[self._default].get_example_runfile(benchmark)
+
+        return None
+
     async def validate_runfile(
         self, run_file: dict[str, Any], harness: str | None = None
     ) -> dict[str, Any]:

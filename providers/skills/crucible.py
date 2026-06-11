@@ -212,6 +212,16 @@ class CrucibleSkillProvider(SkillProvider):
         except (json.JSONDecodeError, OSError):
             return None
 
+    async def get_runfile_schema(self) -> dict[str, Any] | None:
+        return self._load_schema()
+
+    async def get_benchmark_params(self, benchmark: str) -> dict[str, Any] | None:
+        meta = self._load_benchmark_meta(benchmark)
+        return meta.get("multiplex")
+
+    async def get_example_runfile(self, benchmark: str) -> dict[str, Any] | None:
+        return self._load_example_runfile(benchmark)
+
     async def validate_runfile(
         self, run_file: dict[str, Any], harness: str | None = None
     ) -> dict[str, Any]:

@@ -84,11 +84,17 @@ class MockSkillProvider(SkillProvider):
         resolve_result: str | None = None,
         runfile_template: RunfileTemplate | None = None,
         private_config: dict[str, dict[str, Any]] | None = None,
+        runfile_schema: dict[str, Any] | None = None,
+        benchmark_params: dict[str, dict[str, Any]] | None = None,
+        example_runfiles: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         self._benchmarks = benchmarks or []
         self._resolve_result = resolve_result
         self._runfile_template = runfile_template or RunfileTemplate(benchmark="")
         self._private_config = private_config or {}
+        self._runfile_schema = runfile_schema
+        self._benchmark_params = benchmark_params or {}
+        self._example_runfiles = example_runfiles or {}
 
     async def list_benchmarks(self) -> list[BenchmarkSuite]:
         return list(self._benchmarks)
@@ -109,6 +115,15 @@ class MockSkillProvider(SkillProvider):
             benchmark=benchmark,
             template={**self._runfile_template.template, "params_received": params},
         )
+
+    async def get_runfile_schema(self) -> dict[str, Any] | None:
+        return self._runfile_schema
+
+    async def get_benchmark_params(self, benchmark: str) -> dict[str, Any] | None:
+        return self._benchmark_params.get(benchmark)
+
+    async def get_example_runfile(self, benchmark: str) -> dict[str, Any] | None:
+        return self._example_runfiles.get(benchmark)
 
     async def get_private_config(self, suite_name: str, key: str) -> Any | None:
         return self._private_config.get(suite_name, {}).get(key)
