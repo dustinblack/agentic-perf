@@ -20,26 +20,35 @@ over mv-params, presets, per-engine settings, and all benchmark parameters.
    is associated with a harness (e.g., crucible benchmarks: fio, uperf, trafficgen; zathras
    benchmarks: streams, linpack, coremark). If unclear, default to "crucible".
 
-2. **Get execution config** — Call `get_execution_config(harness_name)` to learn:
+2. **Determine endpoint_type** — Check the ticket's directives for `endpoint_type`.
+   If set to `"kube"`, the benchmark runs in Kubernetes pods on K3s (skip to step 5b).
+   If `"remotehosts"` or absent, the benchmark runs directly on hosts (normal path).
+
+3. **Get execution config** — Call `get_execution_config(harness_name)` to learn:
    - Whether a controller host is needed
    - Pre-run steps (e.g., SSH key setup)
    - The run command and run-file format
 
-3. **Execute pre-run steps** — For example, if "ssh_key_setup" is listed, call
+4. **Execute pre-run steps** — For example, if "ssh_key_setup" is listed, call
    `setup_controller_ssh_keys`.
 
-4. **Gather reference material** — Call these tools to understand what to build:
-   - `get_benchmark_params(benchmark)` — parameter definitions, presets, validations
-   - `get_example_runfile(benchmark)` — a concrete example to follow
-   - `get_runfile_schema()` — the JSON schema (call this if you need to check
-     structural rules; you may skip it if the example is clear enough)
+5. **Construct the run-file** — Two paths depending on endpoint_type:
 
-5. **Construct the run-file** — Build the complete JSON run-file:
+   **5a. remotehosts (default)** — Build the run-file directly:
+   - Call `get_benchmark_params(benchmark)`, `get_example_runfile(benchmark)`,
+     and optionally `get_runfile_schema()` for reference
    - Use the example as a structural template
    - Use endpoint IPs from assigned_hardware_ips (always use IPs, never hostnames)
    - Set mv-params based on the user's requirements and the benchmark's presets/validations
    - Set controller-ip-address when the controller is also an endpoint
    - Follow the schema strictly (additionalProperties: false at top level)
+
+   **5b. kube** — Use `generate_run_file` with `endpoint_type="kube"`:
+   - Call `generate_run_file(benchmark, endpoints, harness, controller, endpoint_type="kube")`
+   - The generator handles the flat kube endpoint structure, controller-ip-address,
+     kube host, and engine mapping automatically
+   - For single-node K3s, the controller is both the kube host and the endpoint
+   - Do NOT try to construct kube endpoints by hand — use the generator
 
 6. **Validate** — Call `validate_run_file(run_file)` to check schema compliance.
    If validation fails, fix the errors and re-validate. Iterate until it passes.
@@ -128,12 +137,15 @@ mv-params structure:
 - `userenv` should be `alma8` for trafficgen (not `default`)
 - `osruntime: podman` needs `host-mounts` for DPDK workloads (e.g., /dev/hugepages)
 
-### Fallback: generate_run_file
+### When to use generate_run_file
 
-If you cannot construct the run-file directly (e.g., unfamiliar benchmark, no example
-available, non-crucible harness), you may call `generate_run_file` as a fallback. This
-uses a template-based generator. When you use this path, pass the result to
-execute_benchmark unmodified — do not edit the generated run-file.
+Use `generate_run_file` (instead of hand-constructing) when:
+- **endpoint_type is "kube"** — always use the generator for kube endpoints
+- Unfamiliar benchmark with no example available
+- Non-crucible harness (e.g., zathras)
+
+When you use this path, pass the result to execute_benchmark unmodified — do not
+edit the generated run-file.
 
 ### Important notes:
 - The controller host runs the benchmark framework. It is NOT an endpoint unless
