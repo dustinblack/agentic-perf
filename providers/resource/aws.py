@@ -185,14 +185,19 @@ class AWSResourceProvider(ResourceProvider):
         # AWS eventual consistency: instance IDs may not be findable immediately
         await asyncio.sleep(5)
         await self._poll_until_running(ec2, instance_ids)
-        hosts = await self._get_public_ips(ec2, instance_ids)
-        await self._wait_for_ssh(hosts)
+        ips = await self._get_instance_ips(ec2, instance_ids)
+        public_ips = ips["public"]
+        private_ips = ips["private"]
+
+        # Bootstrap root SSH via the public IPs (orchestrator → instance)
+        ssh_result = await self.setup_ssh(public_ips)
 
         return {
             "status": "success",
             "reservation_id": ",".join(instance_ids),
-            "hosts": hosts,
-            "ssh_user": self._ssh_user,
+            # Private IPs for intra-harness communication (run-file, controller-ip-address)
+            "hosts": private_ips,
+            "ssh_user": "root",
             "ssh_key_path": self._ssh_key_path,
             "lease_expiration": None,
             "provider": self.provider_name,
@@ -201,6 +206,8 @@ class AWSResourceProvider(ResourceProvider):
                 "region": self._region,
                 "instance_type": instance_type,
                 "ami": ami,
+                "cloud_login_user": self._ssh_user,
+                "public_ips": public_ips,
             },
             "message": f"Launched {count}x {instance_type} in {self._region}",
         }
@@ -234,21 +241,24 @@ class AWSResourceProvider(ResourceProvider):
             f"EC2 instances {instance_ids} not running after {timeout}s"
         )
 
-    async def _get_public_ips(
+    async def _get_instance_ips(
         self, ec2, instance_ids: list[str]
-    ) -> list[str]:
+    ) -> dict[str, list[str]]:
+        """Return both public and private IPs for instances."""
         response = await asyncio.to_thread(
             ec2.describe_instances, InstanceIds=instance_ids
         )
-        ips = []
+        public_ips = []
+        private_ips = []
         for reservation in response["Reservations"]:
             for inst in reservation["Instances"]:
-                ip = inst.get("PublicIpAddress")
-                if not ip:
-                    ip = inst.get("PrivateIpAddress")
-                if ip:
-                    ips.append(ip)
-        return ips
+                pub = inst.get("PublicIpAddress")
+                priv = inst.get("PrivateIpAddress")
+                if pub:
+                    public_ips.append(pub)
+                if priv:
+                    private_ips.append(priv)
+        return {"public": public_ips, "private": private_ips}
 
     async def _wait_for_ssh(
         self,
@@ -333,12 +343,103 @@ class AWSResourceProvider(ResourceProvider):
         }
 
     async def setup_ssh(self, hosts: list[str]) -> dict[str, Any]:
+        """Bootstrap root SSH access on cloud instances.
+
+        Connects as the cloud login user (e.g. ec2-user), uses sudo to
+        enable root login via SSH, and installs the provisioning key for
+        root. After this, all downstream agents can SSH as root directly.
+        """
         await self._wait_for_ssh(hosts)
+
+        results: dict[str, str] = {}
+        pubkey = await self._get_public_key()
+
+        for host in hosts:
+            try:
+                await self._enable_root_ssh(host, pubkey)
+                results[host] = "root_enabled"
+            except Exception as e:
+                logger.warning(f"[aws-provider] Root bootstrap failed on {host}: {e}")
+                results[host] = f"failed: {e}"
+
         return {
-            "status": "success",
+            "status": "success" if all("root" in v for v in results.values()) else "partial",
             "ssh_key_path": self._ssh_key_path,
-            "hosts": {h: "ok" for h in hosts},
+            "hosts": results,
         }
+
+    async def _get_public_key(self) -> str:
+        """Get the SSH public key, deriving from private key if needed."""
+        pubkey_path = Path(f"{self._ssh_key_path}.pub")
+        if pubkey_path.exists():
+            return pubkey_path.read_text().strip()
+
+        # Derive public key from private key
+        proc = await asyncio.create_subprocess_exec(
+            "ssh-keygen", "-y", "-f", self._ssh_key_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(f"Failed to derive public key: {stderr.decode().strip()}")
+        return stdout.decode().strip()
+
+    async def _enable_root_ssh(self, host: str, pubkey: str) -> None:
+        """Enable root SSH login and install our key."""
+        bootstrap_cmds = [
+            "sudo sed -i 's/^#\\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config",
+            "sudo sed -i 's/^#\\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config",
+            "sudo mkdir -p /root/.ssh",
+            "sudo chmod 700 /root/.ssh",
+            # Cloud AMIs put a command= restriction on root's authorized_keys
+            # that blocks login. Replace the file with just our key.
+            f"echo '{pubkey}' | sudo tee /root/.ssh/authorized_keys > /dev/null",
+            "sudo chmod 600 /root/.ssh/authorized_keys",
+            "sudo systemctl restart sshd",
+            # EC2 cgroup v2 + systemd cgroup manager triggers eBPF device
+            # filter errors in podman/crun. Use cgroupfs instead.
+            "sudo mkdir -p /etc/containers",
+            "echo '[engine]\ncgroup_manager = \"cgroupfs\"' | sudo tee /etc/containers/containers.conf > /dev/null",
+        ]
+        for cmd in bootstrap_cmds:
+            proc = await asyncio.create_subprocess_exec(
+                "ssh",
+                "-o", "ConnectTimeout=10",
+                "-o", "BatchMode=yes",
+                "-o", "StrictHostKeyChecking=accept-new",
+                "-i", self._ssh_key_path,
+                f"{self._ssh_user}@{host}",
+                cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    f"Bootstrap cmd failed (exit {proc.returncode}): {cmd} — "
+                    f"{stderr.decode().strip()}"
+                )
+
+        # Give sshd a moment to restart
+        await asyncio.sleep(3)
+
+        # Verify root SSH works
+        proc = await asyncio.create_subprocess_exec(
+            "ssh",
+            "-o", "ConnectTimeout=10",
+            "-o", "BatchMode=yes",
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-i", self._ssh_key_path,
+            f"root@{host}",
+            "echo ROOT_OK",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await proc.communicate()
+        if proc.returncode != 0 or b"ROOT_OK" not in stdout:
+            raise RuntimeError("Root SSH verification failed after bootstrap")
+        logger.info(f"[aws-provider] Root SSH enabled on {host}")
 
     async def cleanup_ssh_keys(self, hosts: list[str]) -> dict[str, Any]:
         return {

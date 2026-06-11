@@ -76,7 +76,10 @@ class BenchmarkAgent(AgentBase):
             content += f"\n**Absent Suite:** {cf['absent_suite']} (no standard automation available)\n"
         if cf.get("hypothesis"):
             content += f"\n**Hypothesis:** {cf['hypothesis']}\n"
-        if cf.get("assigned_hardware_ips"):
+        if cf.get("ssh_hardware_ips"):
+            content += f"\n## SSH Addresses (use these for SSH/SCP and setup_controller_ssh_keys)\n```json\n{json.dumps(cf['ssh_hardware_ips'], indent=2)}\n```\n"
+            content += f"\n## Private Addresses (use these for run-file host entries and controller-ip-address)\n```json\n{json.dumps(cf.get('assigned_hardware_ips', {}), indent=2)}\n```\n"
+        elif cf.get("assigned_hardware_ips"):
             content += f"\n## Assigned Hardware\n```json\n{json.dumps(cf['assigned_hardware_ips'], indent=2)}\n```\n"
         if cf.get("ssh_user"):
             content += f"\n**SSH User:** {cf['ssh_user']}\n"

@@ -69,7 +69,10 @@ class ProvisioningAgent(AgentBase):
             f"**Description:**\n{ticket['description']}\n"
         )
 
-        if cf.get("assigned_hardware_ips"):
+        if cf.get("ssh_hardware_ips"):
+            content += f"\n## SSH Addresses (use these for SSH/SCP)\n```json\n{json.dumps(cf['ssh_hardware_ips'], indent=2)}\n```\n"
+            content += f"\n## Private Addresses (for run-file host entries)\n```json\n{json.dumps(cf.get('assigned_hardware_ips', {}), indent=2)}\n```\n"
+        elif cf.get("assigned_hardware_ips"):
             content += f"\n## Assigned Hardware\n```json\n{json.dumps(cf['assigned_hardware_ips'], indent=2)}\n```\n"
         if cf.get("ssh_user"):
             content += f"\n**SSH User:** {cf['ssh_user']}\n"

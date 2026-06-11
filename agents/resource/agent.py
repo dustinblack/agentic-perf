@@ -281,6 +281,21 @@ class ResourceAgent(AgentBase):
         if result.get("fresh_host"):
             fields["fresh_host"] = True
 
+        # For cloud providers, build ssh_hardware_ips from public IPs
+        # so agents SSH via public IPs but run-files use private IPs
+        provider_metadata = provider_metadata or {}
+        public_ips = provider_metadata.get("public_ips")
+        hw = fields["assigned_hardware_ips"]
+        if public_ips and hw:
+            private_ips = ([hw.get("controller")] if hw.get("controller") else []) + hw.get("targets", [])
+            if len(public_ips) == len(private_ips):
+                ip_map = dict(zip(private_ips, public_ips))
+                ssh_hw: dict[str, Any] = {}
+                if hw.get("controller") and hw["controller"] in ip_map:
+                    ssh_hw["controller"] = ip_map[hw["controller"]]
+                ssh_hw["targets"] = [ip_map.get(t, t) for t in hw.get("targets", [])]
+                fields["ssh_hardware_ips"] = ssh_hw
+
         # Backward compat: write legacy QUADS fields when provider is quads
         provider = fields.get("resource_provider")
         if provider == "quads":
