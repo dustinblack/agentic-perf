@@ -74,6 +74,17 @@ class ReviewAgent(AgentBase):
         if cf.get("run_file_used"):
             content += f"\n## Run File\n```json\n{json.dumps(cf['run_file_used'], indent=2)}\n```\n"
 
+        ssh_ips = cf.get("ssh_hardware_ips") or cf.get("assigned_hardware_ips") or {}
+        if ssh_ips.get("controller"):
+            content += f"\n## Connection Details\n"
+            content += f"**Controller (SSH):** {ssh_ips['controller']}\n"
+            if cf.get("ssh_key_path"):
+                content += f"**SSH Key:** {cf['ssh_key_path']}\n"
+            content += (
+                f"\nUse these for get_run_summary and cdm_api_request tools. "
+                f"The CDM server runs on port 3000 on the controller.\n"
+            )
+
         if ticket.get("comments"):
             content += "\n## Previous Comments\n"
             for comment in ticket["comments"]:

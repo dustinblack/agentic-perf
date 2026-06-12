@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import json
+import logging
 from typing import Any
 
 from providers.llm.base import ToolDefinition
+from providers.ssh import SSHExecutor
+
+logger = logging.getLogger(__name__)
 
 
 def get_review_tools() -> list[ToolDefinition]:
@@ -10,56 +15,85 @@ def get_review_tools() -> list[ToolDefinition]:
         ToolDefinition(
             name="get_run_summary",
             description=(
-                "Get a high-level summary of a benchmark run including "
-                "status, duration, and primary metrics."
+                "Get a structured summary of a benchmark run from crucible. "
+                "Runs 'crucible get result' on the controller host via SSH "
+                "and returns the full output including tags, iterations, "
+                "samples, primary metrics, and per-sample values. "
+                "Pass the controller from ssh_hardware_ips."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
-                    "run_id": {"type": "string", "description": "Benchmark run ID"},
+                    "run_id": {"type": "string", "description": "Benchmark run ID (UUID)"},
+                    "controller": {"type": "string", "description": "Controller host IP (from ssh_hardware_ips)"},
+                    "ssh_key_path": {"type": "string", "description": "SSH key path (from ticket fields)"},
                 },
-                "required": ["run_id"],
+                "required": ["run_id", "controller"],
             },
         ),
         ToolDefinition(
-            name="query_metrics",
+            name="cdm_api_request",
             description=(
-                "Query detailed metric data from a benchmark run. "
-                "Returns aggregate or time-series data for the specified metric."
+                "Make an HTTP request to the CDM query server running on the "
+                "controller host (port 3000). Use this to query benchmark "
+                "metrics, iteration details, time-series data, and breakouts. "
+                "The CDM data model is: run -> iterations -> samples -> periods -> metrics. "
+                "Key endpoints:\n"
+                "  GET  /api/v1/runs?run=<id> - find runs\n"
+                "  GET  /api/v1/run/<id>/tags - run tags\n"
+                "  GET  /api/v1/run/<id>/benchmark - benchmark name\n"
+                "  GET  /api/v1/run/<id>/iterations - iteration IDs\n"
+                "  POST /api/v1/run/<id>/iterations/params - params per iteration (body: {iterations: [...]})\n"
+                "  POST /api/v1/run/<id>/iterations/primary-metric - primary metric per iteration\n"
+                "  POST /api/v1/run/<id>/iterations/samples - sample IDs per iteration\n"
+                "  POST /api/v1/run/<id>/samples/statuses - pass/fail per sample (body: {sampleIds: [...]})\n"
+                "  GET  /api/v1/run/<id>/metric-sources - available metric sources (fio, mpstat, etc.)\n"
+                "  POST /api/v1/run/<id>/metric-types - metric types per source (body: {sources: [...]})\n"
+                "  POST /api/v1/metric-data - time-series metric data (body: {run, source, type, begin, end, resolution, breakout})\n"
+                "  POST /api/v1/iterations/metric-values - bulk metric values for runs (body: {runIds: [...]})"
             ),
             input_schema={
                 "type": "object",
                 "properties": {
-                    "run_id": {"type": "string", "description": "Benchmark run ID"},
-                    "metric_type": {
+                    "controller": {"type": "string", "description": "Controller host IP (from ssh_hardware_ips)"},
+                    "method": {
                         "type": "string",
-                        "enum": ["throughput", "latency", "cpu_utilization", "memory_utilization", "network_utilization", "iops"],
-                        "description": "Metric type to query",
+                        "enum": ["GET", "POST"],
+                        "description": "HTTP method",
                     },
-                    "aggregation": {
+                    "path": {
                         "type": "string",
-                        "enum": ["mean", "p50", "p90", "p95", "p99", "max", "min"],
-                        "description": "Aggregation function (default: mean)",
+                        "description": "API path (e.g., /api/v1/run/<id>/iterations)",
+                    },
+                    "body": {
+                        "type": "object",
+                        "description": "Request body for POST requests",
+                    },
+                    "ssh_key_path": {"type": "string", "description": "SSH key path"},
+                    "port": {
+                        "type": "integer",
+                        "description": "CDM server port (default: 3000)",
                     },
                 },
-                "required": ["run_id", "metric_type"],
+                "required": ["controller", "method", "path"],
             },
         ),
         ToolDefinition(
             name="compare_results",
-            description="Compare metrics between two benchmark runs. Returns deltas and percentage changes.",
+            description=(
+                "Compare metrics between two benchmark runs. Fetches "
+                "iteration metric values for both runs via the CDM API "
+                "and returns them for analysis."
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "run_id": {"type": "string", "description": "Current run ID"},
                     "baseline_id": {"type": "string", "description": "Baseline run ID"},
-                    "metrics": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Metrics to compare",
-                    },
+                    "controller": {"type": "string", "description": "Controller host IP"},
+                    "ssh_key_path": {"type": "string", "description": "SSH key path"},
                 },
-                "required": ["run_id", "baseline_id"],
+                "required": ["run_id", "baseline_id", "controller"],
             },
         ),
         ToolDefinition(
@@ -99,101 +133,104 @@ def create_review_tool_handlers(
     request_clarification_fn,
 ) -> dict[str, Any]:
 
-    async def get_run_summary(run_id: str) -> dict:
+    ssh = SSHExecutor(user="root")
+
+    async def get_run_summary(
+        run_id: str, controller: str, ssh_key_path: str | None = None,
+    ) -> dict:
+        cmd = (
+            f"crucible get result --run {run_id} "
+            f"--output-dir /tmp/review-{run_id[:8]} "
+            f"--output-format json,txt"
+        )
+        result = await ssh.run(controller, cmd, timeout=120, key_path=ssh_key_path)
+        if result.exit_code != 0:
+            return {
+                "run_id": run_id,
+                "status": "error",
+                "exit_code": result.exit_code,
+                "error": result.stderr[-1000:] if result.stderr else "",
+                "output": result.stdout[-1000:] if result.stdout else "",
+            }
+
+        json_result = await ssh.run(
+            controller,
+            f"cat /tmp/review-{run_id[:8]}/result-summary.json",
+            timeout=30,
+            key_path=ssh_key_path,
+        )
+        if json_result.exit_code == 0 and json_result.stdout.strip():
+            try:
+                return json.loads(json_result.stdout)
+            except json.JSONDecodeError:
+                pass
+
         return {
             "run_id": run_id,
-            "benchmark": "uperf",
             "status": "completed",
-            "duration_seconds": 324,
-            "iterations": 3,
-            "primary_metric": {"name": "throughput", "value": 9.42, "unit": "Gbps"},
-            "secondary_metric": {"name": "latency_p99", "value": 312, "unit": "usec"},
-            "host_count": 2,
-            "start_time": "2026-06-08T10:00:00Z",
-            "end_time": "2026-06-08T10:05:24Z",
-            "message": "Run summary retrieved (simulated)",
+            "text_output": result.stdout[-3000:] if result.stdout else "",
         }
 
-    async def query_metrics(
-        run_id: str, metric_type: str, aggregation: str = "mean"
+    async def cdm_api_request(
+        controller: str,
+        method: str,
+        path: str,
+        body: dict | None = None,
+        ssh_key_path: str | None = None,
+        port: int = 3000,
     ) -> dict:
-        metrics = {
-            "throughput": {
-                "metric": "throughput",
-                "value": 9.42,
-                "unit": "Gbps",
-                "samples": [9.1, 9.5, 9.7],
-                "stddev": 0.25,
-                "aggregation": aggregation,
-            },
-            "latency": {
-                "metric": "latency",
-                "p50_usec": 42,
-                "p90_usec": 78,
-                "p95_usec": 124,
-                "p99_usec": 312,
-                "unit": "microseconds",
-                "aggregation": aggregation,
-            },
-            "cpu_utilization": {
-                "metric": "cpu_utilization",
-                "mean_pct": 34.2,
-                "max_pct": 87.1,
-                "per_cpu_mean": [42.1, 38.5, 31.2, 25.0],
-                "unit": "percent",
-                "aggregation": aggregation,
-            },
-            "memory_utilization": {
-                "metric": "memory_utilization",
-                "mean_pct": 12.3,
-                "max_pct": 15.1,
-                "unit": "percent",
-                "aggregation": aggregation,
-            },
-            "network_utilization": {
-                "metric": "network_utilization",
-                "rx_gbps": 9.42,
-                "tx_gbps": 9.38,
-                "unit": "Gbps",
-                "aggregation": aggregation,
-            },
-            "iops": {
-                "metric": "iops",
-                "value": 0,
-                "unit": "ops/sec",
-                "message": "Not applicable for this benchmark type",
-                "aggregation": aggregation,
-            },
-        }
-        return metrics.get(metric_type, {
-            "metric": metric_type,
-            "error": f"Unknown metric type: {metric_type}",
-        })
+        if method == "GET":
+            cmd = (
+                f"curl --silent --show-error --fail "
+                f"-X GET http://localhost:{port}{path}"
+            )
+        else:
+            body_json = json.dumps(body or {})
+            cmd = (
+                f"curl --silent --show-error --fail "
+                f"-X POST http://localhost:{port}{path} "
+                f"-H 'Content-Type: application/json' "
+                f"-d '{body_json}'"
+            )
+
+        result = await ssh.run(controller, cmd, timeout=60, key_path=ssh_key_path)
+        if result.exit_code != 0:
+            return {
+                "status": "error",
+                "method": method,
+                "path": path,
+                "exit_code": result.exit_code,
+                "error": result.stderr[-500:] if result.stderr else "",
+            }
+
+        try:
+            return json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return {
+                "status": "error",
+                "method": method,
+                "path": path,
+                "raw_output": result.stdout[-2000:] if result.stdout else "",
+                "error": "Response is not valid JSON",
+            }
 
     async def compare_results(
-        run_id: str, baseline_id: str, metrics: list[str] | None = None
+        run_id: str, baseline_id: str, controller: str,
+        ssh_key_path: str | None = None,
     ) -> dict:
+        current = await cdm_api_request(
+            controller, "POST", "/api/v1/iterations/metric-values",
+            body={"runIds": [run_id]},
+            ssh_key_path=ssh_key_path,
+        )
+        baseline = await cdm_api_request(
+            controller, "POST", "/api/v1/iterations/metric-values",
+            body={"runIds": [baseline_id]},
+            ssh_key_path=ssh_key_path,
+        )
         return {
-            "current_run": run_id,
-            "baseline_run": baseline_id,
-            "comparison": {
-                "throughput": {
-                    "current": 9.42,
-                    "baseline": 8.87,
-                    "delta": 0.55,
-                    "delta_pct": 6.2,
-                    "unit": "Gbps",
-                },
-                "latency_p99": {
-                    "current": 312,
-                    "baseline": 340,
-                    "delta": -28,
-                    "delta_pct": -8.2,
-                    "unit": "usec",
-                },
-            },
-            "overall_assessment": "improved",
-            "message": "Comparison complete (simulated)",
+            "current_run": {"run_id": run_id, "data": current},
+            "baseline_run": {"run_id": baseline_id, "data": baseline},
         }
 
     async def request_clarification(question: str) -> str:
@@ -202,7 +239,7 @@ def create_review_tool_handlers(
 
     return {
         "get_run_summary": get_run_summary,
-        "query_metrics": query_metrics,
+        "cdm_api_request": cdm_api_request,
         "compare_results": compare_results,
         "request_clarification": request_clarification,
     }
