@@ -346,6 +346,209 @@ def cmd_cleanup(args):
     print(f"\nTerminated {len(instance_ids)} instance(s).")
 
 
+def _read_all_events(ticket_id):
+    log_path = Path.home() / ".agentic-perf" / "logs" / f"{ticket_id}.jsonl"
+    if not log_path.exists():
+        return []
+    events = []
+    with open(log_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return events
+
+
+def _ts_short(ts):
+    if "T" in ts:
+        return ts.split("T")[1][:8]
+    return ts
+
+
+def _indent(text, prefix="    "):
+    return "\n".join(prefix + line for line in text.split("\n"))
+
+
+def _format_tool_input(input_dict):
+    if not input_dict:
+        return "()"
+    parts = []
+    for k, v in input_dict.items():
+        if isinstance(v, str) and len(v) > 200:
+            v_str = repr(v[:200] + "...")
+        elif isinstance(v, (dict, list)):
+            s = json.dumps(v, indent=2, default=str)
+            if len(s) > 300:
+                s = s[:300] + "\n...(truncated)"
+            v_str = s
+        else:
+            v_str = repr(v)
+        parts.append(f"{k}={v_str}")
+    return "(\n" + _indent(",\n".join(parts)) + "\n  )"
+
+
+def _render_transcript(events, ticket, agent_filter=None):
+    tid = ticket["id"]
+    status = ticket["status"]
+    created = ticket.get("created_at", "?")
+
+    print()
+    print("═" * 70)
+    print(f"  {tid} — Full Transcript")
+    print(f"  Status: {status.upper()}")
+    print(f"  Created: {created}")
+    print(f"  Summary: {ticket['summary']}")
+    print("═" * 70)
+    print()
+
+    print("USER REQUEST:")
+    print(_indent(ticket["description"]))
+    print()
+
+    current_agent = None
+
+    for evt in events:
+        etype = evt["event_type"]
+        agent = evt.get("agent", "")
+        data = evt.get("data", {})
+        ts = _ts_short(evt.get("timestamp", ""))
+
+        if agent_filter and agent != agent_filter:
+            continue
+
+        if etype == "agent_started":
+            if agent != current_agent:
+                current_agent = agent
+                print("─" * 70)
+                print(f"  {agent.upper()}")
+                sys_prompt = data.get("system_prompt", "")
+                if sys_prompt:
+                    preview = sys_prompt[:200]
+                    if len(sys_prompt) > 200:
+                        preview += "..."
+                    print(f"  System Prompt: {preview}")
+                print("─" * 70)
+                print()
+
+            initial = data.get("initial_messages", [])
+            for msg in initial:
+                role = msg.get("role", "?").upper()
+                content = msg.get("content", "")
+                if isinstance(content, str):
+                    print(f"  [{ts}] {role} MESSAGE →")
+                    print(_indent(content))
+                    print()
+
+        elif etype == "llm_response":
+            iteration = data.get("iteration", "?")
+            stop = data.get("stop_reason", "?")
+            text = data.get("text")
+            raw = data.get("raw_content", [])
+
+            print(f"  [{ts}] LLM RESPONSE (iteration {iteration}, stop={stop}) →")
+            if text:
+                print(_indent(text))
+
+            tool_calls_in_raw = [
+                block for block in (raw or [])
+                if isinstance(block, dict) and block.get("type") == "tool_use"
+            ]
+            if tool_calls_in_raw:
+                for tc_block in tool_calls_in_raw:
+                    name = tc_block.get("name", "?")
+                    inp = tc_block.get("input", {})
+                    print(f"    ┌─ TOOL CALL: {name}{_format_tool_input(inp)}")
+            print()
+
+        elif etype == "tool_called":
+            tool = data.get("tool", "?")
+            inp = data.get("input")
+            if inp is not None:
+                print(f"  [{ts}] TOOL CALL: {tool}{_format_tool_input(inp)}")
+            else:
+                keys = data.get("input_keys", [])
+                print(f"  [{ts}] TOOL CALL: {tool}({', '.join(keys)})")
+
+        elif etype == "tool_result":
+            tool = data.get("tool", "?")
+            is_error = data.get("is_error", False)
+            content = data.get("content")
+            content_length = data.get("content_length", 0)
+            err_tag = " ERROR" if is_error else ""
+
+            if content is not None:
+                try:
+                    parsed = json.loads(content)
+                    formatted = json.dumps(parsed, indent=2, default=str)
+                except (json.JSONDecodeError, TypeError):
+                    formatted = content
+                if len(formatted) > 2000:
+                    formatted = formatted[:2000] + "\n  ...(truncated)"
+                print(f"  [{ts}] TOOL RESULT{err_tag}: {tool} →")
+                print(_indent(formatted))
+            else:
+                print(f"  [{ts}] TOOL RESULT{err_tag}: {tool} ({content_length} bytes)")
+            print()
+
+        elif etype == "transition":
+            to = data.get("to", "?")
+            comment = data.get("comment", "")
+            print(f"  [{ts}] TRANSITION → {to}")
+            if comment:
+                print(f"    Comment: {comment}")
+            print()
+
+        elif etype == "comment":
+            body = data.get("body", "")
+            print(f"  [{ts}] COMMENT ({agent}):")
+            print(_indent(body))
+            print()
+
+        elif etype == "agent_finished":
+            print(f"  [{ts}] {agent} finished")
+            print()
+
+        elif etype == "agent_error":
+            reason = data.get("reason", "?")
+            print(f"  [{ts}] {agent} ERROR: {reason}")
+            print()
+
+
+def cmd_transcript(args):
+    client, url = get_client(args)
+    r = client.get(f"/api/v1/tickets/{args.ticket_id}")
+    r.raise_for_status()
+    ticket = r.json()
+
+    events = _read_all_events(args.ticket_id)
+    if not events:
+        print(f"No event log found for {args.ticket_id}")
+        print(f"  (looking in ~/.agentic-perf/logs/{args.ticket_id}.jsonl)")
+        return
+
+    if args.json:
+        output = {
+            "ticket_id": ticket["id"],
+            "summary": ticket["summary"],
+            "description": ticket["description"],
+            "status": ticket["status"],
+            "events": events,
+        }
+        if args.agent:
+            output["events"] = [
+                e for e in events if e.get("agent") == args.agent
+            ]
+        json.dump(output, sys.stdout, indent=2, default=str)
+        print()
+        return
+
+    _render_transcript(events, ticket, agent_filter=args.agent)
+
+
 def cmd_health(args):
     client, url = get_client(args)
     r = client.get("/api/v1/health")
@@ -390,6 +593,11 @@ def main():
     p_reply.add_argument("ticket_id", help="Ticket ID")
     p_reply.add_argument("message", help="Your response")
 
+    p_transcript = sub.add_parser("transcript", help="Show full agent conversation transcript")
+    p_transcript.add_argument("ticket_id", help="Ticket ID")
+    p_transcript.add_argument("--json", action="store_true", help="Output raw events as JSON")
+    p_transcript.add_argument("--agent", help="Filter to a single agent (e.g. triage-agent)")
+
     p_health = sub.add_parser("health", help="Check state store health")
 
     p_cleanup = sub.add_parser("cleanup", help="Find/terminate orphaned AWS instances")
@@ -408,6 +616,7 @@ def main():
         "show": cmd_show,
         "watch": cmd_watch,
         "reply": cmd_reply,
+        "transcript": cmd_transcript,
         "health": cmd_health,
         "cleanup": cmd_cleanup,
     }

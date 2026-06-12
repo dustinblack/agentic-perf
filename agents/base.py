@@ -46,16 +46,20 @@ class AgentBase(ABC):
 
     async def run(self, ticket_id: str) -> None:
         logger.info(f"[{self.agent_name}] Starting on ticket {ticket_id}")
-        self._emit(ticket_id, "agent_started")
         ticket = await self._get_ticket(ticket_id)
+        system_prompt = self._system_prompt()
         messages = self._build_messages(ticket)
+        self._emit(ticket_id, "agent_started", {
+            "system_prompt": system_prompt,
+            "initial_messages": messages,
+        })
         max_iterations = 20
 
         try:
             for i in range(max_iterations):
                 self._emit(ticket_id, "llm_request", {"iteration": i})
                 response = await self.llm.complete(
-                    system_prompt=self._system_prompt(),
+                    system_prompt=system_prompt,
                     messages=messages,
                     tools=self.tools if self.tools else None,
                 )
@@ -64,6 +68,8 @@ class AgentBase(ABC):
                     "stop_reason": response.stop_reason,
                     "tool_calls": [tc.name for tc in response.tool_calls],
                     "text_length": len(response.text) if response.text else 0,
+                    "text": response.text,
+                    "raw_content": response.raw_content,
                 })
 
                 if response.stop_reason == "end_turn" or not response.tool_calls:
@@ -78,6 +84,7 @@ class AgentBase(ABC):
                     self._emit(ticket_id, "tool_called", {
                         "tool": submit_call.name,
                         "input_keys": list(submit_call.input.keys()),
+                        "input": submit_call.input,
                     })
                     submit_response = LLMResponse(
                         text=None,
@@ -110,12 +117,14 @@ class AgentBase(ABC):
                     self._emit(ticket_id, "tool_called", {
                         "tool": tc.name,
                         "input_keys": list(tc.input.keys()),
+                        "input": tc.input,
                     })
                     result = await self._execute_tool(tc)
                     self._emit(ticket_id, "tool_result", {
                         "tool": tc.name,
                         "is_error": result.is_error,
                         "content_length": len(result.content),
+                        "content": result.content,
                     })
                     tool_results_content.append({
                         "type": "tool_result",
