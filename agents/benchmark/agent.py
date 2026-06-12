@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 
 from agents.base import AgentBase
@@ -91,6 +92,15 @@ class BenchmarkAgent(AgentBase):
             content += f"\n## User Directives\n```json\n{json.dumps(cf['directives'], indent=2)}\n```\n"
 
         harness = cf.get("directives", {}).get("harness", "crucible")
+
+        skills_dir = Path(__file__).resolve().parent.parent.parent / "skills" / harness
+        if skills_dir.is_dir():
+            content += f"\n## {harness} Skills (read these first)\n"
+            content += "These contain critical lessons from prior runs:\n\n"
+            for f in sorted(skills_dir.glob("*.md")):
+                content += f"- `{f.name}`\n"
+            content += "\nUse `read_skill` to read each one.\n"
+
         if self._repo_cache:
             docs = self._repo_cache.list_docs(harness, subdirs=["docs", "config"])
             if docs:

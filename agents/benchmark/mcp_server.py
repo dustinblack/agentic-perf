@@ -46,9 +46,38 @@ async def cleanup_controller_ssh_keys(
     }
 
 
+SKILLS_DIR = Path(__file__).resolve().parent.parent.parent / "skills"
+
+
 def get_benchmark_tools(
     repo_cache: RepoCache | None = None,
 ) -> list[ToolDefinition]:
+    skill_tools = [
+        ToolDefinition(
+            name="read_skill",
+            description=(
+                "Read a skill document containing critical lessons learned from "
+                "prior benchmark runs. These are listed in the 'Skills' section "
+                "of the ticket context. Read ALL skill docs before constructing "
+                "a run file — they contain pitfalls that will cause failures."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "harness": {
+                        "type": "string",
+                        "description": "Harness name (e.g., 'crucible')",
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "Skill filename (e.g., 'run-file-pitfalls.md')",
+                    },
+                },
+                "required": ["harness", "filename"],
+            },
+        ),
+    ]
+
     doc_tools = []
     if repo_cache:
         doc_tools = [
@@ -95,7 +124,7 @@ def get_benchmark_tools(
             ),
         ]
 
-    return doc_tools + [
+    return skill_tools + doc_tools + [
         ToolDefinition(
             name="get_execution_config",
             description=(
@@ -374,6 +403,15 @@ def create_benchmark_tool_handlers(
         if content is None:
             return {"found": False, "message": f"File not found: {harness}/{path}"}
         return {"found": True, "path": path, "content": content}
+
+    async def read_skill(harness: str, filename: str) -> dict:
+        skill_path = SKILLS_DIR / harness / filename
+        if not skill_path.is_file():
+            return {"found": False, "message": f"Skill not found: {harness}/{filename}"}
+        resolved = skill_path.resolve()
+        if not str(resolved).startswith(str(SKILLS_DIR.resolve())):
+            return {"found": False, "message": "Invalid path"}
+        return {"found": True, "filename": filename, "content": skill_path.read_text()}
 
     async def get_execution_config(harness_name: str) -> dict:
         config = await skill_provider.get_all_private_config(harness_name)
@@ -790,6 +828,7 @@ def create_benchmark_tool_handlers(
         return "Clarification requested. Ticket paused for human input."
 
     handlers = {
+        "read_skill": read_skill,
         "get_execution_config": get_execution_config,
         "setup_controller_ssh_keys": setup_controller_ssh_keys,
         "generate_run_file": generate_run_file,
