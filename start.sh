@@ -48,6 +48,7 @@ STORE_PID=$!
 for i in $(seq 1 10); do
     if curl -s "http://localhost:$STORE_PORT/api/v1/health" >/dev/null 2>&1; then
         echo "State store ready (PID $STORE_PID)."
+        echo "  Dashboard: http://localhost:$STORE_PORT/"
         break
     fi
     if [ "$i" -eq 10 ]; then

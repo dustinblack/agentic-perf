@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic Perf</title>
+<style>
+:root {
+  --bg: #1a1b26;
+  --bg-surface: #24283b;
+  --bg-hover: #2f3347;
+  --bg-input: #1a1b26;
+  --border: #3b4261;
+  --text: #c0caf5;
+  --text-muted: #565f89;
+  --text-bright: #e0e6ff;
+  --accent: #7aa2f7;
+  --accent-dim: #3d59a1;
+  --green: #9ece6a;
+  --yellow: #e0af68;
+  --orange: #ff9e64;
+  --red: #f7768e;
+  --purple: #bb9af7;
+  --cyan: #7dcfff;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.container { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
+
+header {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+header .container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+header h1 span { color: var(--accent); }
+
+.health-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.health-stats .stat-val { color: var(--text); font-weight: 600; }
+
+.breadcrumb {
+  padding: 12px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.breadcrumb a { color: var(--accent); }
+
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.badge-new { background: var(--accent-dim); color: var(--accent); }
+.badge-triage_pending { background: #2d3a5c; color: var(--cyan); }
+.badge-awaiting_hardware { background: #3a3520; color: var(--yellow); }
+.badge-awaiting_provision { background: #3a3520; color: var(--yellow); }
+.badge-executing_benchmark { background: #1a3a2a; color: var(--green); }
+.badge-awaiting_review { background: #352a3a; color: var(--purple); }
+.badge-awaiting_teardown { background: #3a2a20; color: var(--orange); }
+.badge-awaiting_customer_guidance { background: #3a1a1a; color: var(--red); }
+.badge-closed { background: #1a2a1a; color: var(--green); }
+
+.filters {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 16px 0;
+}
+
+.filters select {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.filters select:focus { outline: none; border-color: var(--accent); }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+
+th {
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+tr.ticket-row { cursor: pointer; transition: background 0.15s; }
+tr.ticket-row:hover { background: var(--bg-hover); }
+
+.ticket-id {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.ticket-summary {
+  color: var(--text-bright);
+  max-width: 500px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticket-time {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+}
+
+.empty-state h3 { font-size: 16px; margin-bottom: 8px; color: var(--text); }
+
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 0 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-header .ticket-id { font-size: 16px; }
+.detail-header .summary { font-size: 16px; color: var(--text-bright); flex: 1; }
+
+details {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+details > summary {
+  padding: 10px 16px;
+  background: var(--bg-surface);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+
+details > summary::-webkit-details-marker { display: none; }
+
+details > summary::before {
+  content: '\25B6';
+  font-size: 10px;
+  transition: transform 0.2s;
+  color: var(--text-muted);
+}
+
+details[open] > summary::before { transform: rotate(90deg); }
+
+details > .content { padding: 12px 16px; }
+
+.agent-section {
+  border-color: var(--accent-dim);
+}
+
+.agent-section > summary {
+  background: linear-gradient(135deg, var(--bg-surface), #1e2340);
+}
+
+.agent-name { color: var(--accent); text-transform: uppercase; }
+
+.event {
+  margin: 4px 0;
+  padding: 6px 0;
+  border-bottom: 1px solid #2a2e42;
+}
+
+.event:last-child { border-bottom: none; }
+
+.event-ts {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-right: 8px;
+}
+
+.event-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-right: 6px;
+}
+
+.label-llm { color: var(--purple); }
+.label-tool { color: var(--cyan); }
+.label-transition { color: var(--green); }
+.label-comment { color: var(--yellow); }
+.label-error { color: var(--red); }
+.label-agent { color: var(--accent); }
+
+.event-text {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-top: 6px;
+  max-height: 600px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+
+.event-text.short { max-height: none; }
+
+.transition-banner {
+  background: linear-gradient(135deg, #1a2a1a, #1a3a2a);
+  border: 1px solid #2a4a2a;
+  border-radius: 6px;
+  padding: 8px 16px;
+  margin: 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.transition-arrow { color: var(--green); font-size: 16px; }
+
+.tool-call {
+  border-left: 3px solid var(--cyan);
+  padding-left: 12px;
+  margin: 6px 0;
+}
+
+.tool-call .tool-name {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--cyan);
+  font-size: 13px;
+}
+
+.tool-result-ok { border-left-color: var(--green); }
+.tool-result-err { border-left-color: var(--red); }
+
+.poll-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 13px;
+}
+
+.poll-controls button {
+  background: var(--bg-surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+
+.poll-controls button:hover { background: var(--bg-hover); }
+.poll-controls button.active { border-color: var(--accent); color: var(--accent); }
+
+.poll-status {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.poll-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.poll-dot.live { background: var(--green); animation: pulse 2s infinite; }
+.poll-dot.paused { background: var(--yellow); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.sys-prompt {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  background: var(--bg);
+  border-radius: 4px;
+  padding: 8px;
+  margin-top: 6px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.fields-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, auto) 1fr;
+  gap: 4px 16px;
+  font-size: 13px;
+}
+
+.field-key {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.field-val {
+  font-family: var(--font-mono);
+  word-break: break-word;
+}
+
+@media (max-width: 900px) {
+  .container { padding: 0 12px; }
+  .ticket-summary { max-width: 250px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <h1><span>Agentic</span> Perf</h1>
+    <div class="health-stats" id="health-stats"></div>
+  </div>
+</header>
+
+<div class="container">
+  <div id="app"></div>
+</div>
+
+<script>
+const API = '/api/v1';
+
+let currentView = 'list';
+let currentTicketId = null;
+let statusFilter = '';
+let pollTimer = null;
+let pollPaused = false;
+let lastSeq = 0;
+let autoScroll = true;
+let renderedEvents = [];
+
+async function api(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error(`API ${r.status}: ${path}`);
+  return r.json();
+}
+
+function navigate(hash) {
+  window.location.hash = hash;
+}
+
+function parseRoute() {
+  const hash = window.location.hash || '#/';
+  const match = hash.match(/^#\/ticket\/(.+)$/);
+  if (match) return { view: 'detail', ticketId: match[1] };
+  return { view: 'list' };
+}
+
+window.addEventListener('hashchange', () => {
+  const route = parseRoute();
+  if (route.view !== currentView || route.ticketId !== currentTicketId) {
+    currentView = route.view;
+    currentTicketId = route.ticketId || null;
+    stopPolling();
+    render();
+  }
+});
+
+function fmtTime(ts) {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleString(undefined, {
+      month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+  } catch { return ts; }
+}
+
+function fmtTimeShort(ts) {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString(undefined, {
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+  } catch { return ts; }
+}
+
+function statusBadge(status) {
+  const label = status.replace(/_/g, ' ');
+  return '<span class="badge badge-' + status + '">' + label + '</span>';
+}
+
+function escHtml(s) {
+  if (typeof s !== 'string') s = String(s);
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function truncate(s, n) {
+  if (!s || s.length <= n) return s;
+  return s.slice(0, n) + '...';
+}
+
+function prettyJson(obj) {
+  try {
+    if (typeof obj === 'string') obj = JSON.parse(obj);
+    return JSON.stringify(obj, null, 2);
+  } catch { return String(obj); }
+}
+
+async function refreshHealth() {
+  try {
+    const data = await api('/health');
+    const el = document.getElementById('health-stats');
+    if (!el) return;
+    const counts = data.ticket_counts || {};
+    const active = data.total - (counts.closed || 0);
+    el.innerHTML =
+      '<span>Total: <span class="stat-val">' + data.total + '</span></span>' +
+      '<span>Active: <span class="stat-val">' + active + '</span></span>';
+  } catch {}
+}
+
+setInterval(refreshHealth, 10000);
+refreshHealth();
+
+// ── Ticket List ──
+
+async function renderList() {
+  const app = document.getElementById('app');
+  app.innerHTML =
+    '<div class="filters">' +
+      '<label>Status:</label>' +
+      '<select id="status-filter">' +
+        '<option value="">All</option>' +
+        '<option value="new">New</option>' +
+        '<option value="triage_pending">Triage Pending</option>' +
+        '<option value="awaiting_hardware">Awaiting Hardware</option>' +
+        '<option value="awaiting_provision">Awaiting Provision</option>' +
+        '<option value="executing_benchmark">Executing Benchmark</option>' +
+        '<option value="awaiting_review">Awaiting Review</option>' +
+        '<option value="awaiting_teardown">Awaiting Teardown</option>' +
+        '<option value="awaiting_customer_guidance">Awaiting Guidance</option>' +
+        '<option value="closed">Closed</option>' +
+      '</select>' +
+    '</div>' +
+    '<div id="ticket-table"><div class="spinner"></div> Loading...</div>';
+
+  const sel = document.getElementById('status-filter');
+  sel.value = statusFilter;
+  sel.addEventListener('change', function() {
+    statusFilter = sel.value;
+    loadTickets();
+  });
+
+  await loadTickets();
+  pollTimer = setInterval(loadTickets, 5000);
+}
+
+async function loadTickets() {
+  try {
+    const qs = statusFilter ? '?status=' + statusFilter : '';
+    const tickets = await api('/tickets' + qs);
+    const el = document.getElementById('ticket-table');
+    if (!el) return;
+
+    if (!tickets || tickets.length === 0) {
+      el.innerHTML =
+        '<div class="empty-state">' +
+          '<h3>No tickets found</h3>' +
+          '<p>Submit a ticket via CLI: <code>agentic-perf submit "summary" -d "description"</code></p>' +
+        '</div>';
+      return;
+    }
+
+    const sorted = tickets.sort(function(a, b) {
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+
+    let rows = '';
+    for (var i = 0; i < sorted.length; i++) {
+      var t = sorted[i];
+      rows +=
+        '<tr class="ticket-row" data-id="' + escHtml(t.id) + '">' +
+          '<td class="ticket-id">' + escHtml(t.id) + '</td>' +
+          '<td class="ticket-summary">' + escHtml(t.summary) + '</td>' +
+          '<td>' + statusBadge(t.status) + '</td>' +
+          '<td class="ticket-time">' + fmtTime(t.created_at) + '</td>' +
+          '<td class="ticket-time">' + fmtTime(t.updated_at) + '</td>' +
+        '</tr>';
+    }
+
+    el.innerHTML =
+      '<table>' +
+        '<thead><tr>' +
+          '<th>Ticket</th><th>Summary</th><th>Status</th><th>Created</th><th>Updated</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>';
+
+    el.querySelectorAll('.ticket-row').forEach(function(row) {
+      row.addEventListener('click', function() {
+        navigate('#/ticket/' + row.dataset.id);
+      });
+    });
+  } catch (err) {
+    var el = document.getElementById('ticket-table');
+    if (el) el.innerHTML = '<p style="color:var(--red)">Error loading tickets: ' + escHtml(err.message) + '</p>';
+  }
+}
+
+// ── Ticket Detail ──
+
+async function renderDetail(ticketId) {
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="spinner"></div> Loading ticket...';
+
+  try {
+    const ticket = await api('/tickets/' + ticketId);
+    lastSeq = 0;
+    renderedEvents = [];
+
+    app.innerHTML =
+      '<div class="breadcrumb">' +
+        '<a href="#/">Dashboard</a> / ' + escHtml(ticket.id) +
+      '</div>' +
+      '<div class="detail-header">' +
+        '<span class="ticket-id">' + escHtml(ticket.id) + '</span>' +
+        '<span class="summary">' + escHtml(ticket.summary) + '</span>' +
+        statusBadge(ticket.status) +
+      '</div>' +
+      renderDescription(ticket) +
+      renderCustomFields(ticket) +
+      '<div class="poll-controls" style="margin-top: 16px;">' +
+        '<h3 style="font-size: 15px; color: var(--text-bright);">Transaction Log</h3>' +
+        '<span style="flex:1"></span>' +
+        '<span class="poll-status" id="poll-status">' +
+          '<span class="poll-dot live"></span> Live' +
+        '</span>' +
+        '<button id="btn-poll-toggle">Pause</button>' +
+        '<button id="btn-auto-scroll" class="active">Auto-scroll</button>' +
+      '</div>' +
+      '<div id="event-stream"></div>';
+
+    document.getElementById('btn-poll-toggle').addEventListener('click', togglePoll);
+    document.getElementById('btn-auto-scroll').addEventListener('click', toggleAutoScroll);
+
+    await pollEvents(ticketId);
+    pollTimer = setInterval(function() { pollEvents(ticketId); }, 2000);
+  } catch (err) {
+    app.innerHTML =
+      '<div class="breadcrumb"><a href="#/">Dashboard</a> / ' + escHtml(ticketId) + '</div>' +
+      '<p style="color:var(--red); margin-top:20px;">Error: ' + escHtml(err.message) + '</p>';
+  }
+}
+
+function renderDescription(ticket) {
+  if (!ticket.description) return '';
+  return '<details style="margin-top: 16px;">' +
+    '<summary>Description</summary>' +
+    '<div class="content"><div class="event-text short">' + escHtml(ticket.description) + '</div></div>' +
+  '</details>';
+}
+
+function renderCustomFields(ticket) {
+  var fields = ticket.custom_fields;
+  if (!fields || Object.keys(fields).length === 0) return '';
+  var items = '';
+  for (var k in fields) {
+    var v = fields[k];
+    var display = typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v);
+    items += '<span class="field-key">' + escHtml(k) + '</span>' +
+             '<span class="field-val">' + escHtml(display) + '</span>';
+  }
+  return '<details style="margin-top: 8px;">' +
+    '<summary>Custom Fields</summary>' +
+    '<div class="content"><div class="fields-grid">' + items + '</div></div>' +
+  '</details>';
+}
+
+// ── Event Polling & Rendering ──
+
+async function pollEvents(ticketId) {
+  if (pollPaused) return;
+  try {
+    var data = await api('/tickets/' + ticketId + '/events?since=' + lastSeq + '&limit=500');
+    var newEvents = data.events || [];
+    if (newEvents.length === 0) return;
+    lastSeq = data.latest_seq;
+    renderNewEvents(newEvents);
+  } catch {}
+}
+
+function renderNewEvents(events) {
+  var container = document.getElementById('event-stream');
+  if (!container) return;
+
+  for (var i = 0; i < events.length; i++) {
+    var evt = events[i];
+    if (renderedEvents.indexOf(evt.seq) !== -1) continue;
+    renderedEvents.push(evt.seq);
+    var html = renderEvent(evt);
+    if (html) container.insertAdjacentHTML('beforeend', html);
+  }
+
+  if (autoScroll) {
+    var last = container.lastElementChild;
+    if (last) last.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }
+}
+
+function renderEvent(evt) {
+  var etype = evt.event_type;
+  var data = evt.data || {};
+  var ts = fmtTimeShort(evt.timestamp);
+  var agent = evt.agent || '';
+
+  switch (etype) {
+    case 'agent_started':
+      return renderAgentStarted(evt, ts, agent, data);
+
+    case 'agent_finished':
+      return '<div class="event">' +
+        '<span class="event-ts">' + ts + '</span>' +
+        '<span class="event-label label-agent">FINISHED</span>' +
+        '<span style="color:var(--text-muted)">' + escHtml(agent) + '</span>' +
+      '</div>';
+
+    case 'agent_error':
+      return '<div class="event">' +
+        '<span class="event-ts">' + ts + '</span>' +
+        '<span class="event-label label-error">ERROR</span>' +
+        '<span>' + escHtml(agent) + ': ' + escHtml(data.reason || 'Unknown error') + '</span>' +
+      '</div>';
+
+    case 'llm_request':
+      return '<div class="event">' +
+        '<span class="event-ts">' + ts + '</span>' +
+        '<span class="event-label label-llm">LLM REQUEST</span>' +
+        '<span style="color:var(--text-muted)">iteration ' + (data.iteration || '?') + '</span>' +
+      '</div>';
+
+    case 'llm_response':
+      return renderLlmResponse(ts, data);
+
+    case 'tool_called':
+      return renderToolCalled(ts, data);
+
+    case 'tool_result':
+      return renderToolResult(ts, data);
+
+    case 'tool_skipped':
+      return '<div class="event">' +
+        '<span class="event-ts">' + ts + '</span>' +
+        '<span class="event-label label-tool">TOOL SKIPPED</span>' +
+        '<span style="color:var(--text-muted)">' + escHtml(data.tool || '?') + ': ' + escHtml(data.reason || '') + '</span>' +
+      '</div>';
+
+    case 'transition':
+      return '<div class="transition-banner">' +
+        '<span class="transition-arrow">&rarr;</span>' +
+        statusBadge(data.to || 'unknown') +
+        (data.comment ? '<span style="color:var(--text-muted); font-size:13px;">' + escHtml(truncate(data.comment, 200)) + '</span>' : '') +
+      '</div>';
+
+    case 'comment':
+      return '<div class="event">' +
+        '<span class="event-ts">' + ts + '</span>' +
+        '<span class="event-label label-comment">COMMENT</span>' +
+        '<span style="color:var(--text-muted)">(' + escHtml(agent) + ')</span>' +
+        '<div class="event-text short">' + escHtml(data.body || '') + '</div>' +
+      '</div>';
+
+    default:
+      return '<div class="event">' +
+        '<span class="event-ts">' + ts + '</span>' +
+        '<span class="event-label" style="color:var(--text-muted)">' + escHtml(etype) + '</span>' +
+      '</div>';
+  }
+}
+
+function renderAgentStarted(evt, ts, agent, data) {
+  var sysPrompt = data.system_prompt || '';
+  var initialMsgs = data.initial_messages || [];
+
+  var promptHtml = '';
+  if (sysPrompt) {
+    promptHtml =
+      '<details>' +
+        '<summary style="font-size:12px; color:var(--text-muted);">System Prompt (' + sysPrompt.length + ' chars)</summary>' +
+        '<div class="content"><div class="sys-prompt">' + escHtml(sysPrompt) + '</div></div>' +
+      '</details>';
+  }
+
+  var msgsHtml = '';
+  for (var i = 0; i < initialMsgs.length; i++) {
+    var m = initialMsgs[i];
+    var role = (m.role || '?').toUpperCase();
+    var content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content, null, 2);
+    msgsHtml +=
+      '<details>' +
+        '<summary style="font-size:12px;">' + role + ' message (' + content.length + ' chars)</summary>' +
+        '<div class="content"><div class="event-text">' + escHtml(content) + '</div></div>' +
+      '</details>';
+  }
+
+  return '<details class="agent-section" open>' +
+    '<summary>' +
+      '<span class="agent-name">' + escHtml(agent) + '</span>' +
+      '<span style="color:var(--text-muted); font-size:12px; margin-left:auto;">' + ts + '</span>' +
+    '</summary>' +
+    '<div class="content">' + promptHtml + msgsHtml + '</div>' +
+  '</details>';
+}
+
+function renderLlmResponse(ts, data) {
+  var text = data.text || '';
+  var raw = data.raw_content || [];
+  var iteration = data.iteration || '?';
+  var stop = data.stop_reason || '?';
+
+  var toolCalls = raw.filter(function(b) { return b && b.type === 'tool_use'; });
+
+  var textHtml = '';
+  if (text) {
+    if (text.length > 500) {
+      textHtml =
+        '<details>' +
+          '<summary style="font-size:12px;">Response text (' + text.length + ' chars)</summary>' +
+          '<div class="content"><div class="event-text">' + escHtml(text) + '</div></div>' +
+        '</details>';
+    } else {
+      textHtml = '<div class="event-text short">' + escHtml(text) + '</div>';
+    }
+  }
+
+  var toolsHtml = '';
+  for (var i = 0; i < toolCalls.length; i++) {
+    var tc = toolCalls[i];
+    var inp = tc.input ? prettyJson(tc.input) : '{}';
+    if (inp.length > 300) {
+      toolsHtml +=
+        '<div class="tool-call">' +
+          '<span class="tool-name">' + escHtml(tc.name || '?') + '</span>' +
+          '<details>' +
+            '<summary style="font-size:12px; color:var(--text-muted);">Input (' + inp.length + ' chars)</summary>' +
+            '<div class="content"><div class="event-text">' + escHtml(inp) + '</div></div>' +
+          '</details>' +
+        '</div>';
+    } else {
+      toolsHtml +=
+        '<div class="tool-call">' +
+          '<span class="tool-name">' + escHtml(tc.name || '?') + '</span>' +
+          '<div class="event-text short">' + escHtml(inp) + '</div>' +
+        '</div>';
+    }
+  }
+
+  return '<div class="event">' +
+    '<span class="event-ts">' + ts + '</span>' +
+    '<span class="event-label label-llm">LLM RESPONSE</span>' +
+    '<span style="color:var(--text-muted); font-size:12px;">iter ' + iteration + ', stop=' + stop + '</span>' +
+    textHtml + toolsHtml +
+  '</div>';
+}
+
+function renderToolCalled(ts, data) {
+  var tool = data.tool || '?';
+  var input = data.input;
+  var inputHtml = '';
+
+  if (input) {
+    var formatted = typeof input === 'object' ? prettyJson(input) : String(input);
+    if (formatted.length > 300) {
+      inputHtml =
+        '<details>' +
+          '<summary style="font-size:12px; color:var(--text-muted);">Input (' + formatted.length + ' chars)</summary>' +
+          '<div class="content"><div class="event-text">' + escHtml(formatted) + '</div></div>' +
+        '</details>';
+    } else {
+      inputHtml = '<div class="event-text short">' + escHtml(formatted) + '</div>';
+    }
+  }
+
+  return '<div class="event">' +
+    '<div class="tool-call">' +
+      '<span class="event-ts">' + ts + '</span>' +
+      '<span class="event-label label-tool">TOOL</span>' +
+      '<span class="tool-name">' + escHtml(tool) + '</span>' +
+      inputHtml +
+    '</div>' +
+  '</div>';
+}
+
+function renderToolResult(ts, data) {
+  var tool = data.tool || '?';
+  var isError = data.is_error;
+  var content = data.content;
+  var contentLen = data.content_length || 0;
+
+  var cls = isError ? 'tool-result-err' : 'tool-result-ok';
+  var errTag = isError ? ' <span style="color:var(--red)">ERROR</span>' : '';
+
+  var contentHtml = '';
+  if (content != null) {
+    var formatted;
+    try {
+      var parsed = JSON.parse(content);
+      formatted = JSON.stringify(parsed, null, 2);
+    } catch (e) {
+      formatted = String(content);
+    }
+    if (formatted.length > 500) {
+      contentHtml =
+        '<details>' +
+          '<summary style="font-size:12px; color:var(--text-muted);">Result (' + formatted.length + ' chars)</summary>' +
+          '<div class="content"><div class="event-text">' + escHtml(formatted) + '</div></div>' +
+        '</details>';
+    } else {
+      contentHtml = '<div class="event-text short">' + escHtml(formatted) + '</div>';
+    }
+  } else if (contentLen > 0) {
+    contentHtml = '<span style="color:var(--text-muted); font-size:12px;">(' + contentLen + ' bytes)</span>';
+  }
+
+  return '<div class="event">' +
+    '<div class="tool-call ' + cls + '">' +
+      '<span class="event-ts">' + ts + '</span>' +
+      '<span class="event-label label-tool">RESULT' + errTag + '</span>' +
+      '<span class="tool-name">' + escHtml(tool) + '</span>' +
+      contentHtml +
+    '</div>' +
+  '</div>';
+}
+
+// ── Polling controls ──
+
+function togglePoll() {
+  pollPaused = !pollPaused;
+  var btn = document.getElementById('btn-poll-toggle');
+  var status = document.getElementById('poll-status');
+  if (btn) btn.textContent = pollPaused ? 'Resume' : 'Pause';
+  if (status) {
+    status.innerHTML = pollPaused
+      ? '<span class="poll-dot paused"></span> Paused'
+      : '<span class="poll-dot live"></span> Live';
+  }
+}
+
+function toggleAutoScroll() {
+  autoScroll = !autoScroll;
+  var btn = document.getElementById('btn-auto-scroll');
+  if (btn) {
+    btn.classList.toggle('active', autoScroll);
+    btn.textContent = autoScroll ? 'Auto-scroll' : 'Auto-scroll off';
+  }
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+  pollPaused = false;
+  lastSeq = 0;
+  renderedEvents = [];
+}
+
+// ── Main render ──
+
+function render() {
+  var route = parseRoute();
+  currentView = route.view;
+  currentTicketId = route.ticketId || null;
+
+  if (route.view === 'detail' && route.ticketId) {
+    renderDetail(route.ticketId);
+  } else {
+    renderList();
+  }
+}
+
+render();
+</script>
+</body>
+</html>
