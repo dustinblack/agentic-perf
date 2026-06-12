@@ -310,6 +310,8 @@ def create_resource_tool_handlers(
         prov = await reg.get_provider(provider)
         return await prov.check_available(requirements or {})
 
+    last_reservation: dict[str, Any] = {}
+
     async def reserve_resources(
         provider: str,
         selection: dict,
@@ -319,7 +321,10 @@ def create_resource_tool_handlers(
     ) -> dict:
         reg = _get_registry()
         prov = await reg.get_provider(provider)
-        return await prov.reserve(selection, description, duration_hours, ticket_id=ticket_id)
+        result = await prov.reserve(selection, description, duration_hours, ticket_id=ticket_id)
+        last_reservation.clear()
+        last_reservation.update(result)
+        return result
 
     async def get_reservation_status(
         provider: str, reservation_id: str
@@ -328,7 +333,7 @@ def create_resource_tool_handlers(
         prov = await reg.get_provider(provider)
         return await prov.get_reservation_status(reservation_id)
 
-    return {
+    handlers = {
         "parse_host_config": parse_host_config,
         "validate_host": validate_host,
         "list_resource_providers": list_resource_providers,
@@ -336,3 +341,4 @@ def create_resource_tool_handlers(
         "reserve_resources": reserve_resources,
         "get_reservation_status": get_reservation_status,
     }
+    return handlers, last_reservation

@@ -36,11 +36,13 @@ class ResourceAgent(AgentBase):
         )
 
         tools = get_resource_tools() if mode == "create" else []
-        tool_handlers = (
-            create_resource_tool_handlers(registry=self._registry)
-            if mode == "create"
-            else {}
-        )
+        self._last_reservation: dict[str, Any] = {}
+        if mode == "create":
+            tool_handlers, self._last_reservation = (
+                create_resource_tool_handlers(registry=self._registry)
+            )
+        else:
+            tool_handlers = {}
 
         super().__init__(
             agent_name="resource-agent",
@@ -276,7 +278,11 @@ class ResourceAgent(AgentBase):
         if reservation_id:
             fields["resource_reservation_id"] = reservation_id
 
-        provider_metadata = result.get("resource_provider_metadata")
+        provider_metadata = result.get("resource_provider_metadata") or {}
+        reservation_metadata = self._last_reservation.get("provider_metadata", {})
+        for key in ("public_ips", "ami", "cloud_login_user"):
+            if key in reservation_metadata and key not in provider_metadata:
+                provider_metadata[key] = reservation_metadata[key]
         if provider_metadata:
             fields["resource_provider_metadata"] = provider_metadata
 
@@ -285,7 +291,6 @@ class ResourceAgent(AgentBase):
 
         # For cloud providers, build ssh_hardware_ips from public IPs
         # so agents SSH via public IPs but run-files use private IPs
-        provider_metadata = provider_metadata or {}
         public_ips = provider_metadata.get("public_ips")
         hw = fields["assigned_hardware_ips"]
         if public_ips and hw:
