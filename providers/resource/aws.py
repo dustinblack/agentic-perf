@@ -147,6 +147,7 @@ class AWSResourceProvider(ResourceProvider):
         selection: dict[str, Any],
         description: str,
         duration_hours: int = 36,
+        ticket_id: str | None = None,
     ) -> dict[str, Any]:
         ec2 = self._get_ec2_client()
         instance_type = selection.get("instance_type", self._default_instance_type)
@@ -158,6 +159,19 @@ class AWSResourceProvider(ResourceProvider):
             f"[aws-provider] Launching {count}x {instance_type} "
             f"(AMI: {ami}, root_volume: {root_volume_gb}GB, region: {self._region})"
         )
+
+        if ticket_id:
+            instance_name = f"agentic-perf-{ticket_id}"
+        else:
+            instance_name = f"agentic-perf-{description[:50]}"
+
+        tags = [
+            {"Key": "Name", "Value": instance_name},
+            {"Key": "agentic-perf", "Value": "true"},
+            {"Key": "Description", "Value": description[:255]},
+        ]
+        if ticket_id:
+            tags.append({"Key": "ticket-id", "Value": ticket_id})
 
         ami_info = await asyncio.to_thread(
             ec2.describe_images, ImageIds=[ami]
@@ -184,14 +198,7 @@ class AWSResourceProvider(ResourceProvider):
             "TagSpecifications": [
                 {
                     "ResourceType": "instance",
-                    "Tags": [
-                        {
-                            "Key": "Name",
-                            "Value": f"agentic-perf-{description[:50]}",
-                        },
-                        {"Key": "agentic-perf", "Value": "true"},
-                        {"Key": "Description", "Value": description[:255]},
-                    ],
+                    "Tags": tags,
                 }
             ],
         }

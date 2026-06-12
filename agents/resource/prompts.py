@@ -29,7 +29,8 @@ If the directives include resource_provider (e.g., "quads" or "aws"):
 1. Call check_available_resources with the specified provider and requirements
    from the ticket (cores, memory, NIC speed, disk type, host count).
 2. Select resources from the available options.
-3. Call reserve_resources with the selected options.
+3. Call reserve_resources with the selected options. Always include the
+   ticket_id (the Jira ticket key, e.g. "PERF-123") for instance traceability.
 4. Call submit_resource_result with the reservation details.
 
 ### Path 3: Auto-Select Provider (no hosts, no directive)
@@ -39,12 +40,13 @@ If the directives include resource_provider (e.g., "quads" or "aws"):
    dedicated hardware without virtualization overhead.
 3. If bare-metal is unavailable or cannot satisfy requirements, try cloud
    providers (aws).
-4. Call check_available_resources, then reserve_resources as in Path 2.
+4. Call check_available_resources, then reserve_resources as in Path 2
+   (always include ticket_id).
 
 ## Submitting the Result
 
 Always call submit_resource_result with:
-- assigned_hardware_ips: {controller: <first host>, targets: [<remaining hosts>]}
+- assigned_hardware_ips: {controller: <dedicated controller host>, targets: [<endpoint hosts>]}
 - ssh_user and ssh_key_path from the reservation result
 - resource_provider: the provider name ("quads", "aws", "user_provided")
 - resource_reservation_id: from the reservation result (null for user-provided)
@@ -52,13 +54,25 @@ Always call submit_resource_result with:
 - fresh_host: true for managed providers (hosts need full harness install)
 - lease_expiration: from the reservation result (null if not applicable)
 
+## Host Count
+
+The ticket's min_hosts field counts ENDPOINT hosts only. For managed
+providers (quads, aws), always provision min_hosts + 1:
+- 1 dedicated controller host (runs the benchmark framework)
+- min_hosts endpoint hosts (where workloads actually run)
+
+The controller must NOT also serve as an endpoint. This is a hard
+requirement — do not combine them to save resources.
+
+The "Total hosts to provision" in the Resource Requirements section
+already includes the controller — use that number directly.
+
 ## Important Notes
 
 - Cloud instances (AWS, etc.) do not expire automatically — teardown is
   critical to avoid ongoing costs. Always set resource_provider and
   resource_reservation_id so teardown can terminate them.
 - QUADS policy: max 10 hosts per assignment, max 5-day lifetime.
-- Map the ticket's min_hosts and required_roles to the number of hosts needed.
 
 ### GPU Cluster Providers (psap-cc)
 
