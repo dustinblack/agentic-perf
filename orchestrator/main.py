@@ -52,6 +52,37 @@ async def run_agent_task(dispatcher: Dispatcher, status: str, ticket_id: str):
             pass
 
 
+async def _block_absent_suite(store_url: str, ticket_id: str) -> None:
+    import httpx
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        suite = ""
+        try:
+            r = await client.get(f"{store_url}/api/v1/tickets/{ticket_id}")
+            suite = r.json().get("custom_fields", {}).get("benchmark_suite", "unknown")
+        except Exception:
+            pass
+        await client.post(
+            f"{store_url}/api/v1/tickets/{ticket_id}/comments",
+            json={
+                "author": "orchestrator",
+                "body": (
+                    f"**Blocked:** No automation harness supports the "
+                    f"'{suite}' benchmark. The ticket cannot proceed to "
+                    f"hardware allocation.\n\n"
+                    f"Please specify a supported benchmark or harness, "
+                    f"or configure the harness that provides this benchmark."
+                ),
+            },
+        )
+        await client.post(
+            f"{store_url}/api/v1/tickets/{ticket_id}/transition",
+            json={
+                "status": "awaiting_customer_guidance",
+                "comment": "Absent benchmark suite — no harness can run this",
+            },
+        )
+
+
 async def poll_loop(config: OrchestratorConfig) -> None:
     llm = create_llm_provider(config)
     harnesses = {"crucible": CrucibleSkillProvider(config.crucible_home)}
@@ -85,6 +116,13 @@ async def poll_loop(config: OrchestratorConfig) -> None:
                     continue
                 if dispatcher.was_dispatched(tid, status):
                     continue
+
+                if status == "awaiting_hardware" and ticket.get("custom_fields", {}).get("absent_suite"):
+                    logger.warning(f"Ticket {tid} has absent_suite=True, pausing for human input")
+                    dispatcher.mark_dispatched(tid, status)
+                    await _block_absent_suite(config.state_store_url, tid)
+                    continue
+
                 dispatcher.mark_active(tid)
                 dispatcher.mark_dispatched(tid, status)
                 logger.info(f"Dispatching {status} agent for ticket {tid}")
