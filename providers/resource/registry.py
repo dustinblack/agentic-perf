@@ -19,6 +19,10 @@ PROVIDER_REGISTRY: dict[str, dict[str, str]] = {
         "class": "providers.resource.aws.AWSResourceProvider",
         "secret": "aws/config.json",
     },
+    "psap-cc": {
+        "class": "providers.resource.psap_cc.PSAPCCResourceProvider",
+        "secret": "psap-cc/config.json",
+    },
 }
 
 
@@ -35,10 +39,13 @@ class ResourceProviderRegistry:
         for name, entry in PROVIDER_REGISTRY.items():
             raw = await self._secrets.get_secret(entry["secret"])
             if raw:
-                configured.append({
-                    "name": name,
-                    "type": "bare_metal" if name == "quads" else "cloud",
-                })
+                if name == "quads":
+                    ptype = "bare_metal"
+                elif name == "psap-cc":
+                    ptype = "gpu_cluster"
+                else:
+                    ptype = "cloud"
+                configured.append({"name": name, "type": ptype})
         return configured
 
     async def get_provider(self, name: str) -> ResourceProvider:

@@ -72,7 +72,9 @@ def get_resource_tools() -> list[ToolDefinition]:
                 "Check what resources are available from a specific provider. "
                 "For bare-metal providers (quads), returns available hosts with "
                 "CPU, memory, disk, and NIC details. For cloud providers (aws), "
-                "returns recommended instance types. Use filters to narrow results."
+                "returns recommended instance types. For GPU cluster providers "
+                "(psap-cc), returns available clusters with GPU type, count, "
+                "and cluster details. Use filters to narrow results."
             ),
             input_schema={
                 "type": "object",
@@ -90,7 +92,8 @@ def get_resource_tools() -> list[ToolDefinition]:
                             "disk_type (str), count (int, hosts needed), "
                             "duration_hours (int). "
                             "Provider-specific: model_filter (quads), "
-                            "instance_type (aws)."
+                            "instance_type (aws), min_gpus (int, psap-cc), "
+                            "gpu_type (str, e.g. 'H100', psap-cc)."
                         ),
                     },
                 },
@@ -104,8 +107,10 @@ def get_resource_tools() -> list[ToolDefinition]:
                 "this creates an assignment, schedules hosts, waits for "
                 "validation (~30-45 min), and sets up SSH access. For cloud "
                 "(aws), this launches instances, waits until running, and "
-                "verifies SSH connectivity. Returns host IPs, SSH credentials, "
-                "and a reservation ID for teardown."
+                "verifies SSH connectivity. For GPU cluster (psap-cc), this "
+                "creates a cluster reservation — returns cluster access info "
+                "in provider_metadata (no SSH hosts). Returns a reservation "
+                "ID for teardown."
             ),
             input_schema={
                 "type": "object",
@@ -119,7 +124,8 @@ def get_resource_tools() -> list[ToolDefinition]:
                         "description": (
                             "What to reserve, based on check_available_resources results. "
                             "For quads: {hostnames: ['host1.example.com', ...]}. "
-                            "For aws: {instance_type: 'm5.xlarge', count: 2}."
+                            "For aws: {instance_type: 'm5.xlarge', count: 2}. "
+                            "For psap-cc: {cluster_id: '<uuid>'}."
                         ),
                     },
                     "description": {

@@ -407,3 +407,300 @@ class TestTeardownDispatch:
         assert fields["resource_provider"] == "aws"
         assert fields["resource_reservation_id"] == "i-abc,i-def"
         assert fields["resource_provider_metadata"]["instance_ids"] == ["i-abc", "i-def"]
+
+
+# ---------------------------------------------------------------------------
+# PSAP Control Center provider tests
+# ---------------------------------------------------------------------------
+
+SAMPLE_CLUSTERS = [
+    {
+        "id": "cluster-1",
+        "name": "Poseidon - 4x8xH100",
+        "status": "healthy",
+        "gpu_type": "NVIDIA H100 80GB HBM3",
+        "gpu_count": "32",
+        "api_server_url": "https://api.poseidon.example.com:6443",
+        "node_count": "7",
+        "is_active": True,
+    },
+    {
+        "id": "cluster-2",
+        "name": "Zeus - 8xH200",
+        "status": "healthy",
+        "gpu_type": "NVIDIA H200 (140GB)",
+        "gpu_count": "8",
+        "api_server_url": "https://api.zeus.example.com:6443",
+        "node_count": "5",
+        "is_active": True,
+    },
+    {
+        "id": "cluster-3",
+        "name": "Unhealthy Cluster",
+        "status": "unreachable",
+        "gpu_type": "NVIDIA A100",
+        "gpu_count": "8",
+        "api_server_url": "https://api.bad.example.com:6443",
+        "node_count": "3",
+        "is_active": True,
+    },
+]
+
+SAMPLE_RESERVATIONS = [
+    {
+        "id": "res-1",
+        "cluster_id": "cluster-2",
+        "reservation_type": "cluster",
+        "status": "active",
+        "user_name": "someone",
+    },
+]
+
+SAMPLE_TOPOLOGY = {
+    "nodes": [
+        {
+            "name": "master-0",
+            "roles": ["control-plane", "master"],
+            "gpu": "0",
+            "gpu_type": "N/A",
+            "internal_ip": "10.0.0.1",
+        },
+        {
+            "name": "worker-1",
+            "roles": ["worker"],
+            "gpu": "8",
+            "gpu_type": "NVIDIA H100 80GB HBM3 (79GB)",
+            "internal_ip": "10.0.1.1",
+        },
+        {
+            "name": "worker-2",
+            "roles": ["worker"],
+            "gpu": "8",
+            "gpu_type": "NVIDIA H100 80GB HBM3 (79GB)",
+            "internal_ip": "10.0.1.2",
+        },
+    ],
+}
+
+
+class TestPSAPCCResourceProvider:
+    def _make_provider(self):
+        from providers.resource.psap_cc import PSAPCCResourceProvider
+
+        mock_client = AsyncMock()
+        mock_client.username = "admin"
+        provider = PSAPCCResourceProvider(mock_client)
+        return provider, mock_client
+
+    @pytest.mark.asyncio
+    async def test_check_available(self):
+        provider, client = self._make_provider()
+        client.list_clusters.return_value = SAMPLE_CLUSTERS
+        client.list_reservations.return_value = SAMPLE_RESERVATIONS
+
+        result = await provider.check_available({})
+
+        assert result["provider"] == "psap-cc"
+        # cluster-1 healthy+unreserved, cluster-2 healthy+reserved, cluster-3 unhealthy
+        assert result["available_count"] == 1
+        assert result["options"][0]["cluster_id"] == "cluster-1"
+        assert result["options"][0]["gpu_count"] == 32
+
+    @pytest.mark.asyncio
+    async def test_check_available_gpu_filter(self):
+        provider, client = self._make_provider()
+        client.list_clusters.return_value = SAMPLE_CLUSTERS
+        client.list_reservations.return_value = []
+
+        result = await provider.check_available({"gpu_type": "H200"})
+
+        assert result["available_count"] == 1
+        assert result["options"][0]["cluster_name"] == "Zeus - 8xH200"
+
+    @pytest.mark.asyncio
+    async def test_check_available_min_gpus(self):
+        provider, client = self._make_provider()
+        client.list_clusters.return_value = SAMPLE_CLUSTERS
+        client.list_reservations.return_value = []
+
+        result = await provider.check_available({"min_gpus": 16})
+
+        assert result["available_count"] == 1
+        assert result["options"][0]["gpu_count"] == 32
+
+    @pytest.mark.asyncio
+    async def test_reserve(self):
+        provider, client = self._make_provider()
+        client.get_cluster.return_value = SAMPLE_CLUSTERS[0]
+        client.create_reservation.return_value = {"id": "res-new"}
+        client.get_cluster_topology.return_value = SAMPLE_TOPOLOGY
+
+        result = await provider.reserve(
+            selection={"cluster_id": "cluster-1"},
+            description="test reservation",
+            duration_hours=24,
+        )
+
+        assert result["status"] == "success"
+        assert result["reservation_id"] == "res-new"
+        assert result["hosts"] == []
+        assert result["provider"] == "psap-cc"
+        assert result["provider_metadata"]["cluster_id"] == "cluster-1"
+        assert result["provider_metadata"]["gpu_count"] == 32
+        assert len(result["provider_metadata"]["worker_nodes"]) == 2
+        assert result["provider_metadata"]["worker_nodes"][0]["name"] == "worker-1"
+        assert result["lease_expiration"] is not None
+
+        client.create_reservation.assert_called_once()
+        call_data = client.create_reservation.call_args[0][0]
+        assert call_data["reservation_type"] == "cluster"
+        assert call_data["cluster_id"] == "cluster-1"
+
+    @pytest.mark.asyncio
+    async def test_reserve_no_cluster_id(self):
+        provider, client = self._make_provider()
+
+        result = await provider.reserve(
+            selection={},
+            description="missing cluster",
+        )
+
+        assert result["status"] == "failed"
+        assert "No cluster_id" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_reserve_cluster_not_found(self):
+        from providers.psap_cc import PSAPCCAPIError
+
+        provider, client = self._make_provider()
+        client.get_cluster.side_effect = PSAPCCAPIError(
+            404, "Not Found", "/clusters/bad-id"
+        )
+
+        result = await provider.reserve(
+            selection={"cluster_id": "bad-id"},
+            description="bad cluster",
+        )
+
+        assert result["status"] == "failed"
+        assert "not found" in result["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_get_reservation_status(self):
+        provider, client = self._make_provider()
+        client.get_reservation.return_value = {
+            "id": "res-1",
+            "status": "active",
+            "cluster_id": "cluster-1",
+            "cluster_name": "Poseidon",
+            "start_time": "2026-06-11T00:00:00",
+            "end_time": "2026-06-12T00:00:00",
+        }
+        client.get_cluster_status.return_value = {"status": "healthy"}
+
+        result = await provider.get_reservation_status(
+            "res-1", {"cluster_id": "cluster-1"}
+        )
+
+        assert result["ready"] is True
+        assert result["details"]["reservation_status"] == "active"
+        assert result["details"]["cluster_healthy"] is True
+
+    @pytest.mark.asyncio
+    async def test_get_reservation_status_not_ready(self):
+        provider, client = self._make_provider()
+        client.get_reservation.return_value = {
+            "id": "res-1",
+            "status": "scheduled",
+            "cluster_id": "cluster-1",
+        }
+        client.get_cluster_status.return_value = {"status": "healthy"}
+
+        result = await provider.get_reservation_status("res-1", {})
+
+        assert result["ready"] is False
+
+    @pytest.mark.asyncio
+    async def test_terminate(self):
+        provider, client = self._make_provider()
+        client.cancel_reservation.return_value = {"status": "cancelled"}
+
+        result = await provider.terminate(
+            reservation_id="res-1",
+            provider_metadata={"cluster_name": "Poseidon"},
+        )
+
+        assert result["status"] == "terminated"
+        assert result["reservation_id"] == "res-1"
+        client.cancel_reservation.assert_called_once_with("res-1")
+
+    @pytest.mark.asyncio
+    async def test_setup_ssh_noop(self):
+        provider, _ = self._make_provider()
+        result = await provider.setup_ssh(["10.0.0.1"])
+        assert result["status"] == "skipped"
+
+    @pytest.mark.asyncio
+    async def test_cleanup_ssh_keys_noop(self):
+        provider, _ = self._make_provider()
+        result = await provider.cleanup_ssh_keys(["10.0.0.1"])
+        assert result["status"] == "skipped"
+
+    @pytest.mark.asyncio
+    async def test_from_secrets(self):
+        from providers.resource.psap_cc import PSAPCCResourceProvider
+
+        mock_secrets = AsyncMock()
+        mock_secrets.get_secret.return_value = json.dumps({
+            "base_url": "https://cc.example.com",
+            "username": "admin",
+            "password": "pass",
+            "verify_ssl": False,
+        })
+
+        provider = await PSAPCCResourceProvider.from_secrets(mock_secrets)
+        assert provider._client.base_url == "https://cc.example.com"
+        assert provider._client.username == "admin"
+
+    @pytest.mark.asyncio
+    async def test_from_secrets_missing_fields(self):
+        from providers.resource.psap_cc import PSAPCCResourceProvider
+
+        mock_secrets = AsyncMock()
+        mock_secrets.get_secret.return_value = json.dumps(
+            {"base_url": "https://cc.example.com"}
+        )
+
+        with pytest.raises(ValueError, match="missing required fields"):
+            await PSAPCCResourceProvider.from_secrets(mock_secrets)
+
+
+class TestRegistryWithPSAPCC:
+    @pytest.mark.asyncio
+    async def test_list_configured_with_psap_cc(self):
+        secrets = MockSecretsProvider(
+            files={"psap-cc/config.json": "/fake/psap-cc.json"}
+        )
+        reg = ResourceProviderRegistry(secrets)
+        providers = await reg.list_configured_providers()
+        names = {p["name"]: p["type"] for p in providers}
+        assert "psap-cc" in names
+        assert names["psap-cc"] == "gpu_cluster"
+
+    @pytest.mark.asyncio
+    async def test_list_configured_all_three(self):
+        secrets = MockSecretsProvider(
+            files={
+                "quads/config.json": "/fake/quads.json",
+                "aws/config.json": "/fake/aws.json",
+                "psap-cc/config.json": "/fake/psap-cc.json",
+            }
+        )
+        reg = ResourceProviderRegistry(secrets)
+        providers = await reg.list_configured_providers()
+        names = {p["name"]: p["type"] for p in providers}
+        assert names == {
+            "quads": "bare_metal",
+            "aws": "cloud",
+            "psap-cc": "gpu_cluster",
+        }
