@@ -221,8 +221,7 @@ class AWSResourceProvider(ResourceProvider):
         return {
             "status": "success",
             "reservation_id": ",".join(instance_ids),
-            # Private IPs for intra-harness communication (run-file, controller-ip-address)
-            "hosts": private_ips,
+            "hosts": public_ips,
             "ssh_user": "root",
             "ssh_key_path": self._ssh_key_path,
             "lease_expiration": None,
@@ -234,6 +233,8 @@ class AWSResourceProvider(ResourceProvider):
                 "ami": ami,
                 "cloud_login_user": self._ssh_user,
                 "public_ips": public_ips,
+                "private_ips": private_ips,
+                "ip_mapping": dict(zip(public_ips, private_ips)),
             },
             "message": f"Launched {count}x {instance_type} in {self._region}",
         }
