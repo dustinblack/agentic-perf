@@ -715,6 +715,13 @@ def create_provisioning_tool_handlers(
         path = install_path or provisioning.get("install_target_path", f"/opt/{harness_name}")
         verify_cmd = provisioning.get("verify_command", f"{path}/bin/{harness_name} help")
 
+        ssh_debug = {
+            "user": ssh.user,
+            "key_path": ssh.key_path,
+            "connect_timeout": ssh.connect_timeout,
+            "command": f"{verify_cmd} > /dev/null 2>&1",
+        }
+
         result = await ssh.run(host, f"{verify_cmd} > /dev/null 2>&1")
         if result.exit_code == 0:
             version_result = await ssh.run(host, f"cd {path} && git log --oneline -1 2>/dev/null")
@@ -731,7 +738,10 @@ def create_provisioning_tool_handlers(
             "harness": harness_name,
             "installed": False,
             "install_path": path,
-            "message": f"No {harness_name} installation found at {path}",
+            "exit_code": result.exit_code,
+            "stderr": result.stderr[:500] if result.stderr else "",
+            "ssh": ssh_debug,
+            "message": f"No {harness_name} installation found at {path} (exit_code={result.exit_code})",
         }
 
     async def update_install(

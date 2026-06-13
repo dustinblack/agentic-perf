@@ -15,9 +15,9 @@ Benchmark agent now asks for user approval before executing (unless `user_pre_ru
 
 When the benchmark agent validates a run-file, save it to `custom_fields.validated_run_file`. On re-dispatch (e.g., after a transient failure like valkey), the agent checks for an existing validated run-file and skips straight to execution instead of rebuilding from scratch. Saves time and LLM iterations on retries.
 
-## Clean Up Stale Valkey on Install Check (Priority: Medium)
+## ~~Clean Up Stale Valkey~~ (Done)
 
-During `check_existing_install` or `verify_harness_install`, if a `crucible-valkey` container is running but no `crucible-rickshaw-run` container is active, stop the valkey container. This prevents the valkey password file mismatch that causes "Could not find the valkey service password" failures on the next `crucible run`.
+Implemented as a pre-flight check in `execute_benchmark` (benchmark agent) right before `crucible run`. Stops `crucible-valkey` if running with no active `crucible-rickshaw-run`. Placed here instead of provisioning to also catch stale state from failed retries within the same ticket.
 
 ## Harness Update Directive (Priority: Medium)
 

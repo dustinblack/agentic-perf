@@ -693,6 +693,16 @@ def create_benchmark_tool_handlers(
                 "message": f"Failed to copy run-file: {scp_result.stderr}",
             }
 
+        # Stop stale valkey container if no run is active (crucible issue #607)
+        valkey_check = await ssh.run(
+            controller,
+            "podman ps --format '{{.Names}}' 2>/dev/null | grep -q crucible-valkey"
+            " && ! podman ps --format '{{.Names}}' 2>/dev/null | grep -q crucible-rickshaw-run"
+            " && podman stop crucible-valkey 2>/dev/null && echo STOPPED || echo OK",
+        )
+        if "STOPPED" in (valkey_check.stdout or ""):
+            logger.info(f"[benchmark] Stopped stale crucible-valkey container on {controller}")
+
         cmd = f"{run_command or 'crucible run'} {remote_path}"
         logger.info(f"[benchmark] Executing: {cmd}")
         result = await ssh.run(controller, cmd, timeout=1800)
