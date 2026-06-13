@@ -138,9 +138,11 @@ def create_review_tool_handlers(
     async def get_run_summary(
         run_id: str, controller: str, ssh_key_path: str | None = None,
     ) -> dict:
+        output_dir = f"/tmp/review-{run_id[:8]}"
         cmd = (
+            f"mkdir -p {output_dir} && "
             f"crucible get result --run {run_id} "
-            f"--output-dir /tmp/review-{run_id[:8]} "
+            f"--output-dir {output_dir} "
             f"--output-format json,txt"
         )
         result = await ssh.run(controller, cmd, timeout=120, key_path=ssh_key_path)
@@ -155,7 +157,7 @@ def create_review_tool_handlers(
 
         json_result = await ssh.run(
             controller,
-            f"cat /tmp/review-{run_id[:8]}/result-summary.json",
+            f"cat {output_dir}/result-summary.json",
             timeout=30,
             key_path=ssh_key_path,
         )
