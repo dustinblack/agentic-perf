@@ -77,30 +77,10 @@ async def test_get_execution_config_not_found(handlers):
 
 
 @pytest.mark.asyncio
-async def test_generate_run_file_crucible(handlers):
-    result = await handlers["generate_run_file"](
-        benchmark="fio",
-        endpoints=[{"host": "10.0.0.1", "roles": ["client"]}],
-        harness="crucible",
-    )
-    assert result["status"] == "generated"
-    assert result["harness"] == "crucible"
-    params = result["run_file"]["params_received"]
-    assert params["harness"] == "crucible"
-    assert params["endpoints"] == [{"host": "10.0.0.1", "roles": ["client"]}]
-    assert params["userenv"] == "alma8"
-    assert params["osruntime"] == "podman"
+async def test_no_generate_run_file_tool(handlers):
+    assert "generate_run_file" not in handlers
 
 
 @pytest.mark.asyncio
-async def test_generate_run_file_zathras(handlers):
-    result = await handlers["generate_run_file"](
-        benchmark="streams",
-        endpoints=[{"host": "10.0.0.5", "roles": ["client"]}],
-        harness="zathras",
-    )
-    assert result["status"] == "generated"
-    assert result["harness"] == "zathras"
-    params = result["run_file"]["params_received"]
-    assert params["harness"] == "zathras"
-    assert params["endpoints"] == [{"host": "10.0.0.5", "roles": ["client"]}]
+async def test_no_validate_run_file_tool(handlers):
+    assert "validate_run_file" not in handlers
