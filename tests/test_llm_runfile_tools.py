@@ -175,26 +175,6 @@ async def test_get_example_runfile_not_found(handlers_with_schema):
 
 
 @pytest.mark.asyncio
-async def test_validate_run_file_valid(handlers_with_schema):
-    valid_runfile = {
-        "benchmarks": [{"name": "uperf", "ids": "1", "mv-params": {}}],
-    }
-    result = await handlers_with_schema["validate_run_file"](run_file=valid_runfile)
-    assert result["harness"] == "crucible"
-    assert result["valid"] is True
-    assert result["errors"] == []
-
-
-@pytest.mark.asyncio
-async def test_validate_run_file_invalid(handlers_with_schema):
-    invalid_runfile = {"benchmarks": [], "harness": "bad_key"}
-    result = await handlers_with_schema["validate_run_file"](run_file=invalid_runfile)
-    assert result["harness"] == "crucible"
-    # MockSkillProvider.validate_runfile returns valid=True by default (no schema check)
-    # but the handler still calls it correctly
-
-
-@pytest.mark.asyncio
 async def test_present_runfile_for_approval():
     clarification_calls = []
 
@@ -225,7 +205,7 @@ async def test_present_runfile_for_approval():
 
 @pytest.mark.asyncio
 async def test_execute_benchmark_accepts_llm_constructed_runfile(handlers_with_schema):
-    """When generate_run_file was NOT called, execute_benchmark should use the provided run-file."""
+    """execute_benchmark should pass the LLM's run-file directly to the controller."""
     llm_runfile = {
         "benchmarks": [{"name": "uperf", "ids": "1", "mv-params": {}}],
         "endpoints": [
@@ -241,15 +221,12 @@ async def test_execute_benchmark_accepts_llm_constructed_runfile(handlers_with_s
             },
         ],
     }
-    # Don't call generate_run_file first — stash is empty
     result = await handlers_with_schema["execute_benchmark"](
         controller="10.0.0.1",
         run_file=llm_runfile,
         harness="crucible",
         run_command="crucible run",
     )
-    # The run-file should NOT be rejected by the stash override.
-    # It may fail at SCP (no real SSH in tests) but must not be "rejected".
-    assert result["status"] != "rejected", (
-        "LLM-constructed run-file was rejected — stash override should not apply"
-    )
+    # May fail at SCP (no real SSH in tests) but must not be "rejected"
+    # by any local validation — the controller is the single source of truth.
+    assert result["status"] != "rejected"

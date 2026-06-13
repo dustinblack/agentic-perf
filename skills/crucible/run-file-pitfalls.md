@@ -47,6 +47,53 @@ Minimum:
 ]
 ```
 
+## mv-params is mandatory
+
+Every benchmark object in the `benchmarks` array MUST include
+an `mv-params` key — the schema requires it. This is where you
+define what the benchmark actually does (test type, message sizes,
+duration, etc.).
+
+Use `get_benchmark_params` to discover valid parameters and
+presets for each benchmark. At minimum:
+
+```json
+"benchmarks": [
+  {
+    "name": "uperf",
+    "ids": "1",
+    "mv-params": {
+      "sets": [
+        {
+          "params": [
+            {"arg": "test-type", "vals": ["stream"], "role": "client"},
+            {"arg": "protocol", "vals": ["tcp"], "role": "client"},
+            {"arg": "wsize", "vals": ["16384"], "role": "client"},
+            {"arg": "duration", "vals": ["60"], "role": "client"},
+            {"arg": "nthreads", "vals": ["1"], "role": "client"},
+            {"arg": "remotehost", "vals": ["server-host"], "role": "client"}
+          ]
+        }
+      ]
+    }
+  }
+]
+```
+
+For benchmarks with global-options, you can define named param
+groups and reference them from sets via `include`:
+
+```json
+"mv-params": {
+  "global-options": [
+    {"name": "common", "params": [...]}
+  ],
+  "sets": [
+    {"include": "common", "params": [...additional per-set...]}
+  ]
+}
+```
+
 ## "Use IPs not hostnames" scope
 
 The pitfall about using IP addresses instead of hostnames

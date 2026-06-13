@@ -166,58 +166,17 @@ def get_benchmark_tools(
             },
         ),
         ToolDefinition(
-            name="generate_run_file",
-            description=(
-                "Generate a run-file or execution configuration for the benchmark. Uses the "
-                "harness's skill provider to create a properly formatted config with benchmark "
-                "parameters and endpoint definitions. The harness determines the output format "
-                "(JSON runfile for crucible, CLI args for zathras, etc.)."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "benchmark": {"type": "string", "description": "Benchmark name (e.g., 'fio', 'uperf', 'streams')"},
-                    "harness": {"type": "string", "description": "Benchmark harness name (e.g., 'crucible', 'zathras')"},
-                    "endpoints": {
-                        "type": "array",
-                        "description": "Host endpoints for the benchmark",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "host": {"type": "string"},
-                                "user": {"type": "string"},
-                                "roles": {"type": "array", "items": {"type": "string"}},
-                            },
-                            "required": ["host", "roles"],
-                        },
-                    },
-                    "controller": {"type": "string", "description": "Controller hostname or IP. Required so the run-file can set controller-ip-address when controller is also an endpoint."},
-                    "endpoint_type": {
-                        "type": "string",
-                        "enum": ["remotehosts", "kube"],
-                        "description": "Endpoint type. 'remotehosts' for bare-metal/VM, 'kube' for Kubernetes pods (K3s).",
-                    },
-                    "tags": {"type": "object", "description": "Run tags", "additionalProperties": {"type": "string"}},
-                    "userenv": {"type": "string", "description": "User environment / container image (crucible)"},
-                    "osruntime": {"type": "string", "description": "OS runtime (crucible: 'podman', 'chroot')"},
-                    "os_vendor": {"type": "string", "description": "OS vendor (zathras: 'rhel', 'ubuntu', etc.)"},
-                },
-                "required": ["benchmark", "endpoints"],
-            },
-        ),
-        ToolDefinition(
             name="execute_benchmark",
             description=(
-                "Execute the benchmark on the controller host. Uses the run-file from the "
-                "most recent generate_run_file call — pass it through unmodified. For "
-                "crucible, sends a JSON run-file via SCP and runs 'crucible run'. For "
-                "zathras, constructs a burden command. This may take several minutes."
+                "Execute the benchmark on the controller host. For crucible, sends a "
+                "JSON run-file via SCP and runs 'crucible run'. For zathras, constructs "
+                "a burden command. This may take several minutes."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "controller": {"type": "string", "description": "Controller hostname"},
-                    "run_file": {"type": "object", "description": "Complete run-file/config content from generate_run_file"},
+                    "run_file": {"type": "object", "description": "Complete run-file/config content"},
                     "harness": {"type": "string", "description": "Benchmark harness (e.g., 'crucible', 'zathras')"},
                     "run_command": {"type": "string", "description": "Run command from execution config (e.g., 'crucible run', 'burden')"},
                 },
@@ -314,33 +273,10 @@ def get_benchmark_tools(
             },
         ),
         ToolDefinition(
-            name="validate_run_file",
-            description=(
-                "Validate a run-file against the harness schema. Use this to check your "
-                "constructed run-file before presenting it to the user for approval. "
-                "Returns {valid: true/false, errors: [...]}. Fix any errors and re-validate."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "run_file": {
-                        "type": "object",
-                        "description": "The complete run-file to validate",
-                    },
-                    "harness": {
-                        "type": "string",
-                        "description": "Benchmark harness (default: 'crucible')",
-                    },
-                },
-                "required": ["run_file"],
-            },
-        ),
-        ToolDefinition(
             name="present_runfile_for_approval",
             description=(
                 "Present the constructed run-file to the user for review and approval. "
-                "The user can approve, request changes, or reject. Only call this after "
-                "the run-file passes validate_run_file. Returns a status string."
+                "The user can approve, request changes, or reject. Returns a status string."
             ),
             input_schema={
                 "type": "object",
@@ -386,7 +322,6 @@ def create_benchmark_tool_handlers(
 ) -> tuple[dict[str, Any], SSHExecutor]:
 
     ssh = SSHExecutor(user="root")
-    _last_generated_runfile: dict[str, Any] = {}
 
     async def list_harness_docs(harness: str) -> dict:
         if not repo_cache:
@@ -498,85 +433,6 @@ def create_benchmark_tool_handlers(
             "message": "All endpoints accessible" if all_ok else "Some endpoints failed SSH setup",
         }
 
-    async def generate_run_file(
-        benchmark: str,
-        endpoints: list[dict],
-        harness: str | None = None,
-        controller: str | None = None,
-        endpoint_type: str | None = None,
-        tags: dict | None = None,
-        userenv: str | None = None,
-        osruntime: str | None = None,
-        os_vendor: str | None = None,
-    ) -> dict:
-        harness_name = harness or "crucible"
-        exec_config = await skill_provider.get_all_private_config(harness_name)
-        execution = exec_config.get("execution", {})
-        resolved_type = endpoint_type or execution.get("endpoint_type", "remotehosts")
-
-        resolved_endpoints = []
-        resolve_host = controller or endpoints[0]["host"]
-        for ep in endpoints:
-            host = ep["host"]
-            result = await ssh.run(
-                resolve_host,
-                f"python3 -c \"import socket; print(socket.gethostbyname('{host}'))\"",
-            )
-            ip = result.stdout.strip() if result.exit_code == 0 and result.stdout.strip() else host
-            if ip != host:
-                logger.info(f"[benchmark] Resolved {host} -> {ip}")
-            resolved_endpoints.append({**ep, "host": ip})
-
-        params: dict[str, Any] = {
-            "endpoints": resolved_endpoints,
-            "harness": harness_name,
-            "endpoint_type": resolved_type,
-            "endpoint_user": execution.get("endpoint_user", "root"),
-        }
-
-        if controller:
-            ctrl_result = await ssh.run(
-                controller,
-                f"python3 -c \"import socket; print(socket.gethostbyname('{controller}'))\"",
-            )
-            controller_ip = ctrl_result.stdout.strip() if ctrl_result.exit_code == 0 else controller
-            params["controller"] = controller_ip
-            ep_ips = {ep["host"] for ep in resolved_endpoints}
-            if controller_ip in ep_ips:
-                params["controller_ip"] = controller_ip
-                logger.info(
-                    f"[benchmark] Controller is also an endpoint — "
-                    f"setting controller-ip-address={controller_ip}"
-                )
-
-            if resolved_type == "kube":
-                ip_result = await ssh.run(
-                    controller,
-                    "ip route get 1 2>/dev/null | awk '{print $7; exit}'",
-                )
-                kube_controller_ip = ip_result.stdout.strip() if ip_result.exit_code == 0 else controller_ip
-                params["controller_ip"] = kube_controller_ip
-                params["kube_host"] = kube_controller_ip
-                logger.info(f"[benchmark] Kube endpoint: host={kube_controller_ip}")
-
-        if tags:
-            params["tags"] = tags
-        if userenv:
-            params["userenv"] = userenv
-        elif execution.get("default_userenv"):
-            params["userenv"] = execution["default_userenv"]
-        if osruntime:
-            params["osruntime"] = osruntime
-        elif execution.get("default_osruntime"):
-            params["osruntime"] = execution["default_osruntime"]
-        if os_vendor:
-            params["os_vendor"] = os_vendor
-
-        runfile_template = await skill_provider.generate_runfile(benchmark, params)
-        _last_generated_runfile["run_file"] = runfile_template.template
-        _last_generated_runfile["harness"] = harness_name
-        return {"run_file": runfile_template.template, "status": "generated", "harness": harness_name}
-
     async def execute_benchmark(
         controller: str,
         run_file: dict,
@@ -587,29 +443,6 @@ def create_benchmark_tool_handlers(
 
         run_uuid = uuid.uuid4().hex[:8]
         harness_name = harness or "crucible"
-
-        if _last_generated_runfile.get("run_file"):
-            if run_file != _last_generated_runfile["run_file"]:
-                logger.warning(
-                    "[benchmark] LLM modified run-file after generation — "
-                    "using original from generate_run_file"
-                )
-            run_file = _last_generated_runfile["run_file"]
-            harness_name = _last_generated_runfile.get("harness", harness_name)
-        else:
-            logger.info("[benchmark] Using LLM-constructed run-file (no generate_run_file stash)")
-
-        validation = await skill_provider.validate_runfile(run_file, harness_name)
-        if not validation.get("valid", True):
-            return {
-                "status": "rejected",
-                "message": (
-                    "Run-file failed schema validation and was NOT sent to the controller. "
-                    "Fix the run-file and try again. Errors:\n"
-                    + "\n".join(f"  - {e}" for e in validation["errors"])
-                ),
-                "errors": validation["errors"],
-            }
 
         if harness_name == "zathras":
             scenario = run_file.get("scenario", {})
@@ -811,13 +644,6 @@ def create_benchmark_tool_handlers(
             return {"found": False, "message": f"No example run-file for '{benchmark}' in '{harness_name}'"}
         return {"found": True, "benchmark": benchmark, "harness": harness_name, "run_file": example}
 
-    async def handle_validate_run_file(
-        run_file: dict, harness: str | None = None
-    ) -> dict:
-        harness_name = harness or "crucible"
-        result = await skill_provider.validate_runfile(run_file, harness_name)
-        return {"harness": harness_name, **result}
-
     async def handle_present_runfile_for_approval(
         run_file: dict,
         benchmark: str | None = None,
@@ -841,14 +667,12 @@ def create_benchmark_tool_handlers(
         "read_skill": read_skill,
         "get_execution_config": get_execution_config,
         "setup_controller_ssh_keys": setup_controller_ssh_keys,
-        "generate_run_file": generate_run_file,
         "execute_benchmark": execute_benchmark,
         "get_run_logs": get_run_logs,
         "request_clarification": request_clarification,
         "get_runfile_schema": handle_get_runfile_schema,
         "get_benchmark_params": handle_get_benchmark_params,
         "get_example_runfile": handle_get_example_runfile,
-        "validate_run_file": handle_validate_run_file,
         "present_runfile_for_approval": handle_present_runfile_for_approval,
     }
     if repo_cache:

@@ -38,29 +38,22 @@ to construct a correct run file — getting the format right is critical.
 4. **Execute pre-run steps** — For example, if "ssh_key_setup" is listed, call
    `setup_controller_ssh_keys`.
 
-5. **Construct the run-file** — Two paths depending on endpoint_type:
-
-   **5a. remotehosts (default)** — Build the run-file directly:
-   - Read the harness's run-file documentation first
-   - Call `get_benchmark_params(benchmark)`, `get_example_runfile(benchmark)`,
-     and optionally `get_runfile_schema()` for reference
-   - Use the example as a structural template
+5. **Construct the run-file** — You are responsible for building a correct run-file:
+   - Call `get_runfile_schema()` to understand required fields and structure
+   - Call `get_benchmark_params(benchmark)` to see valid parameters and presets
+   - Call `get_example_runfile(benchmark)` for a structural reference (if available)
+   - Read the harness's run-file documentation for format details
    - Use endpoint IPs from assigned_hardware_ips (always use IPs, never hostnames)
+   - For kube endpoints, read kube examples (e.g., oslat has one) and endpoint docs
 
-   **5b. kube** — Use `generate_run_file` with `endpoint_type="kube"`:
-   - Call `generate_run_file(benchmark, endpoints, harness, controller, endpoint_type="kube")`
-   - The generator handles the kube endpoint structure automatically
-   - Do NOT try to construct kube endpoints by hand — use the generator
-
-6. **Validate** — Call `validate_run_file(run_file)` to check schema compliance.
-   If validation fails, fix the errors and re-validate.
-
-7. **Present for approval** — Check directives for "user_pre_run_approval" (default: true).
+6. **Present for approval** — Check directives for "user_pre_run_approval" (default: true).
    If approval is needed, call `present_runfile_for_approval(run_file, benchmark, summary)`.
 
-8. **Execute** — Call `execute_benchmark(controller, run_file, harness, run_command)`.
+7. **Execute** — Call `execute_benchmark(controller, run_file, harness, run_command)`.
+   The controller validates the run-file during execution — if there are schema errors,
+   they will appear in the execution output.
 
-9. **Submit result** — Call `submit_benchmark_result` with the outcome.
+8. **Submit result** — Call `submit_benchmark_result` with the outcome.
 
 ### Common pitfalls:
 - Use IP addresses, never hostnames (IPv6 link-local causes timeouts)
@@ -69,15 +62,9 @@ to construct a correct run file — getting the format right is critical.
 - Set `controller-ip-address` in the remote's settings when controller is also an endpoint
 - `userenv` should be `alma8` for trafficgen (not `default`)
 - `osruntime: podman` needs `host-mounts` for DPDK workloads (e.g., /dev/hugepages)
-
-### When to use generate_run_file
-
-Use `generate_run_file` (instead of hand-constructing) when:
-- **endpoint_type is "kube"** — always use the generator for kube endpoints
-- Unfamiliar benchmark with no example and no documentation available
-- Non-crucible harness (e.g., zathras)
-
-When you use this path, pass the result to execute_benchmark unmodified.
+- Every benchmark object MUST include `mv-params` — it is required by the schema.
+  Use `get_benchmark_params` to see available parameters and presets. Use
+  `get_runfile_schema` to check all required fields before constructing a run-file.
 
 ### Important notes:
 - The controller host runs the benchmark framework. It is NOT an endpoint unless
