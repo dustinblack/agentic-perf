@@ -194,12 +194,25 @@ def create_triage_tool_handlers(
         }
 
     async def resolve_benchmark(
-        description: str, workload_type: str = ""
+        description: str, workload_type: str = "", harness: str = ""
     ) -> dict:
-        result = await skill_provider.resolve_benchmark(
-            {"description": description, "workload_type": workload_type}
-        )
-        return {"matched_suite": result}
+        reqs: dict[str, Any] = {"description": description, "workload_type": workload_type}
+        if harness:
+            reqs["harness"] = harness
+        result = await skill_provider.resolve_benchmark(reqs)
+        if result is None:
+            return {"matched_suite": None}
+        capable = []
+        if hasattr(skill_provider, "find_capable_harnesses"):
+            capable = await skill_provider.find_capable_harnesses(result)
+        harnesses = [c["harness"] for c in capable]
+        response: dict[str, Any] = {"matched_suite": result, "harnesses": harnesses}
+        if len(harnesses) == 1:
+            response["harness"] = harnesses[0]
+            response["note"] = f"Only '{harnesses[0]}' provides this benchmark — set harness directive to '{harnesses[0]}'"
+        elif len(harnesses) > 1:
+            response["note"] = f"Multiple harnesses offer this benchmark: {harnesses}. Set harness directive if the user specified one, otherwise the default harness will be used."
+        return response
 
     async def request_clarification(question: str) -> str:
         await request_clarification_fn(question)

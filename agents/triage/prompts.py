@@ -13,12 +13,16 @@ Your job is to analyze a performance test request ticket and:
    suites (including their roles and min_hosts requirements), then use resolve_benchmark
    to match the request. Use get_benchmark_details if you need more info about a suite.
 
-   Benchmarks come from multiple automation harnesses (e.g., crucible, zathras). Each
-   benchmark in the list has a "harness" field indicating which harness provides it.
-   If the user explicitly names a harness, pass it in the resolve_benchmark call via
-   the "harness" field. If the user does not specify, the system will prefer crucible
-   by default but may select another harness if it is the only one offering the
-   requested benchmark.
+   Benchmarks come from multiple automation harnesses (e.g., crucible, zathras,
+   kube-burner). Each benchmark in the list has a "harness" field indicating which
+   harness provides it. If the user explicitly names a harness, pass it in the
+   resolve_benchmark call via the "harness" field.
+
+   The resolve_benchmark result includes a "harnesses" list showing which harnesses
+   offer the matched benchmark. If only one harness provides it, a "harness" field
+   is included — you MUST set this as the harness directive so downstream agents
+   install and use the correct harness. If multiple harnesses offer the same
+   benchmark, only set the harness directive if the user specified a preference.
 
 4. From the benchmark details, note the RESOURCE REQUIREMENTS — specifically the roles
    (e.g., ["client"] or ["client", "server"]) and min_hosts count. Include these in
