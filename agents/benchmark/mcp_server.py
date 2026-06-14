@@ -449,6 +449,57 @@ def create_benchmark_tool_handlers(
         run_uuid = uuid.uuid4().hex[:8]
         harness_name = harness or "crucible"
 
+        if harness_name == "kube-burner":
+            try:
+                import yaml
+                yaml_dump = yaml.dump
+            except ImportError:
+                yaml_dump = None
+
+            config = run_file.get("config", {})
+            templates = run_file.get("templates", {})
+
+            template_dir = f"/tmp/kb-{run_uuid}"
+            config_path = f"{template_dir}/config.yml"
+
+            await ssh.run(controller, f"mkdir -p {template_dir}")
+
+            if yaml_dump:
+                config_content = yaml_dump(config, default_flow_style=False)
+            else:
+                config_content = json.dumps(config, indent=2)
+
+            await ssh.run(
+                controller,
+                f"cat > {config_path} << 'KBEOF'\n{config_content}\nKBEOF",
+            )
+
+            for tpl_name, tpl_content in templates.items():
+                tpl_path = f"{template_dir}/{tpl_name}"
+                await ssh.run(
+                    controller,
+                    f"cat > {tpl_path} << 'KBEOF'\n{tpl_content}\nKBEOF",
+                )
+
+            kb_cmd = run_command or "kube-burner init"
+            cmd = f"cd {template_dir} && {kb_cmd} -c {config_path} --uuid {run_uuid} --local-indexing 2>&1"
+            logger.info(f"[benchmark] Executing kube-burner: {cmd}")
+            result = await ssh.run(controller, cmd, timeout=0, allocate_pty=True)
+
+            return {
+                "status": "completed" if result.exit_code == 0 else "failed",
+                "exit_code": result.exit_code,
+                "run_id": f"kube-burner-{run_uuid}",
+                "harness": "kube-burner",
+                "output": result.stdout[-3000:] if result.stdout else "",
+                "error": result.stderr[-1000:] if result.stderr else "",
+                "message": (
+                    "Benchmark completed"
+                    if result.exit_code == 0
+                    else f"Benchmark failed (exit {result.exit_code})"
+                ),
+            }
+
         if harness_name == "zathras":
             scenario = run_file.get("scenario", {})
             if not scenario and ("global" in run_file or "systems" in run_file):

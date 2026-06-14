@@ -21,6 +21,11 @@ ZATHRAS_BENCHMARKS = [
     BenchmarkSuite(name="linpack", description="Zathras linpack", roles=["client"], min_hosts=1, harness="zathras"),
 ]
 
+KUBE_BURNER_BENCHMARKS = [
+    BenchmarkSuite(name="node-density", description="Pod density stress test", roles=["client"], min_hosts=1, harness="kube-burner", endpoint_types=["kube"]),
+    BenchmarkSuite(name="cluster-density", description="API/etcd stress test", roles=["client"], min_hosts=1, harness="kube-burner", endpoint_types=["kube"]),
+]
+
 
 @pytest.fixture
 def mock_crucible() -> MockSkillProvider:
@@ -41,9 +46,18 @@ def mock_zathras() -> MockSkillProvider:
 
 
 @pytest.fixture
-def multi(mock_crucible, mock_zathras) -> MultiHarnessSkillProvider:
+def mock_kube_burner() -> MockSkillProvider:
+    return MockSkillProvider(
+        benchmarks=KUBE_BURNER_BENCHMARKS,
+        resolve_result="node-density",
+        runfile_template=RunfileTemplate(benchmark="node-density", template={"harness": "kube-burner"}),
+    )
+
+
+@pytest.fixture
+def multi(mock_crucible, mock_zathras, mock_kube_burner) -> MultiHarnessSkillProvider:
     return MultiHarnessSkillProvider(
-        harnesses={"crucible": mock_crucible, "zathras": mock_zathras},
+        harnesses={"crucible": mock_crucible, "zathras": mock_zathras, "kube-burner": mock_kube_burner},
         default_harness="crucible",
     )
 
@@ -55,6 +69,8 @@ async def test_list_benchmarks_aggregates(multi: MultiHarnessSkillProvider):
     assert "trafficgen" in names
     assert "streams" in names
     assert "linpack" in names
+    assert "node-density" in names
+    assert "cluster-density" in names
     assert names.count("fio") == 2
 
 
@@ -63,6 +79,7 @@ async def test_list_harnesses(multi: MultiHarnessSkillProvider):
     harnesses = multi.list_harnesses()
     assert "crucible" in harnesses
     assert "zathras" in harnesses
+    assert "kube-burner" in harnesses
 
 
 @pytest.mark.asyncio
@@ -153,6 +170,35 @@ async def test_find_capable_harnesses_one(multi: MultiHarnessSkillProvider):
 async def test_find_capable_harnesses_none(multi: MultiHarnessSkillProvider):
     capable = await multi.find_capable_harnesses("nonexistent")
     assert capable == []
+
+
+@pytest.mark.asyncio
+async def test_get_benchmark_kube_burner(multi: MultiHarnessSkillProvider):
+    result = await multi.get_benchmark("node-density")
+    assert result is not None
+    assert result.harness == "kube-burner"
+
+
+@pytest.mark.asyncio
+async def test_find_capable_harnesses_kube_burner(multi: MultiHarnessSkillProvider):
+    capable = await multi.find_capable_harnesses("node-density")
+    assert len(capable) == 1
+    assert capable[0]["harness"] == "kube-burner"
+
+
+@pytest.mark.asyncio
+async def test_resolve_benchmark_with_kube_burner_pref(multi: MultiHarnessSkillProvider):
+    result = await multi.resolve_benchmark({
+        "description": "anything",
+        "harness": "kube-burner",
+    })
+    assert result == "node-density"
+
+
+@pytest.mark.asyncio
+async def test_generate_runfile_kube_burner(multi: MultiHarnessSkillProvider):
+    result = await multi.generate_runfile("node-density", {})
+    assert result.template["harness"] == "kube-burner"
 
 
 @pytest.mark.asyncio

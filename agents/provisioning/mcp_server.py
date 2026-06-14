@@ -762,6 +762,32 @@ def create_provisioning_tool_handlers(
                 "message": f"{harness_name} installed" if result.exit_code == 0 else f"Install failed (exit {result.exit_code})",
             }
 
+        if install_method == "binary_download":
+            install_cmd = provisioning.get("install_command")
+            if not install_cmd:
+                return {
+                    "host": host,
+                    "status": "failed",
+                    "message": f"No install_command in private config for {harness_name}",
+                }
+
+            logger.info(f"[provision] Installing {harness_name} binary on {host}")
+            result = await ssh.run(host, install_cmd, timeout=120)
+            return {
+                "host": host,
+                "harness": harness_name,
+                "status": "success" if result.exit_code == 0 else "failed",
+                "exit_code": result.exit_code,
+                "install_path": target_path,
+                "output": result.stdout[-1000:] if result.stdout else "",
+                "error": result.stderr[-1000:] if result.stderr else "",
+                "message": (
+                    f"{harness_name} binary installed"
+                    if result.exit_code == 0
+                    else f"Binary install failed (exit {result.exit_code})"
+                ),
+            }
+
         return {
             "host": host,
             "status": "failed",
