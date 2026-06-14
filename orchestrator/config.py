@@ -83,6 +83,7 @@ class OrchestratorConfig:
             "crucible": "https://github.com/perftool-incubator/crucible.git",
             "crucible-examples": "https://github.com/perftool-incubator/crucible-examples.git",
             "zathras": "https://github.com/redhat-performance/zathras.git",
+            "kube-burner": "https://github.com/kube-burner/kube-burner.git",
         }
         env_repos = os.environ.get("HARNESS_REPOS")
         if env_repos:
