@@ -6,16 +6,24 @@ from .base import BenchmarkSuite, RunfileTemplate, SkillProvider
 
 VALID_PROFILES = {
     "TCP_STREAM",
+    "TCP_STREAM_LAT",
     "UDP_STREAM",
     "TCP_RR",
     "UDP_RR",
     "TCP_CRR",
+    "UDP_CRR",
+    "SCTP_STREAM",
+    "SCTP_RR",
+    "SCTP_CRR",
 }
 
 DRIVER_PROFILES = {
-    "netperf": {"TCP_STREAM", "UDP_STREAM", "TCP_RR", "UDP_RR", "TCP_CRR"},
+    "netperf": {
+        "TCP_STREAM", "UDP_STREAM", "TCP_RR", "UDP_RR",
+        "TCP_CRR", "UDP_CRR", "SCTP_STREAM", "SCTP_RR", "SCTP_CRR",
+    },
     "iperf3": {"TCP_STREAM", "UDP_STREAM"},
-    "uperf": {"TCP_STREAM", "UDP_STREAM", "TCP_RR", "UDP_RR"},
+    "uperf": {"TCP_STREAM", "TCP_STREAM_LAT", "UDP_STREAM", "TCP_RR", "UDP_RR"},
 }
 
 KEYWORD_MAP = {
@@ -57,8 +65,9 @@ _BENCHMARKS: dict[str, dict[str, Any]] = {
             "profiles": {
                 "type": "array",
                 "description": (
-                    "Test profiles to run: TCP_STREAM, UDP_STREAM, "
-                    "TCP_RR, UDP_RR, TCP_CRR"
+                    "Test profiles to run: TCP_STREAM, TCP_STREAM_LAT (uperf only), "
+                    "UDP_STREAM, TCP_RR, UDP_RR, TCP_CRR, UDP_CRR, "
+                    "SCTP_STREAM, SCTP_RR, SCTP_CRR"
                 ),
                 "default": ["TCP_STREAM"],
             },
