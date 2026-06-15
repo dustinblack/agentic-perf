@@ -9,16 +9,19 @@ transaction rates.
 
 | Driver | Profiles | Notes |
 |--------|----------|-------|
-| netperf | TCP_STREAM, UDP_STREAM, TCP_RR, UDP_RR, TCP_CRR | Default driver, most profiles |
+| netperf | TCP_STREAM, UDP_STREAM, TCP_RR, UDP_RR, TCP_CRR, UDP_CRR, SCTP_STREAM, SCTP_RR, SCTP_CRR | Default driver, most profiles |
 | iperf3 | TCP_STREAM, UDP_STREAM | Simpler, widely available |
-| uperf | TCP_STREAM, UDP_STREAM, TCP_RR, UDP_RR | Also used by crucible directly |
+| uperf | TCP_STREAM, TCP_STREAM_LAT, UDP_STREAM, TCP_RR, UDP_RR | Also used by crucible directly |
 
 ## Test Profiles
 
 ### Stream tests (throughput)
 
 - **TCP_STREAM** — Unidirectional TCP throughput (Mb/s)
+- **TCP_STREAM_LAT** — TCP stream with latency measurement
+  (uperf only)
 - **UDP_STREAM** — Unidirectional UDP throughput (Mb/s)
+- **SCTP_STREAM** — Unidirectional SCTP throughput (Mb/s)
 
 ### Request-response tests (latency)
 
@@ -26,6 +29,9 @@ transaction rates.
 - **UDP_RR** — UDP request-response transactions per second
 - **TCP_CRR** — TCP connect + request-response (measures
   connection setup overhead)
+- **UDP_CRR** — UDP connect + request-response
+- **SCTP_RR** — SCTP request-response transactions per second
+- **SCTP_CRR** — SCTP connect + request-response
 
 ## Network Scenarios
 

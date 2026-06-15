@@ -158,7 +158,12 @@ also available at `quay.io/cloud-bulldozer/k8s-netperf`.
 | Profile | netperf | iperf3 | uperf |
 |---------|---------|--------|-------|
 | TCP_STREAM | yes | yes | yes |
+| TCP_STREAM_LAT | no | no | yes |
 | UDP_STREAM | yes | yes | yes |
 | TCP_RR | yes | no | yes |
 | UDP_RR | yes | no | yes |
 | TCP_CRR | yes | no | no |
+| UDP_CRR | yes | no | no |
+| SCTP_STREAM | yes | no | no |
+| SCTP_RR | yes | no | no |
+| SCTP_CRR | yes | no | no |
