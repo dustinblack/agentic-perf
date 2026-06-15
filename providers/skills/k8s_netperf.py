@@ -203,6 +203,40 @@ class K8sNetperfSkillProvider(SkillProvider):
 
         return RunfileTemplate(benchmark="k8s-netperf", template=template)
 
+    async def get_default_config(self) -> dict[str, Any]:
+        return {
+            "provisioning": {
+                "install_method": "binary_download",
+                "install_command": (
+                    "curl -Ls https://raw.githubusercontent.com/cloud-bulldozer/"
+                    "k8s-netperf/refs/heads/main/hack/install.sh"
+                    " | INSTALL_DIR=/usr/local/bin sh"
+                ),
+                "install_target_path": "/usr/local/bin",
+                "verify_command": "k8s-netperf --help",
+                "on_existing_install": "skip",
+                "pre_install_commands": [
+                    "systemctl mask firewalld iptables nftables 2>/dev/null;"
+                    " systemctl stop firewalld iptables nftables 2>/dev/null;"
+                    " true",
+                ],
+            },
+            "execution": {
+                "controller_required": True,
+                "run_command": "k8s-netperf",
+                "endpoint_type": "kube",
+                "endpoint_user": "root",
+                "run_file_format": "yaml_config",
+                "kube": {
+                    "description": (
+                        "Kubernetes network performance testing with k8s-netperf"
+                    ),
+                    "min_root_volume_gb": 50,
+                    "self_ssh_required": False,
+                },
+            },
+        }
+
     async def get_benchmark_params(self, benchmark: str) -> dict[str, Any] | None:
         info = _BENCHMARKS.get(benchmark)
         if info is None:
