@@ -6,6 +6,17 @@ from .base import BenchmarkSuite, RunfileTemplate, SkillProvider
 from .private import PrivateSkillProvider
 
 
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Merge override into base, recursing into nested dicts."""
+    result = dict(base)
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
 class MultiHarnessSkillProvider(SkillProvider):
     """Aggregates multiple benchmark harness providers into a single interface.
 
@@ -107,7 +118,14 @@ class MultiHarnessSkillProvider(SkillProvider):
     async def get_all_private_config(
         self, suite_name: str
     ) -> dict[str, Any]:
-        return await self._private.get_all_private_config(suite_name)
+        provider = self._harnesses.get(suite_name)
+        defaults = await provider.get_default_config() if provider else {}
+        private = await self._private.get_all_private_config(suite_name)
+        if not defaults:
+            return private
+        if not private:
+            return defaults
+        return _deep_merge(defaults, private)
 
     async def get_runfile_schema(
         self, harness: str | None = None

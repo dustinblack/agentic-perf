@@ -336,6 +336,20 @@ async def test_test_name_includes_messagesize(provider: K8sNetperfSkillProvider)
 
 
 @pytest.mark.asyncio
+async def test_get_default_config(provider: K8sNetperfSkillProvider):
+    config = await provider.get_default_config()
+    assert "provisioning" in config
+    assert "execution" in config
+    prov = config["provisioning"]
+    assert prov["install_method"] == "binary_download"
+    assert "k8s-netperf" in prov["install_command"]
+    assert prov["verify_command"] == "k8s-netperf --help"
+    exe = config["execution"]
+    assert exe["controller_required"] is True
+    assert exe["endpoint_type"] == "kube"
+
+
+@pytest.mark.asyncio
 async def test_string_profile_coerced_to_list(provider: K8sNetperfSkillProvider):
     result = await provider.generate_runfile(
         "k8s-netperf", {"profiles": "TCP_RR"}

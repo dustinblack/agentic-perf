@@ -42,6 +42,9 @@ class SkillProvider(ABC):
     ) -> RunfileTemplate:
         ...
 
+    async def get_default_config(self) -> dict[str, Any]:
+        return {}
+
     async def get_private_config(
         self, suite_name: str, key: str
     ) -> Any | None:
