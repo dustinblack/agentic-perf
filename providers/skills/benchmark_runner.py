@@ -353,6 +353,7 @@ class BenchmarkRunnerSkillProvider(SkillProvider):
             "SAVE_ARTIFACTS_LOCAL": "True",
             "log_level": "INFO",
             "DELETE_ALL": "True",
+            "ODF_PVC": "False",
         }
 
         if merged.get("timeout"):
