@@ -862,6 +862,78 @@ def create_benchmark_tool_handlers(
                 ),
             }
 
+        if harness_name == "forge":
+            project = run_file.get("project", "rhaiis")
+            presets = run_file.get("presets", [])
+            cli_args = run_file.get("cli_args", [])
+            config_overrides = run_file.get("config_overrides", {})
+            artifacts_dir = run_file.get(
+                "artifacts_dir", f"/tmp/forge-artifacts-{run_uuid}"
+            )
+            kubeconfig = run_file.get("kubeconfig", "/root/.kube/config")
+
+            forge_cmd = run_command or "cd /opt/forge && ./bin/run_cli"
+            preset_flags = " ".join(f"--preset {p}" for p in presets)
+            args_str = " ".join(cli_args)
+
+            env_prefix = f"KUBECONFIG={kubeconfig} ARTIFACT_DIR={artifacts_dir}"
+
+            await ssh.run(controller, f"mkdir -p {artifacts_dir}")
+
+            prep_cmd = f"{env_prefix} {forge_cmd} {project} {preset_flags} prepare 2>&1"
+            logger.info(f"[benchmark] Forge prepare: {prep_cmd}")
+            prep_result = await ssh.run(
+                controller, prep_cmd, timeout=0, allocate_pty=True
+            )
+
+            if prep_result.exit_code != 0:
+                return {
+                    "status": "failed",
+                    "exit_code": prep_result.exit_code,
+                    "phase": "prepare",
+                    "run_id": f"forge-{run_uuid}",
+                    "harness": "forge",
+                    "project": project,
+                    "output": prep_result.stdout[-3000:] if prep_result.stdout else "",
+                    "error": prep_result.stderr[-1000:] if prep_result.stderr else "",
+                    "message": f"Forge prepare failed (exit {prep_result.exit_code})",
+                }
+
+            test_cmd = (
+                f"{env_prefix} {forge_cmd} {project} {preset_flags} test"
+                f"{' ' + args_str if args_str else ''} 2>&1"
+            )
+            logger.info(f"[benchmark] Forge test: {test_cmd}")
+            result = await ssh.run(
+                controller, test_cmd, timeout=0, allocate_pty=True
+            )
+
+            ai_eval = "{}"
+            eval_cmd = (
+                f"find {artifacts_dir} -name ai_eval_payload.json"
+                f" -exec cat {{}} \\; 2>/dev/null | head -1"
+            )
+            eval_result = await ssh.run(controller, eval_cmd)
+            if eval_result.exit_code == 0 and eval_result.stdout.strip():
+                ai_eval = eval_result.stdout.strip()
+
+            return {
+                "status": "completed" if result.exit_code == 0 else "failed",
+                "exit_code": result.exit_code,
+                "run_id": f"forge-{run_uuid}",
+                "harness": "forge",
+                "project": project,
+                "artifacts_dir": artifacts_dir,
+                "ai_eval_payload": ai_eval,
+                "output": result.stdout[-3000:] if result.stdout else "",
+                "error": result.stderr[-1000:] if result.stderr else "",
+                "message": (
+                    "Benchmark completed"
+                    if result.exit_code == 0
+                    else f"Benchmark failed (exit {result.exit_code})"
+                ),
+            }
+
         if harness_name == "clusterbuster":
             try:
                 import yaml

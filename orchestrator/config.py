@@ -89,6 +89,7 @@ class OrchestratorConfig:
             "clusterbuster": "https://github.com/redhat-performance/clusterbuster.git",
             "vstorm": "https://github.com/gqlo/vstorm.git",
             "ioscale": "https://github.com/ekuric/ioscale.git",
+            "forge": "https://github.com/openshift-psap/forge.git",
         }
         env_repos = os.environ.get("HARNESS_REPOS")
         if env_repos:
