@@ -285,6 +285,82 @@ class TestAWSResourceProvider:
         assert "skipped" in result["hosts"]["1.2.3.4"]
 
     @pytest.mark.asyncio
+    async def test_reserve_az_fallback(self):
+        """When first AZ has no capacity, retry in another AZ."""
+        provider = self._make_provider()
+        mock_ec2 = MagicMock()
+
+        # describe_subnets returns subnets in two AZs
+        mock_ec2.describe_subnets.return_value = {
+            "Subnets": [
+                {"SubnetId": "subnet-456", "AvailabilityZone": "us-east-1a", "VpcId": "vpc-1"},
+                {"SubnetId": "subnet-789", "AvailabilityZone": "us-east-1b", "VpcId": "vpc-1"},
+            ]
+        }
+        mock_ec2.describe_images.return_value = {
+            "Images": [{"RootDeviceName": "/dev/sda1"}]
+        }
+
+        # First call raises InsufficientInstanceCapacity, second succeeds
+        capacity_error = Exception("InsufficientInstanceCapacity")
+        capacity_error.response = {"Error": {"Code": "InsufficientInstanceCapacity"}}
+        mock_ec2.run_instances.side_effect = [
+            capacity_error,
+            {"Instances": [{"InstanceId": "i-fallback"}]},
+        ]
+        mock_ec2.describe_instances.return_value = {
+            "Reservations": [{
+                "Instances": [{
+                    "InstanceId": "i-fallback",
+                    "State": {"Name": "running"},
+                    "PublicIpAddress": "1.2.3.4",
+                    "PrivateIpAddress": "10.0.0.1",
+                }]
+            }]
+        }
+        provider._ec2_client = mock_ec2
+        provider.setup_ssh = AsyncMock(return_value={"status": "success"})
+
+        result = await provider.reserve(
+            selection={"instance_type": "c5n.18xlarge", "count": 1},
+            description="test fallback",
+        )
+        assert result["status"] == "success"
+        assert mock_ec2.run_instances.call_count == 2
+        # Second call should use the fallback subnet
+        second_call_kwargs = mock_ec2.run_instances.call_args_list[1]
+        assert second_call_kwargs.kwargs.get("SubnetId", second_call_kwargs[1].get("SubnetId")) == "subnet-789" or \
+            "subnet-789" in str(second_call_kwargs)
+
+    @pytest.mark.asyncio
+    async def test_reserve_all_azs_exhausted(self):
+        """When all AZs have no capacity, raise the error."""
+        provider = self._make_provider()
+        mock_ec2 = MagicMock()
+
+        mock_ec2.describe_subnets.return_value = {
+            "Subnets": [
+                {"SubnetId": "subnet-456", "AvailabilityZone": "us-east-1a", "VpcId": "vpc-1"},
+                {"SubnetId": "subnet-789", "AvailabilityZone": "us-east-1b", "VpcId": "vpc-1"},
+            ]
+        }
+        mock_ec2.describe_images.return_value = {
+            "Images": [{"RootDeviceName": "/dev/sda1"}]
+        }
+
+        capacity_error = Exception("InsufficientInstanceCapacity")
+        capacity_error.response = {"Error": {"Code": "InsufficientInstanceCapacity"}}
+        mock_ec2.run_instances.side_effect = capacity_error
+        provider._ec2_client = mock_ec2
+
+        with pytest.raises(Exception, match="InsufficientInstanceCapacity"):
+            await provider.reserve(
+                selection={"instance_type": "c5n.18xlarge", "count": 1},
+                description="test exhausted",
+            )
+        assert mock_ec2.run_instances.call_count == 2
+
+    @pytest.mark.asyncio
     async def test_from_secrets(self):
         from providers.resource.aws import AWSResourceProvider
 
