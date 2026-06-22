@@ -142,6 +142,33 @@ class AWSResourceProvider(ResourceProvider):
             ),
         }
 
+    async def _get_fallback_subnets(self, ec2, preferred_subnet: str) -> list[str]:
+        """Return subnets across AZs, starting with the preferred one."""
+        response = await asyncio.to_thread(
+            ec2.describe_subnets,
+            Filters=[
+                {"Name": "vpc-id", "Values": [await self._get_vpc_id(ec2, preferred_subnet)]},
+            ],
+        )
+        subnets = [preferred_subnet]
+        seen_azs = set()
+        # Get the AZ of the preferred subnet so we skip duplicates
+        for s in response["Subnets"]:
+            if s["SubnetId"] == preferred_subnet:
+                seen_azs.add(s["AvailabilityZone"])
+                break
+        for s in response["Subnets"]:
+            if s["SubnetId"] != preferred_subnet and s["AvailabilityZone"] not in seen_azs:
+                subnets.append(s["SubnetId"])
+                seen_azs.add(s["AvailabilityZone"])
+        return subnets
+
+    async def _get_vpc_id(self, ec2, subnet_id: str) -> str:
+        response = await asyncio.to_thread(
+            ec2.describe_subnets, SubnetIds=[subnet_id]
+        )
+        return response["Subnets"][0]["VpcId"]
+
     async def reserve(
         self,
         selection: dict[str, Any],
@@ -203,7 +230,30 @@ class AWSResourceProvider(ResourceProvider):
             ],
         }
 
-        response = await asyncio.to_thread(ec2.run_instances, **run_kwargs)
+        subnets = await self._get_fallback_subnets(ec2, self._subnet_id)
+        response = None
+        last_error = None
+        for subnet_id in subnets:
+            run_kwargs["SubnetId"] = subnet_id
+            try:
+                response = await asyncio.to_thread(ec2.run_instances, **run_kwargs)
+                logger.info(f"[aws-provider] Launched in subnet {subnet_id}")
+                break
+            except Exception as e:
+                error_code = getattr(e, "response", {}).get("Error", {}).get("Code", "")
+                if error_code == "InsufficientInstanceCapacity":
+                    logger.warning(
+                        f"[aws-provider] No capacity in subnet {subnet_id}, "
+                        f"trying next AZ..."
+                    )
+                    last_error = e
+                    continue
+                raise
+
+        if response is None:
+            raise last_error or RuntimeError(
+                f"No capacity for {count}x {instance_type} in any AZ in {self._region}"
+            )
 
         instance_ids = [i["InstanceId"] for i in response["Instances"]]
         logger.info(f"[aws-provider] Launched instances: {instance_ids}")
