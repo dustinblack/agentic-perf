@@ -775,7 +775,7 @@ def create_benchmark_tool_handlers(
                 )
                 cmd = (
                     f"cd /opt/ioscale/io-generic && "
-                    f"{kc} python3 fio-tests.py -c {config_path} 2>&1"
+                    f"{kc} python3 fio-tests.py -c {config_path} --yes-i-mean-it 2>&1"
                 )
             else:
                 db_cfg = test_config.get("database", {})
