@@ -265,7 +265,6 @@ class AgentBase(ABC):
     async def _transition_ticket(
         self, ticket_id: str, new_status: str, comment: str | None = None
     ) -> dict[str, Any]:
-        self._emit(ticket_id, "transition", {"to": new_status, "comment": comment})
         body: dict[str, Any] = {"status": new_status}
         if comment:
             body["comment"] = comment
