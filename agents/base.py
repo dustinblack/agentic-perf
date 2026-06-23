@@ -34,6 +34,7 @@ class AgentBase(ABC):
         self.store_url = state_store_url.rstrip("/")
         self.tools = tools or []
         self._tool_handlers = tool_handlers or {}
+        self._mcp = None
         self._client = httpx.AsyncClient(timeout=30.0)
         self._events = event_bus
 
@@ -218,26 +219,43 @@ class AgentBase(ABC):
 
     async def _execute_tool(self, tool_call: ToolCall) -> ToolResult:
         handler = self._tool_handlers.get(tool_call.name)
-        if handler is None:
-            return ToolResult(
-                tool_use_id=tool_call.id,
-                content=f"Unknown tool: {tool_call.name}",
-                is_error=True,
-            )
-        try:
-            result = await handler(**tool_call.input)
-            if isinstance(result, str):
-                content = result
-            else:
-                content = json.dumps(result, default=str)
-            return ToolResult(tool_use_id=tool_call.id, content=content)
-        except Exception as e:
-            logger.exception(f"[{self.agent_name}] Tool {tool_call.name} failed")
-            return ToolResult(
-                tool_use_id=tool_call.id,
-                content=f"Tool error: {e}",
-                is_error=True,
-            )
+        if handler is not None:
+            try:
+                result = await handler(**tool_call.input)
+                if isinstance(result, str):
+                    content = result
+                else:
+                    content = json.dumps(result, default=str)
+                return ToolResult(tool_use_id=tool_call.id, content=content)
+            except Exception as e:
+                logger.exception(f"[{self.agent_name}] Tool {tool_call.name} failed")
+                return ToolResult(
+                    tool_use_id=tool_call.id,
+                    content=f"Tool error: {e}",
+                    is_error=True,
+                )
+
+        if self._mcp is not None:
+            try:
+                content = await self._mcp.call_tool(
+                    tool_call.name, tool_call.input
+                )
+                return ToolResult(tool_use_id=tool_call.id, content=content)
+            except Exception as e:
+                logger.exception(
+                    f"[{self.agent_name}] MCP tool {tool_call.name} failed"
+                )
+                return ToolResult(
+                    tool_use_id=tool_call.id,
+                    content=f"Tool error: {e}",
+                    is_error=True,
+                )
+
+        return ToolResult(
+            tool_use_id=tool_call.id,
+            content=f"Unknown tool: {tool_call.name}",
+            is_error=True,
+        )
 
     async def _get_ticket(self, ticket_id: str) -> dict[str, Any]:
         r = await self._client.get(f"{self.store_url}/api/v1/tickets/{ticket_id}")
