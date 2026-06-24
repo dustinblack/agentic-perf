@@ -85,8 +85,7 @@ class EventBus:
         limit: int = 200,
     ) -> list[dict[str, Any]]:
         in_memory = [
-            e.to_dict() for e in self._events.get(ticket_id, [])
-            if e.seq > since
+            e.to_dict() for e in self._events.get(ticket_id, []) if e.seq > since
         ]
         from_file = self._read_from_file(ticket_id, since=since, limit=limit)
         seen_seqs = {e["seq"] for e in in_memory}
