@@ -62,15 +62,11 @@ class PrivateSkillProvider(SkillProvider):
             if f.suffix == ".json" and f.is_file()
         ]
 
-    async def get_private_config(
-        self, suite_name: str, key: str
-    ) -> Any | None:
+    async def get_private_config(self, suite_name: str, key: str) -> Any | None:
         config = self._load_config(suite_name)
         return config.get(key)
 
-    async def get_all_private_config(
-        self, suite_name: str
-    ) -> dict[str, Any]:
+    async def get_all_private_config(self, suite_name: str) -> dict[str, Any]:
         return dict(self._load_config(suite_name))
 
     async def list_benchmarks(self) -> list[BenchmarkSuite]:

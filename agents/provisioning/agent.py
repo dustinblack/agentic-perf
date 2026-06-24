@@ -16,7 +16,8 @@ from .prompts import PROVISIONING_SYSTEM_PROMPT
 logger = logging.getLogger(__name__)
 
 _MCP_TOOL_NAMES = frozenset(
-    t.name for t in get_provisioning_tools()
+    t.name
+    for t in get_provisioning_tools()
     if t.name not in ("request_clarification", "submit_provisioning_result")
 )
 
@@ -36,8 +37,7 @@ class ProvisioningAgent(AgentBase):
         self._hitl_ticket_id: str | None = None
 
         local_tools = [
-            t for t in get_provisioning_tools()
-            if t.name not in _MCP_TOOL_NAMES
+            t for t in get_provisioning_tools() if t.name not in _MCP_TOOL_NAMES
         ]
 
         async def _request_clarification(question: str) -> str:
@@ -70,7 +70,8 @@ class ProvisioningAgent(AgentBase):
 
         mcp = AgentMCPClient()
         await mcp.connect(
-            prov_server, name="provisioning",
+            prov_server,
+            name="provisioning",
             env={"TICKET_ID": ticket_id, "STATE_STORE_URL": self.store_url},
         )
         self._mcp = mcp
@@ -105,7 +106,9 @@ class ProvisioningAgent(AgentBase):
         if cf.get("ssh_key_path"):
             content += f"**SSH Key:** {cf['ssh_key_path']}\n"
         if cf.get("fresh_host"):
-            content += f"\n**Fresh Host:** true (freshly provisioned, no existing harness)\n"
+            content += (
+                "\n**Fresh Host:** true (freshly provisioned, no existing harness)\n"
+            )
         if cf.get("directives"):
             content += f"\n## User Directives\n```json\n{json.dumps(cf['directives'], indent=2)}\n```\n"
         if cf.get("parsed_specs"):
@@ -122,9 +125,7 @@ class ProvisioningAgent(AgentBase):
 
         return [{"role": "user", "content": content}]
 
-    async def _handle_completion(
-        self, ticket_id: str, response: LLMResponse
-    ) -> None:
+    async def _handle_completion(self, ticket_id: str, response: LLMResponse) -> None:
         if self._hitl_triggered:
             logger.info(f"[provisioning-agent] HITL triggered for {ticket_id}")
             return

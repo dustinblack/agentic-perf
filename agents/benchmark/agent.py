@@ -21,10 +21,8 @@ _LOCAL_TOOL_NAMES = frozenset(
 )
 
 _MCP_TOOL_NAMES = frozenset(
-    t.name for t in get_benchmark_tools()
-    if t.name not in _LOCAL_TOOL_NAMES
+    t.name for t in get_benchmark_tools() if t.name not in _LOCAL_TOOL_NAMES
 ) | {"list_harness_docs", "read_harness_doc"}
-
 
 
 class BenchmarkAgent(AgentBase):
@@ -44,8 +42,7 @@ class BenchmarkAgent(AgentBase):
         self._hitl_ticket_id: str | None = None
 
         local_tools = [
-            t for t in get_benchmark_tools()
-            if t.name not in _MCP_TOOL_NAMES
+            t for t in get_benchmark_tools() if t.name not in _MCP_TOOL_NAMES
         ]
 
         async def _request_clarification(question: str) -> str:
@@ -65,7 +62,9 @@ class BenchmarkAgent(AgentBase):
                 "Do you approve this configuration? (approve / request changes / reject)"
             )
             await self._do_request_clarification(question)
-            return "Clarification requested. Ticket paused for user approval of run-file."
+            return (
+                "Clarification requested. Ticket paused for user approval of run-file."
+            )
 
         local_handlers = {
             "request_clarification": _request_clarification,
@@ -94,7 +93,8 @@ class BenchmarkAgent(AgentBase):
 
         mcp = AgentMCPClient()
         await mcp.connect(
-            bench_server, name="benchmark",
+            bench_server,
+            name="benchmark",
             env={"TICKET_ID": ticket_id, "STATE_STORE_URL": self.store_url},
         )
         self._mcp = mcp
@@ -172,9 +172,7 @@ class BenchmarkAgent(AgentBase):
 
         return [{"role": "user", "content": content}]
 
-    async def _handle_completion(
-        self, ticket_id: str, response: LLMResponse
-    ) -> None:
+    async def _handle_completion(self, ticket_id: str, response: LLMResponse) -> None:
         if self._hitl_triggered:
             logger.info(f"[benchmark-agent] HITL triggered for {ticket_id}")
             return

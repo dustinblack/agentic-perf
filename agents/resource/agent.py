@@ -21,8 +21,7 @@ from .prompts import RESOURCE_SYSTEM_PROMPT
 logger = logging.getLogger(__name__)
 
 _MCP_TOOL_NAMES = frozenset(
-    t.name for t in get_resource_tools()
-    if t.name != "submit_resource_result"
+    t.name for t in get_resource_tools() if t.name != "submit_resource_result"
 )
 
 
@@ -69,10 +68,11 @@ class ResourceAgent(AgentBase):
 
         # Only keep local tools (submit_resource_result) -- MCP tools
         # are added dynamically in run() for create mode.
-        local_tools = [
-            t for t in get_resource_tools()
-            if t.name not in _MCP_TOOL_NAMES
-        ] if mode == "create" else []
+        local_tools = (
+            [t for t in get_resource_tools() if t.name not in _MCP_TOOL_NAMES]
+            if mode == "create"
+            else []
+        )
 
         super().__init__(
             agent_name="resource-agent",
@@ -99,7 +99,8 @@ class ResourceAgent(AgentBase):
 
         mcp = AgentMCPClient()
         await mcp.connect(
-            resource_server, name="resource",
+            resource_server,
+            name="resource",
             env={"TICKET_ID": ticket_id, "STATE_STORE_URL": self.store_url},
         )
         self._mcp = mcp
@@ -238,22 +239,15 @@ class ResourceAgent(AgentBase):
                 cleanup_summary.append(
                     f"{provider_name} SSH keys: {result.get('status', 'done')}"
                 )
-                logger.info(
-                    f"[resource-agent] {provider_name} key cleanup: {result}"
-                )
+                logger.info(f"[resource-agent] {provider_name} key cleanup: {result}")
             except Exception as e:
-                cleanup_summary.append(
-                    f"{provider_name} SSH keys: failed ({e})"
-                )
-                logger.exception(
-                    f"[resource-agent] {provider_name} key cleanup failed"
-                )
+                cleanup_summary.append(f"{provider_name} SSH keys: failed ({e})")
+                logger.exception(f"[resource-agent] {provider_name} key cleanup failed")
 
         if cleanup_summary:
             await self._add_comment(
                 ticket_id,
-                "**Host Cleanup**\n\n"
-                + "\n".join(f"- {s}" for s in cleanup_summary),
+                "**Host Cleanup**\n\n" + "\n".join(f"- {s}" for s in cleanup_summary),
             )
 
     def _system_prompt(self) -> str:
@@ -287,7 +281,7 @@ class ResourceAgent(AgentBase):
             if min_hosts:
                 if endpoint_type == "kube":
                     total = 1
-                    content += f"- **Endpoint type:** kube (workloads run as pods)\n"
+                    content += "- **Endpoint type:** kube (workloads run as pods)\n"
                     content += f"- **Total hosts to provision:** {total} (single host: controller + K8s cluster)\n"
                 else:
                     total = min_hosts + 1
@@ -301,9 +295,7 @@ class ResourceAgent(AgentBase):
 
         return [{"role": "user", "content": content}]
 
-    async def _handle_completion(
-        self, ticket_id: str, response: LLMResponse
-    ) -> None:
+    async def _handle_completion(self, ticket_id: str, response: LLMResponse) -> None:
         if self._hitl_triggered:
             logger.info(f"[resource-agent] HITL triggered for {ticket_id}")
             return
@@ -333,7 +325,13 @@ class ResourceAgent(AgentBase):
 
         provider_metadata = result.get("resource_provider_metadata") or {}
         reservation_metadata = self._last_reservation.get("provider_metadata", {})
-        for key in ("public_ips", "private_ips", "ip_mapping", "ami", "cloud_login_user"):
+        for key in (
+            "public_ips",
+            "private_ips",
+            "ip_mapping",
+            "ami",
+            "cloud_login_user",
+        ):
             if key in reservation_metadata and key not in provider_metadata:
                 provider_metadata[key] = reservation_metadata[key]
         if provider_metadata:

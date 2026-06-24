@@ -396,7 +396,10 @@ class BenchmarkRunnerSkillProvider(SkillProvider):
                     "description": "Environment variables passed to the container",
                     "properties": {
                         "WORKLOAD": {"type": "string"},
-                        "CLUSTER": {"type": "string", "enum": ["kubernetes", "openshift"]},
+                        "CLUSTER": {
+                            "type": "string",
+                            "enum": ["kubernetes", "openshift"],
+                        },
                         "RUN_TYPE": {"type": "string", "enum": ["func_ci", "perf_ci"]},
                         "TIMEOUT": {"type": "string"},
                         "SCALE": {"type": "string"},
@@ -443,10 +446,14 @@ class BenchmarkRunnerSkillProvider(SkillProvider):
 
         cluster = env_vars.get("CLUSTER", "kubernetes")
         if cluster not in ("kubernetes", "openshift"):
-            errors.append(f"Invalid CLUSTER '{cluster}' — must be 'kubernetes' or 'openshift'")
+            errors.append(
+                f"Invalid CLUSTER '{cluster}' — must be 'kubernetes' or 'openshift'"
+            )
 
         run_type = env_vars.get("RUN_TYPE", "func_ci")
         if run_type not in ("func_ci", "perf_ci"):
-            errors.append(f"Invalid RUN_TYPE '{run_type}' — must be 'func_ci' or 'perf_ci'")
+            errors.append(
+                f"Invalid RUN_TYPE '{run_type}' — must be 'func_ci' or 'perf_ci'"
+            )
 
         return {"valid": len(errors) == 0, "errors": errors}

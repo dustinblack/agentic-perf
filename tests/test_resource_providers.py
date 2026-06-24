@@ -7,33 +7,26 @@ All tests use mocks — no real API calls.
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from providers.resource.base import ResourceProvider
 from providers.resource.registry import ResourceProviderRegistry
 from tests.conftest import MockSecretsProvider
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def quads_secrets():
-    return MockSecretsProvider(
-        files={"quads/config.json": "/fake/quads.json"}
-    )
+    return MockSecretsProvider(files={"quads/config.json": "/fake/quads.json"})
 
 
 @pytest.fixture
 def aws_secrets():
-    return MockSecretsProvider(
-        files={"aws/config.json": "/fake/aws.json"}
-    )
+    return MockSecretsProvider(files={"aws/config.json": "/fake/aws.json"})
 
 
 @pytest.fixture
@@ -51,29 +44,32 @@ def no_secrets():
     return MockSecretsProvider(files={})
 
 
-AWS_CONFIG = json.dumps({
-    "region": "us-east-1",
-    "access_key_id": "AKIATEST",
-    "secret_access_key": "secret",
-    "ssh_key_name": "test-key",
-    "ssh_key_path": "/tmp/test.pem",
-    "ssh_user": "ec2-user",
-    "security_group_id": "sg-123",
-    "subnet_id": "subnet-456",
-    "default_ami": "ami-abc",
-    "default_instance_type": "m5.xlarge",
-    "instance_type_map": {
-        "small": "m5.xlarge",
-        "medium": "m5.4xlarge",
-        "large": "m5.8xlarge",
-        "network_25g": "m5n.4xlarge",
-    },
-})
+AWS_CONFIG = json.dumps(
+    {
+        "region": "us-east-1",
+        "access_key_id": "AKIATEST",
+        "secret_access_key": "secret",
+        "ssh_key_name": "test-key",
+        "ssh_key_path": "/tmp/test.pem",
+        "ssh_user": "ec2-user",
+        "security_group_id": "sg-123",
+        "subnet_id": "subnet-456",
+        "default_ami": "ami-abc",
+        "default_instance_type": "m5.xlarge",
+        "instance_type_map": {
+            "small": "m5.xlarge",
+            "medium": "m5.4xlarge",
+            "large": "m5.8xlarge",
+            "network_25g": "m5n.4xlarge",
+        },
+    }
+)
 
 
 # ---------------------------------------------------------------------------
 # Registry tests
 # ---------------------------------------------------------------------------
+
 
 class TestResourceProviderRegistry:
     @pytest.mark.asyncio
@@ -115,6 +111,7 @@ class TestResourceProviderRegistry:
 # QUADS adapter tests
 # ---------------------------------------------------------------------------
 
+
 class TestQuadsResourceProvider:
     @pytest.mark.asyncio
     async def test_check_available(self):
@@ -127,10 +124,12 @@ class TestQuadsResourceProvider:
         ]
 
         provider = QuadsResourceProvider(mock_client)
-        result = await provider.check_available({
-            "nic_vendor": "Intel",
-            "duration_hours": 48,
-        })
+        result = await provider.check_available(
+            {
+                "nic_vendor": "Intel",
+                "duration_hours": 48,
+            }
+        )
 
         assert result["provider"] == "quads"
         assert result["available_count"] == 2
@@ -206,6 +205,7 @@ class TestQuadsResourceProvider:
 # ---------------------------------------------------------------------------
 # AWS provider tests
 # ---------------------------------------------------------------------------
+
 
 class TestAWSResourceProvider:
     def _make_provider(self):
@@ -293,8 +293,16 @@ class TestAWSResourceProvider:
         # describe_subnets returns subnets in two AZs
         mock_ec2.describe_subnets.return_value = {
             "Subnets": [
-                {"SubnetId": "subnet-456", "AvailabilityZone": "us-east-1a", "VpcId": "vpc-1"},
-                {"SubnetId": "subnet-789", "AvailabilityZone": "us-east-1b", "VpcId": "vpc-1"},
+                {
+                    "SubnetId": "subnet-456",
+                    "AvailabilityZone": "us-east-1a",
+                    "VpcId": "vpc-1",
+                },
+                {
+                    "SubnetId": "subnet-789",
+                    "AvailabilityZone": "us-east-1b",
+                    "VpcId": "vpc-1",
+                },
             ]
         }
         mock_ec2.describe_images.return_value = {
@@ -309,14 +317,18 @@ class TestAWSResourceProvider:
             {"Instances": [{"InstanceId": "i-fallback"}]},
         ]
         mock_ec2.describe_instances.return_value = {
-            "Reservations": [{
-                "Instances": [{
-                    "InstanceId": "i-fallback",
-                    "State": {"Name": "running"},
-                    "PublicIpAddress": "1.2.3.4",
-                    "PrivateIpAddress": "10.0.0.1",
-                }]
-            }]
+            "Reservations": [
+                {
+                    "Instances": [
+                        {
+                            "InstanceId": "i-fallback",
+                            "State": {"Name": "running"},
+                            "PublicIpAddress": "1.2.3.4",
+                            "PrivateIpAddress": "10.0.0.1",
+                        }
+                    ]
+                }
+            ]
         }
         provider._ec2_client = mock_ec2
         provider.setup_ssh = AsyncMock(return_value={"status": "success"})
@@ -329,8 +341,9 @@ class TestAWSResourceProvider:
         assert mock_ec2.run_instances.call_count == 2
         # Second call should use the fallback subnet
         second_call_kwargs = mock_ec2.run_instances.call_args_list[1]
-        assert second_call_kwargs.kwargs.get("SubnetId", second_call_kwargs[1].get("SubnetId")) == "subnet-789" or \
-            "subnet-789" in str(second_call_kwargs)
+        assert second_call_kwargs.kwargs.get(
+            "SubnetId", second_call_kwargs[1].get("SubnetId")
+        ) == "subnet-789" or "subnet-789" in str(second_call_kwargs)
 
     @pytest.mark.asyncio
     async def test_reserve_all_azs_exhausted(self):
@@ -340,8 +353,16 @@ class TestAWSResourceProvider:
 
         mock_ec2.describe_subnets.return_value = {
             "Subnets": [
-                {"SubnetId": "subnet-456", "AvailabilityZone": "us-east-1a", "VpcId": "vpc-1"},
-                {"SubnetId": "subnet-789", "AvailabilityZone": "us-east-1b", "VpcId": "vpc-1"},
+                {
+                    "SubnetId": "subnet-456",
+                    "AvailabilityZone": "us-east-1a",
+                    "VpcId": "vpc-1",
+                },
+                {
+                    "SubnetId": "subnet-789",
+                    "AvailabilityZone": "us-east-1b",
+                    "VpcId": "vpc-1",
+                },
             ]
         }
         mock_ec2.describe_images.return_value = {
@@ -384,6 +405,7 @@ class TestAWSResourceProvider:
 # Tool handler tests
 # ---------------------------------------------------------------------------
 
+
 class TestResourceToolHandlers:
     @pytest.mark.asyncio
     async def test_list_resource_providers_via_handler(self, both_secrets):
@@ -423,17 +445,17 @@ class TestResourceToolHandlers:
 # Teardown dispatch tests
 # ---------------------------------------------------------------------------
 
+
 class TestTeardownDispatch:
     @pytest.mark.asyncio
     async def test_legacy_quads_fields_detected(self):
         """Teardown should infer 'quads' provider from legacy quads_assignment_id."""
         from agents.resource.agent import ResourceAgent
-        from providers.resource.registry import ResourceProviderRegistry
 
         mock_llm = MagicMock()
         mock_secrets = AsyncMock()
 
-        agent = ResourceAgent(
+        ResourceAgent(
             llm_provider=mock_llm,
             state_store_url="http://localhost:8090",
             mode="teardown",
@@ -482,7 +504,10 @@ class TestTeardownDispatch:
         }
         assert fields["resource_provider"] == "aws"
         assert fields["resource_reservation_id"] == "i-abc,i-def"
-        assert fields["resource_provider_metadata"]["instance_ids"] == ["i-abc", "i-def"]
+        assert fields["resource_provider_metadata"]["instance_ids"] == [
+            "i-abc",
+            "i-def",
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -727,12 +752,14 @@ class TestPSAPCCResourceProvider:
         from providers.resource.psap_cc import PSAPCCResourceProvider
 
         mock_secrets = AsyncMock()
-        mock_secrets.get_secret.return_value = json.dumps({
-            "base_url": "https://cc.example.com",
-            "username": "admin",
-            "password": "pass",
-            "verify_ssl": False,
-        })
+        mock_secrets.get_secret.return_value = json.dumps(
+            {
+                "base_url": "https://cc.example.com",
+                "username": "admin",
+                "password": "pass",
+                "verify_ssl": False,
+            }
+        )
 
         provider = await PSAPCCResourceProvider.from_secrets(mock_secrets)
         assert provider._client.base_url == "https://cc.example.com"

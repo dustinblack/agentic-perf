@@ -119,9 +119,7 @@ class AWSResourceProvider(ResourceProvider):
 
         return self._default_instance_type
 
-    async def check_available(
-        self, requirements: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def check_available(self, requirements: dict[str, Any]) -> dict[str, Any]:
         recommended = self._match_instance_type(requirements)
         ami = requirements.get("ami", self._default_ami)
         count = requirements.get("count", 1)
@@ -147,7 +145,10 @@ class AWSResourceProvider(ResourceProvider):
         response = await asyncio.to_thread(
             ec2.describe_subnets,
             Filters=[
-                {"Name": "vpc-id", "Values": [await self._get_vpc_id(ec2, preferred_subnet)]},
+                {
+                    "Name": "vpc-id",
+                    "Values": [await self._get_vpc_id(ec2, preferred_subnet)],
+                },
             ],
         )
         subnets = [preferred_subnet]
@@ -158,15 +159,16 @@ class AWSResourceProvider(ResourceProvider):
                 seen_azs.add(s["AvailabilityZone"])
                 break
         for s in response["Subnets"]:
-            if s["SubnetId"] != preferred_subnet and s["AvailabilityZone"] not in seen_azs:
+            if (
+                s["SubnetId"] != preferred_subnet
+                and s["AvailabilityZone"] not in seen_azs
+            ):
                 subnets.append(s["SubnetId"])
                 seen_azs.add(s["AvailabilityZone"])
         return subnets
 
     async def _get_vpc_id(self, ec2, subnet_id: str) -> str:
-        response = await asyncio.to_thread(
-            ec2.describe_subnets, SubnetIds=[subnet_id]
-        )
+        response = await asyncio.to_thread(ec2.describe_subnets, SubnetIds=[subnet_id])
         return response["Subnets"][0]["VpcId"]
 
     async def reserve(
@@ -200,9 +202,7 @@ class AWSResourceProvider(ResourceProvider):
         if ticket_id:
             tags.append({"Key": "ticket-id", "Value": ticket_id})
 
-        ami_info = await asyncio.to_thread(
-            ec2.describe_images, ImageIds=[ami]
-        )
+        ami_info = await asyncio.to_thread(ec2.describe_images, ImageIds=[ami])
         root_device = ami_info["Images"][0].get("RootDeviceName", "/dev/sda1")
 
         run_kwargs: dict[str, Any] = {
@@ -266,7 +266,7 @@ class AWSResourceProvider(ResourceProvider):
         private_ips = ips["private"]
 
         # Bootstrap root SSH via the public IPs (orchestrator → instance)
-        ssh_result = await self.setup_ssh(public_ips)
+        await self.setup_ssh(public_ips)
 
         return {
             "status": "success",
@@ -292,9 +292,7 @@ class AWSResourceProvider(ResourceProvider):
     async def _poll_until_running(
         self, ec2, instance_ids: list[str], interval: int = 15, timeout: int = 300
     ) -> None:
-        logger.info(
-            f"[aws-provider] Waiting for instances to reach 'running' state..."
-        )
+        logger.info("[aws-provider] Waiting for instances to reach 'running' state...")
         elapsed = 0
         while elapsed < timeout:
             response = await asyncio.to_thread(
@@ -314,9 +312,7 @@ class AWSResourceProvider(ResourceProvider):
             await asyncio.sleep(interval)
             elapsed += interval
 
-        raise TimeoutError(
-            f"EC2 instances {instance_ids} not running after {timeout}s"
-        )
+        raise TimeoutError(f"EC2 instances {instance_ids} not running after {timeout}s")
 
     async def _get_instance_ips(
         self, ec2, instance_ids: list[str]
@@ -348,10 +344,14 @@ class AWSResourceProvider(ResourceProvider):
             for attempt in range(retries):
                 proc = await asyncio.create_subprocess_exec(
                     "ssh",
-                    "-o", "ConnectTimeout=5",
-                    "-o", "BatchMode=yes",
-                    "-o", "StrictHostKeyChecking=accept-new",
-                    "-i", self._ssh_key_path,
+                    "-o",
+                    "ConnectTimeout=5",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    "StrictHostKeyChecking=accept-new",
+                    "-i",
+                    self._ssh_key_path,
                     f"{self._ssh_user}@{host}",
                     "echo SSH_OK",
                     stdout=asyncio.subprocess.PIPE,
@@ -396,9 +396,7 @@ class AWSResourceProvider(ResourceProvider):
         provider_metadata: dict[str, Any],
     ) -> dict[str, Any]:
         ec2 = self._get_ec2_client()
-        instance_ids = provider_metadata.get(
-            "instance_ids", reservation_id.split(",")
-        )
+        instance_ids = provider_metadata.get("instance_ids", reservation_id.split(","))
         logger.info(f"[aws-provider] Terminating instances: {instance_ids}")
         result = await asyncio.to_thread(
             ec2.terminate_instances, InstanceIds=instance_ids
@@ -440,7 +438,9 @@ class AWSResourceProvider(ResourceProvider):
                 results[host] = f"failed: {e}"
 
         return {
-            "status": "success" if all("root" in v for v in results.values()) else "partial",
+            "status": "success"
+            if all("root" in v for v in results.values())
+            else "partial",
             "ssh_key_path": self._ssh_key_path,
             "hosts": results,
         }
@@ -453,13 +453,18 @@ class AWSResourceProvider(ResourceProvider):
 
         # Derive public key from private key
         proc = await asyncio.create_subprocess_exec(
-            "ssh-keygen", "-y", "-f", self._ssh_key_path,
+            "ssh-keygen",
+            "-y",
+            "-f",
+            self._ssh_key_path,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         stdout, stderr = await proc.communicate()
         if proc.returncode != 0:
-            raise RuntimeError(f"Failed to derive public key: {stderr.decode().strip()}")
+            raise RuntimeError(
+                f"Failed to derive public key: {stderr.decode().strip()}"
+            )
         return stdout.decode().strip()
 
     async def _enable_root_ssh(self, host: str, pubkey: str) -> None:
@@ -489,10 +494,14 @@ class AWSResourceProvider(ResourceProvider):
         for cmd in bootstrap_cmds:
             proc = await asyncio.create_subprocess_exec(
                 "ssh",
-                "-o", "ConnectTimeout=10",
-                "-o", "BatchMode=yes",
-                "-o", "StrictHostKeyChecking=accept-new",
-                "-i", self._ssh_key_path,
+                "-o",
+                "ConnectTimeout=10",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "StrictHostKeyChecking=accept-new",
+                "-i",
+                self._ssh_key_path,
                 f"{self._ssh_user}@{host}",
                 cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -511,10 +520,14 @@ class AWSResourceProvider(ResourceProvider):
         # Verify root SSH works
         proc = await asyncio.create_subprocess_exec(
             "ssh",
-            "-o", "ConnectTimeout=10",
-            "-o", "BatchMode=yes",
-            "-o", "StrictHostKeyChecking=accept-new",
-            "-i", self._ssh_key_path,
+            "-o",
+            "ConnectTimeout=10",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            "-i",
+            self._ssh_key_path,
             f"root@{host}",
             "echo ROOT_OK",
             stdout=asyncio.subprocess.PIPE,
@@ -528,7 +541,5 @@ class AWSResourceProvider(ResourceProvider):
     async def cleanup_ssh_keys(self, hosts: list[str]) -> dict[str, Any]:
         return {
             "status": "success",
-            "hosts": {
-                h: "skipped (cloud instance will be terminated)" for h in hosts
-            },
+            "hosts": {h: "skipped (cloud instance will be terminated)" for h in hosts},
         }

@@ -63,9 +63,7 @@ class Dispatcher:
 
     def mark_done(self, ticket_id: str) -> None:
         self._active.discard(ticket_id)
-        self._dispatched = {
-            (t, s) for t, s in self._dispatched if t != ticket_id
-        }
+        self._dispatched = {(t, s) for t, s in self._dispatched if t != ticket_id}
 
     def _get_llm(self, agent_type: str) -> LLMProvider:
         if self._llm_factory:

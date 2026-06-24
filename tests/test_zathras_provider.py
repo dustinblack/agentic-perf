@@ -105,9 +105,12 @@ async def test_resolve_benchmark_no_match(provider: ZathrasSkillProvider):
 
 @pytest.mark.asyncio
 async def test_generate_runfile_single_host(provider: ZathrasSkillProvider):
-    result = await provider.generate_runfile("streams", {
-        "endpoints": [{"host": "10.0.0.1", "roles": ["client"]}],
-    })
+    result = await provider.generate_runfile(
+        "streams",
+        {
+            "endpoints": [{"host": "10.0.0.1", "roles": ["client"]}],
+        },
+    )
     assert result.benchmark == "streams"
     template = result.template
     assert template["harness"] == "zathras"
@@ -119,12 +122,15 @@ async def test_generate_runfile_single_host(provider: ZathrasSkillProvider):
 
 @pytest.mark.asyncio
 async def test_generate_runfile_multi_host_network(provider: ZathrasSkillProvider):
-    result = await provider.generate_runfile("uperf", {
-        "endpoints": [
-            {"host": "10.0.0.1", "roles": ["client"]},
-            {"host": "10.0.0.2", "roles": ["server"]},
-        ],
-    })
+    result = await provider.generate_runfile(
+        "uperf",
+        {
+            "endpoints": [
+                {"host": "10.0.0.1", "roles": ["client"]},
+                {"host": "10.0.0.2", "roles": ["server"]},
+            ],
+        },
+    )
     template = result.template
     local_config = template["local_config"]
     assert local_config is not None
@@ -134,10 +140,13 @@ async def test_generate_runfile_multi_host_network(provider: ZathrasSkillProvide
 
 @pytest.mark.asyncio
 async def test_generate_runfile_storage(provider: ZathrasSkillProvider):
-    result = await provider.generate_runfile("fio", {
-        "endpoints": [{"host": "10.0.0.1", "roles": ["client"]}],
-        "storage": "/dev/nvme0n1,/dev/nvme1n1",
-    })
+    result = await provider.generate_runfile(
+        "fio",
+        {
+            "endpoints": [{"host": "10.0.0.1", "roles": ["client"]}],
+            "storage": "/dev/nvme0n1,/dev/nvme1n1",
+        },
+    )
     template = result.template
     assert template["local_config"]["storage"] == "/dev/nvme0n1,/dev/nvme1n1"
 
@@ -154,9 +163,12 @@ async def test_missing_test_defs(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_validate_runfile_valid_scenario(provider: ZathrasSkillProvider):
-    runfile = await provider.generate_runfile("streams", {
-        "endpoints": [{"host": "10.0.0.1", "roles": ["client"]}],
-    })
+    runfile = await provider.generate_runfile(
+        "streams",
+        {
+            "endpoints": [{"host": "10.0.0.1", "roles": ["client"]}],
+        },
+    )
     result = await provider.validate_runfile(runfile.template)
     assert result["valid"], f"Valid scenario rejected: {result['errors']}"
 
@@ -170,118 +182,147 @@ async def test_validate_runfile_missing_scenario(provider: ZathrasSkillProvider)
 
 @pytest.mark.asyncio
 async def test_validate_runfile_missing_system_type(provider: ZathrasSkillProvider):
-    result = await provider.validate_runfile({
-        "scenario": {
-            "global": {},
-            "systems": {"s1": {"tests": "streams", "host_config": "host1"}},
+    result = await provider.validate_runfile(
+        {
+            "scenario": {
+                "global": {},
+                "systems": {"s1": {"tests": "streams", "host_config": "host1"}},
+            }
         }
-    })
+    )
     assert not result["valid"]
     assert any("system_type" in e for e in result["errors"])
 
 
 @pytest.mark.asyncio
 async def test_validate_runfile_invalid_system_type(provider: ZathrasSkillProvider):
-    result = await provider.validate_runfile({
-        "scenario": {
-            "global": {"system_type": "docker"},
-            "systems": {"s1": {"tests": "streams", "host_config": "host1"}},
+    result = await provider.validate_runfile(
+        {
+            "scenario": {
+                "global": {"system_type": "docker"},
+                "systems": {"s1": {"tests": "streams", "host_config": "host1"}},
+            }
         }
-    })
+    )
     assert not result["valid"]
     assert any("docker" in e for e in result["errors"])
 
 
 @pytest.mark.asyncio
 async def test_validate_runfile_missing_tests(provider: ZathrasSkillProvider):
-    result = await provider.validate_runfile({
-        "scenario": {
-            "global": {"system_type": "local"},
-            "systems": {"s1": {"host_config": "host1"}},
+    result = await provider.validate_runfile(
+        {
+            "scenario": {
+                "global": {"system_type": "local"},
+                "systems": {"s1": {"host_config": "host1"}},
+            }
         }
-    })
+    )
     assert not result["valid"]
     assert any("tests" in e for e in result["errors"])
 
 
 @pytest.mark.asyncio
 async def test_validate_runfile_missing_host_config(provider: ZathrasSkillProvider):
-    result = await provider.validate_runfile({
-        "scenario": {
-            "global": {"system_type": "local"},
-            "systems": {"s1": {"tests": "streams"}},
+    result = await provider.validate_runfile(
+        {
+            "scenario": {
+                "global": {"system_type": "local"},
+                "systems": {"s1": {"tests": "streams"}},
+            }
         }
-    })
+    )
     assert not result["valid"]
     assert any("host_config" in e for e in result["errors"])
 
 
 @pytest.mark.asyncio
 async def test_validate_runfile_unknown_test(provider: ZathrasSkillProvider):
-    result = await provider.validate_runfile({
-        "scenario": {
-            "global": {"system_type": "local"},
-            "systems": {"s1": {"tests": "nonexistent_bench", "host_config": "host1"}},
+    result = await provider.validate_runfile(
+        {
+            "scenario": {
+                "global": {"system_type": "local"},
+                "systems": {
+                    "s1": {"tests": "nonexistent_bench", "host_config": "host1"}
+                },
+            }
         }
-    })
+    )
     assert not result["valid"]
     assert any("nonexistent_bench" in e for e in result["errors"])
 
 
 @pytest.mark.asyncio
-async def test_validate_runfile_network_test_missing_ips(provider: ZathrasSkillProvider):
-    result = await provider.validate_runfile({
-        "scenario": {
-            "global": {"system_type": "local"},
-            "systems": {"s1": {"tests": "uperf", "host_config": "host1"}},
+async def test_validate_runfile_network_test_missing_ips(
+    provider: ZathrasSkillProvider,
+):
+    result = await provider.validate_runfile(
+        {
+            "scenario": {
+                "global": {"system_type": "local"},
+                "systems": {"s1": {"tests": "uperf", "host_config": "host1"}},
+            }
         }
-    })
+    )
     assert not result["valid"]
     assert any("network" in e.lower() for e in result["errors"])
 
 
 @pytest.mark.asyncio
-async def test_validate_runfile_storage_test_missing_storage(provider: ZathrasSkillProvider):
-    result = await provider.validate_runfile({
-        "scenario": {
-            "global": {"system_type": "local"},
-            "systems": {"s1": {"tests": "fio", "host_config": "host1"}},
+async def test_validate_runfile_storage_test_missing_storage(
+    provider: ZathrasSkillProvider,
+):
+    result = await provider.validate_runfile(
+        {
+            "scenario": {
+                "global": {"system_type": "local"},
+                "systems": {"s1": {"tests": "fio", "host_config": "host1"}},
+            }
         }
-    })
+    )
     assert not result["valid"]
     assert any("storage" in e.lower() for e in result["errors"])
 
 
 @pytest.mark.asyncio
 async def test_validate_runfile_network_test_with_ips(provider: ZathrasSkillProvider):
-    result = await provider.validate_runfile({
-        "scenario": {
-            "global": {"system_type": "local"},
-            "systems": {"s1": {"tests": "uperf", "host_config": "host1"}},
-        },
-        "local_config": {"server_ips": "10.0.0.2", "client_ips": "10.0.0.1"},
-    })
+    result = await provider.validate_runfile(
+        {
+            "scenario": {
+                "global": {"system_type": "local"},
+                "systems": {"s1": {"tests": "uperf", "host_config": "host1"}},
+            },
+            "local_config": {"server_ips": "10.0.0.2", "client_ips": "10.0.0.1"},
+        }
+    )
     assert result["valid"], f"Valid network scenario rejected: {result['errors']}"
 
 
 @pytest.mark.asyncio
-async def test_validate_runfile_storage_test_with_storage(provider: ZathrasSkillProvider):
-    result = await provider.validate_runfile({
-        "scenario": {
-            "global": {"system_type": "local"},
-            "systems": {"s1": {"tests": "fio", "host_config": "host1"}},
-        },
-        "local_config": {"storage": "/dev/nvme0n1"},
-    })
+async def test_validate_runfile_storage_test_with_storage(
+    provider: ZathrasSkillProvider,
+):
+    result = await provider.validate_runfile(
+        {
+            "scenario": {
+                "global": {"system_type": "local"},
+                "systems": {"s1": {"tests": "fio", "host_config": "host1"}},
+            },
+            "local_config": {"storage": "/dev/nvme0n1"},
+        }
+    )
     assert result["valid"], f"Valid storage scenario rejected: {result['errors']}"
 
 
 @pytest.mark.asyncio
 async def test_validate_generated_runfile_passes(provider: ZathrasSkillProvider):
     """A runfile from generate_runfile should always pass validation."""
-    runfile = await provider.generate_runfile("fio", {
-        "endpoints": [{"host": "10.0.0.1", "roles": ["client"]}],
-        "storage": "/dev/nvme0n1",
-    })
+    runfile = await provider.generate_runfile(
+        "fio",
+        {
+            "endpoints": [{"host": "10.0.0.1", "roles": ["client"]}],
+            "storage": "/dev/nvme0n1",
+        },
+    )
     result = await provider.validate_runfile(runfile.template)
     assert result["valid"], f"Generated runfile failed validation: {result['errors']}"

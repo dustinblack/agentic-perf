@@ -42,5 +42,4 @@ class LLMProvider(ABC):
         messages: list[dict[str, Any]],
         tools: list[ToolDefinition] | None = None,
         max_tokens: int = 4096,
-    ) -> LLMResponse:
-        ...
+    ) -> LLMResponse: ...

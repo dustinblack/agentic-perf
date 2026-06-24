@@ -4,13 +4,8 @@ import asyncio
 import atexit
 import logging
 import os
-import signal
 import sys
 from pathlib import Path
-
-from .config import OrchestratorConfig
-from .dispatcher import Dispatcher, STATUS_AGENT_MAP, TERMINAL_STATUSES
-from .poller import fetch_tickets_by_status
 
 from providers.events import EventBus
 from providers.llm.factory import create_llm_provider
@@ -27,6 +22,10 @@ from providers.skills.private import PrivateSkillProvider
 from providers.skills.repo_cache import RepoCache
 from providers.skills.vstorm import VstormSkillProvider
 from providers.skills.zathras import ZathrasSkillProvider
+
+from .config import OrchestratorConfig
+from .dispatcher import STATUS_AGENT_MAP, Dispatcher
+from .poller import fetch_tickets_by_status
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +50,7 @@ def _make_llm_factory(config: OrchestratorConfig):
             provider=agent_cfg.get("provider", ""),
             model=agent_cfg.get("model", ""),
         )
+
     return factory
 
 
@@ -72,6 +72,7 @@ async def run_agent_task(dispatcher: Dispatcher, status: str, ticket_id: str):
 
 async def _block_absent_suite(store_url: str, ticket_id: str) -> None:
     import httpx
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         suite = ""
         try:
@@ -134,7 +135,11 @@ async def poll_loop(config: OrchestratorConfig) -> None:
     secrets = LocalSecretsProvider()
     events = EventBus()
     dispatcher = Dispatcher(
-        config.state_store_url, llm, skills, secrets, events,
+        config.state_store_url,
+        llm,
+        skills,
+        secrets,
+        events,
         repo_cache=repo_cache,
         llm_factory=llm_factory,
     )
@@ -147,9 +152,7 @@ async def poll_loop(config: OrchestratorConfig) -> None:
     while True:
         for status in STATUS_AGENT_MAP:
             try:
-                tickets = await fetch_tickets_by_status(
-                    config.state_store_url, status
-                )
+                tickets = await fetch_tickets_by_status(config.state_store_url, status)
             except Exception:
                 logger.exception(f"Failed to fetch tickets for status={status}")
                 continue
@@ -161,8 +164,12 @@ async def poll_loop(config: OrchestratorConfig) -> None:
                 if dispatcher.was_dispatched(tid, status):
                     continue
 
-                if status == "awaiting_hardware" and ticket.get("custom_fields", {}).get("absent_suite"):
-                    logger.warning(f"Ticket {tid} has absent_suite=True, pausing for human input")
+                if status == "awaiting_hardware" and ticket.get(
+                    "custom_fields", {}
+                ).get("absent_suite"):
+                    logger.warning(
+                        f"Ticket {tid} has absent_suite=True, pausing for human input"
+                    )
                     dispatcher.mark_dispatched(tid, status)
                     await _block_absent_suite(config.state_store_url, tid)
                     continue
@@ -170,9 +177,7 @@ async def poll_loop(config: OrchestratorConfig) -> None:
                 dispatcher.mark_active(tid)
                 dispatcher.mark_dispatched(tid, status)
                 logger.info(f"Dispatching {status} agent for ticket {tid}")
-                asyncio.create_task(
-                    run_agent_task(dispatcher, status, tid)
-                )
+                asyncio.create_task(run_agent_task(dispatcher, status, tid))
 
         await asyncio.sleep(config.poll_interval)
 

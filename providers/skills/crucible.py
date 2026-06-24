@@ -31,7 +31,9 @@ class CrucibleSkillProvider(SkillProvider):
     def __init__(self, crucible_home: str | Path) -> None:
         self._home = Path(crucible_home)
         self._benchmarks_dir = self._home / "subprojects" / "benchmarks"
-        self._examples_dir = self._home / "subprojects" / "docs" / "examples" / "runfile"
+        self._examples_dir = (
+            self._home / "subprojects" / "docs" / "examples" / "runfile"
+        )
 
     def _discover_benchmarks(self) -> list[str]:
         if not self._benchmarks_dir.exists():
@@ -146,11 +148,21 @@ class CrucibleSkillProvider(SkillProvider):
                         pass
         return None
 
-    _GENERATE_INTERNAL_KEYS = frozenset({
-        "name", "endpoints", "tags", "userenv", "osruntime", "harness",
-        "endpoint_type", "endpoint_user", "controller", "controller_ip",
-        "kube_host",
-    })
+    _GENERATE_INTERNAL_KEYS = frozenset(
+        {
+            "name",
+            "endpoints",
+            "tags",
+            "userenv",
+            "osruntime",
+            "harness",
+            "endpoint_type",
+            "endpoint_user",
+            "controller",
+            "controller_ip",
+            "kube_host",
+        }
+    )
 
     async def generate_runfile(
         self, benchmark: str, params: dict[str, Any]
@@ -158,8 +170,7 @@ class CrucibleSkillProvider(SkillProvider):
         endpoint_type = params.get("endpoint_type", "remotehosts")
         example = self._load_example_runfile(benchmark, endpoint_type)
         bench_params = {
-            k: v for k, v in params.items()
-            if k not in self._GENERATE_INTERNAL_KEYS
+            k: v for k, v in params.items() if k not in self._GENERATE_INTERNAL_KEYS
         }
         if example:
             template = dict(example)
@@ -219,13 +230,15 @@ class CrucibleSkillProvider(SkillProvider):
             settings: dict[str, Any] = {"osruntime": osruntime}
             if controller_ip and controller and ep["host"] == controller:
                 settings["controller-ip-address"] = controller_ip
-            remotes.append({
-                "engines": engines,
-                "config": {
-                    "host": ep["host"],
-                    "settings": settings,
-                },
-            })
+            remotes.append(
+                {
+                    "engines": engines,
+                    "config": {
+                        "host": ep["host"],
+                        "settings": settings,
+                    },
+                }
+            )
 
         template["endpoints"] = [
             {
@@ -277,7 +290,12 @@ class CrucibleSkillProvider(SkillProvider):
 
     def _load_schema(self) -> dict[str, Any] | None:
         schema_path = (
-            self._home / "subprojects" / "core" / "rickshaw" / "schema" / "run-file.json"
+            self._home
+            / "subprojects"
+            / "core"
+            / "rickshaw"
+            / "schema"
+            / "run-file.json"
         )
         if not schema_path.exists():
             return None
@@ -303,12 +321,20 @@ class CrucibleSkillProvider(SkillProvider):
     ) -> dict[str, Any]:
         schema = self._load_schema()
         if schema is None:
-            return {"valid": True, "errors": [], "warning": "Schema not found, skipping validation"}
+            return {
+                "valid": True,
+                "errors": [],
+                "warning": "Schema not found, skipping validation",
+            }
 
         try:
-            from jsonschema import validate, ValidationError
+            from jsonschema import ValidationError, validate
         except ImportError:
-            return {"valid": True, "errors": [], "warning": "jsonschema not installed, skipping validation"}
+            return {
+                "valid": True,
+                "errors": [],
+                "warning": "jsonschema not installed, skipping validation",
+            }
 
         errors = []
         try:

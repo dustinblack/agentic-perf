@@ -45,9 +45,7 @@ class MultiHarnessSkillProvider(SkillProvider):
     async def list_benchmarks(self) -> list[BenchmarkSuite]:
         results = []
         private_suites = set(self._private.list_suites_with_private_config())
-        for benchmarks in [
-            await p.list_benchmarks() for p in self._harnesses.values()
-        ]:
+        for benchmarks in [await p.list_benchmarks() for p in self._harnesses.values()]:
             for b in benchmarks:
                 if b.name in private_suites:
                     b.visibility = "public+private"
@@ -76,7 +74,9 @@ class MultiHarnessSkillProvider(SkillProvider):
             return await self._harnesses[harness_pref].resolve_benchmark(requirements)
 
         if self._default in self._harnesses:
-            result = await self._harnesses[self._default].resolve_benchmark(requirements)
+            result = await self._harnesses[self._default].resolve_benchmark(
+                requirements
+            )
             if result is not None:
                 return result
 
@@ -110,14 +110,10 @@ class MultiHarnessSkillProvider(SkillProvider):
         first = next(iter(self._harnesses.values()))
         return await first.generate_runfile(benchmark, params)
 
-    async def get_private_config(
-        self, suite_name: str, key: str
-    ) -> Any | None:
+    async def get_private_config(self, suite_name: str, key: str) -> Any | None:
         return await self._private.get_private_config(suite_name, key)
 
-    async def get_all_private_config(
-        self, suite_name: str
-    ) -> dict[str, Any]:
+    async def get_all_private_config(self, suite_name: str) -> dict[str, Any]:
         provider = self._harnesses.get(suite_name)
         defaults = await provider.get_default_config() if provider else {}
         private = await self._private.get_all_private_config(suite_name)
@@ -173,7 +169,11 @@ class MultiHarnessSkillProvider(SkillProvider):
         provider = self._harnesses.get(harness_name)
         if provider:
             return await provider.validate_runfile(run_file)
-        return {"valid": True, "errors": [], "warning": f"No provider for harness '{harness_name}'"}
+        return {
+            "valid": True,
+            "errors": [],
+            "warning": f"No provider for harness '{harness_name}'",
+        }
 
     async def find_capable_harnesses(
         self, benchmark_name: str, requirements: dict[str, Any] | None = None
@@ -188,13 +188,15 @@ class MultiHarnessSkillProvider(SkillProvider):
             suite = await provider.get_benchmark(benchmark_name)
             if suite is None:
                 continue
-            capable.append({
-                "harness": harness_name,
-                "benchmark": suite.name,
-                "description": suite.description,
-                "roles": suite.roles,
-                "min_hosts": suite.min_hosts,
-                "supported_params": suite.supported_params,
-                "is_default": harness_name == self._default,
-            })
+            capable.append(
+                {
+                    "harness": harness_name,
+                    "benchmark": suite.name,
+                    "description": suite.description,
+                    "roles": suite.roles,
+                    "min_hosts": suite.min_hosts,
+                    "supported_params": suite.supported_params,
+                    "is_default": harness_name == self._default,
+                }
+            )
         return capable

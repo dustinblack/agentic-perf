@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
 from agents.resource.agent import _match_to_provider_ip
-
 
 IP_MAPPING = {
     "3.137.187.198": "172.31.6.215",

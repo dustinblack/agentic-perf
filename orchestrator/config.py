@@ -53,21 +53,13 @@ class OrchestratorConfig:
             or os.environ.get("LLM_MODEL")
             or llm_cfg.get("model", "claude-sonnet-4-6")
         )
-        self.llm_backend = (
-            os.environ.get("LLM_BACKEND")
-            or llm_cfg.get("backend")
-        )
-        self.llm_project_id = (
-            os.environ.get("ANTHROPIC_VERTEX_PROJECT_ID")
-            or llm_cfg.get("project_id")
-        )
-        self.llm_region = (
-            os.environ.get("CLOUD_ML_REGION")
-            or llm_cfg.get("region")
-        )
-        self.anthropic_api_key = (
-            anthropic_api_key
-            or os.environ.get("ANTHROPIC_API_KEY")
+        self.llm_backend = os.environ.get("LLM_BACKEND") or llm_cfg.get("backend")
+        self.llm_project_id = os.environ.get(
+            "ANTHROPIC_VERTEX_PROJECT_ID"
+        ) or llm_cfg.get("project_id")
+        self.llm_region = os.environ.get("CLOUD_ML_REGION") or llm_cfg.get("region")
+        self.anthropic_api_key = anthropic_api_key or os.environ.get(
+            "ANTHROPIC_API_KEY"
         )
         self.crucible_home = (
             crucible_home
@@ -99,15 +91,11 @@ class OrchestratorConfig:
                 pass
         default_repos.update(cfg.get("harness_repos", {}))
         self.harness_repos: dict[str, str] = default_repos
-        self.ssh_key = (
-            os.environ.get("SSH_KEY")
-            or cfg.get("ssh_key")
-        )
+        self.ssh_key = os.environ.get("SSH_KEY") or cfg.get("ssh_key")
         self._agent_models: dict[str, dict[str, str]] = cfg.get("agent_models", {})
         self._openai_api_key = os.environ.get("OPENAI_API_KEY")
-        self._openai_base_url = (
-            os.environ.get("OPENAI_BASE_URL")
-            or llm_cfg.get("base_url")
+        self._openai_base_url = os.environ.get("OPENAI_BASE_URL") or llm_cfg.get(
+            "base_url"
         )
 
     def get_agent_llm_config(self, agent_type: str) -> dict[str, str]:

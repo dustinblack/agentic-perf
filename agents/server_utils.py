@@ -4,6 +4,7 @@ All agent MCP servers run as subprocesses and need to set up the Python
 path, construct providers, and resolve SSH credentials from tickets.
 This module centralizes that setup to avoid duplication.
 """
+
 from __future__ import annotations
 
 import os
@@ -80,6 +81,7 @@ def build_repo_cache():
     """Construct a RepoCache with harness repos from environment variables."""
     import json
     import logging
+
     from providers.skills.repo_cache import RepoCache
 
     logger = logging.getLogger(__name__)
@@ -124,11 +126,12 @@ async def build_ssh_from_ticket(
     TICKET_ID env var. If state_store_url is None, reads from STATE_STORE_URL.
     """
     import httpx
+
     from providers.ssh import SSHExecutor
 
     ticket_id = ticket_id or os.environ.get("TICKET_ID", "")
-    state_store_url = (
-        state_store_url or os.environ.get("STATE_STORE_URL", "http://localhost:8090")
+    state_store_url = state_store_url or os.environ.get(
+        "STATE_STORE_URL", "http://localhost:8090"
     )
 
     if not ticket_id:

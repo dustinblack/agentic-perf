@@ -9,11 +9,11 @@ boundary.
 Run directly:  python agents/provisioning/server.py
 Connected via: AgentMCPClient (agents/mcp_client.py)
 """
+
 from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import sys
 from pathlib import Path
@@ -57,6 +57,7 @@ async def _ensure_init():
 # ---------------------------------------------------------------------------
 # Helper functions (verbatim from mcp_server.py)
 # ---------------------------------------------------------------------------
+
 
 def _parse_os_release(text: str) -> str:
     """Parse /etc/os-release output into a normalized OS string like 'rhel9' or 'fedora41'."""
@@ -121,14 +122,14 @@ async def validate_platform_contract(
         if not _os_matches(detected, supported_os):
             result["os_match"] = False
             result["status"] = "failed"
-            failures.append(
-                f"OS '{detected}' is not in supported list: {supported_os}"
-            )
+            failures.append(f"OS '{detected}' is not in supported list: {supported_os}")
 
     # Repo validation
     required_repos = contract.get("required_repos", [])
     if required_repos:
-        repo_result = await ssh.run(host, "dnf repolist --enabled 2>/dev/null || yum repolist 2>/dev/null")
+        repo_result = await ssh.run(
+            host, "dnf repolist --enabled 2>/dev/null || yum repolist 2>/dev/null"
+        )
         repo_output = repo_result.stdout.lower() if repo_result.exit_code == 0 else ""
         for repo in required_repos:
             if repo.lower() not in repo_output:
@@ -141,7 +142,9 @@ async def validate_platform_contract(
     required_packages = contract.get("required_packages", [])
     if required_packages:
         for pkg in required_packages:
-            pkg_result = await ssh.run(host, f"which {pkg} 2>/dev/null || rpm -q {pkg} 2>/dev/null")
+            pkg_result = await ssh.run(
+                host, f"which {pkg} 2>/dev/null || rpm -q {pkg} 2>/dev/null"
+            )
             if pkg_result.exit_code != 0:
                 result["missing_packages"].append(pkg)
         if result["missing_packages"]:
@@ -163,9 +166,13 @@ async def validate_platform_contract(
     return result
 
 
-async def _discover_crucible_token_files(ssh, host: str, install_path: str) -> list[str]:
+async def _discover_crucible_token_files(
+    ssh, host: str, install_path: str
+) -> list[str]:
     """Read registries.json on the host and extract all referenced token file paths."""
-    result = await ssh.run(host, f"cat {install_path}/config/registries.json 2>/dev/null")
+    result = await ssh.run(
+        host, f"cat {install_path}/config/registries.json 2>/dev/null"
+    )
     if result.exit_code != 0 or not result.stdout.strip():
         return []
 
@@ -212,7 +219,7 @@ async def cleanup_harness(
     path = install_path or f"/opt/{harness_name}"
     cleanup_details = []
 
-    for cmd in (pre_uninstall_commands or []):
+    for cmd in pre_uninstall_commands or []:
         logger.info(f"[provision] Pre-uninstall on {host}: {cmd}")
         await ssh.run(host, cmd, timeout=120)
 
@@ -221,10 +228,12 @@ async def cleanup_harness(
         # 1. Discover auth token files from registries.json before removing anything
         token_files = await _discover_crucible_token_files(ssh, host, path)
         if token_files:
-            logger.info(f"[provision] Found {len(token_files)} token files in registries.json on {host}")
+            logger.info(
+                f"[provision] Found {len(token_files)} token files in registries.json on {host}"
+            )
 
         # 2. Stop and remove all crucible containers
-        stop_result = await ssh.run(
+        await ssh.run(
             host,
             "podman ps -a --format '{{.Names}}' 2>/dev/null | grep '^crucible-'"
             " | xargs -r podman stop 2>/dev/null"
@@ -233,7 +242,7 @@ async def cleanup_harness(
             " ; echo done",
             timeout=120,
         )
-        cleanup_details.append(f"containers: stopped and removed")
+        cleanup_details.append("containers: stopped and removed")
         logger.info(f"[provision] Stopped crucible containers on {host}")
 
         # 3. Remove auth token files discovered from registries.json
@@ -282,9 +291,7 @@ async def cleanup_harness(
     }
 
 
-async def _validate_and_deploy_contract(
-    host: str, private_config: dict
-) -> dict:
+async def _validate_and_deploy_contract(host: str, private_config: dict) -> dict:
     """Validate install contract secrets and deploy them to the host."""
     contract = private_config.get("install_contract")
     if not contract:
@@ -314,15 +321,19 @@ async def _validate_and_deploy_contract(
         local_path = await _secrets_provider.get_secret_file(secret_path)
         if local_path is None:
             if required:
-                missing.append(f"{description} ({secret_path}): not found in secrets store")
+                missing.append(
+                    f"{description} ({secret_path}): not found in secrets store"
+                )
             continue
 
-        resolved.append({
-            "secret_key": secret_key,
-            "local_path": str(local_path),
-            "remote_path": entry["remote_path"],
-            "description": description,
-        })
+        resolved.append(
+            {
+                "secret_key": secret_key,
+                "local_path": str(local_path),
+                "remote_path": entry["remote_path"],
+                "description": description,
+            }
+        )
 
     if missing:
         return {
@@ -337,9 +348,7 @@ async def _validate_and_deploy_contract(
 
     deployed = []
     for item in resolved:
-        scp_result = await _ssh.copy_to(
-            host, item["local_path"], item["remote_path"]
-        )
+        scp_result = await _ssh.copy_to(host, item["local_path"], item["remote_path"])
         if scp_result.exit_code != 0:
             return {
                 "status": "failed",
@@ -350,8 +359,7 @@ async def _validate_and_deploy_contract(
             }
         deployed.append(f"{item['secret_key']} -> {item['remote_path']}")
         logger.info(
-            f"[provision] Deployed {item['secret_key']} to "
-            f"{host}:{item['remote_path']}"
+            f"[provision] Deployed {item['secret_key']} to {host}:{item['remote_path']}"
         )
 
     for cmd in contract.get("pre_install_commands", []):
@@ -368,6 +376,7 @@ async def _validate_and_deploy_contract(
 # ---------------------------------------------------------------------------
 # MCP Tools (11 tools)
 # ---------------------------------------------------------------------------
+
 
 @mcp.tool()
 async def check_platform_contract(
@@ -386,38 +395,47 @@ async def check_host_prerequisites(host: str, user: str = "root") -> str:
     await _ensure_init()
     prereqs = {}
     for cmd in ["podman", "git", "jq", "curl"]:
-        result = await _ssh.run(host, f"which {cmd} 2>/dev/null && {cmd} --version 2>/dev/null | head -1")
+        result = await _ssh.run(
+            host, f"which {cmd} 2>/dev/null && {cmd} --version 2>/dev/null | head -1"
+        )
         if result.exit_code == 0 and result.stdout.strip():
             lines = result.stdout.strip().split("\n")
-            prereqs[cmd] = {"installed": True, "version": lines[-1] if len(lines) > 1 else lines[0]}
+            prereqs[cmd] = {
+                "installed": True,
+                "version": lines[-1] if len(lines) > 1 else lines[0],
+            }
         else:
             prereqs[cmd] = {"installed": False, "version": None}
 
     all_met = all(p["installed"] for p in prereqs.values())
-    return json.dumps({
-        "host": host,
-        "prerequisites": prereqs,
-        "all_met": all_met,
-        "message": f"All prerequisites met on {host}" if all_met else f"Missing prerequisites on {host}",
-    })
+    return json.dumps(
+        {
+            "host": host,
+            "prerequisites": prereqs,
+            "all_met": all_met,
+            "message": f"All prerequisites met on {host}"
+            if all_met
+            else f"Missing prerequisites on {host}",
+        }
+    )
 
 
 @mcp.tool()
-async def install_packages(
-    host: str, packages: list[str], user: str = "root"
-) -> str:
+async def install_packages(host: str, packages: list[str], user: str = "root") -> str:
     """Install required packages on a host via the system package manager."""
     await _ensure_init()
     pkg_list = " ".join(packages)
     result = await _ssh.run(host, f"dnf install -y {pkg_list}", timeout=300)
-    return json.dumps({
-        "host": host,
-        "packages": packages,
-        "status": "success" if result.exit_code == 0 else "failed",
-        "exit_code": result.exit_code,
-        "output": result.stdout or "" if result.stdout else "",
-        "error": result.stderr or "" if result.stderr else "",
-    })
+    return json.dumps(
+        {
+            "host": host,
+            "packages": packages,
+            "status": "success" if result.exit_code == 0 else "failed",
+            "exit_code": result.exit_code,
+            "output": result.stdout or "" if result.stdout else "",
+            "error": result.stderr or "" if result.stderr else "",
+        }
+    )
 
 
 @mcp.tool()
@@ -437,32 +455,38 @@ async def install_harness(
 
     platform_result = await validate_platform_contract(_ssh, host, private_config)
     if platform_result["status"] == "failed":
-        return json.dumps({
-            "host": host,
-            "harness": harness_name,
-            "status": "platform_incompatible",
-            "message": platform_result["message"],
-            "detected_os": platform_result.get("detected_os"),
-        })
+        return json.dumps(
+            {
+                "host": host,
+                "harness": harness_name,
+                "status": "platform_incompatible",
+                "message": platform_result["message"],
+                "detected_os": platform_result.get("detected_os"),
+            }
+        )
 
     contract_result = await _validate_and_deploy_contract(host, private_config)
     if contract_result["status"] == "failed":
-        return json.dumps({
-            "host": host,
-            "harness": harness_name,
-            "status": "contract_failed",
-            "message": contract_result["message"],
-            "missing": contract_result.get("missing", []),
-        })
+        return json.dumps(
+            {
+                "host": host,
+                "harness": harness_name,
+                "status": "contract_failed",
+                "message": contract_result["message"],
+                "missing": contract_result.get("missing", []),
+            }
+        )
 
     if install_method == "public_install":
         installer_url = provisioning.get("installer_url")
         if not installer_url:
-            return json.dumps({
-                "host": host,
-                "status": "failed",
-                "message": f"No installer_url in private config for {harness_name}",
-            })
+            return json.dumps(
+                {
+                    "host": host,
+                    "status": "failed",
+                    "message": f"No installer_url in private config for {harness_name}",
+                }
+            )
 
         installer_path = "/tmp/harness-install.sh"
         logger.info(f"[provision] Downloading installer from {installer_url}")
@@ -472,11 +496,13 @@ async def install_harness(
             timeout=60,
         )
         if dl_result.exit_code != 0:
-            return json.dumps({
-                "host": host,
-                "status": "failed",
-                "message": f"Failed to download installer: {dl_result.stderr}",
-            })
+            return json.dumps(
+                {
+                    "host": host,
+                    "status": "failed",
+                    "message": f"Failed to download installer: {dl_result.stderr}",
+                }
+            )
 
         flags = provisioning.get("install_flags", {})
         flag_parts = []
@@ -494,16 +520,18 @@ async def install_harness(
         result = await _ssh.run(host, cmd, timeout=1800)
 
         if result.exit_code != 0:
-            return json.dumps({
-                "host": host,
-                "harness": harness_name,
-                "status": "failed",
-                "exit_code": result.exit_code,
-                "install_path": target_path,
-                "output": result.stdout or "" if result.stdout else "",
-                "error": result.stderr or "" if result.stderr else "",
-                "message": f"Install failed (exit {result.exit_code})",
-            })
+            return json.dumps(
+                {
+                    "host": host,
+                    "harness": harness_name,
+                    "status": "failed",
+                    "exit_code": result.exit_code,
+                    "install_path": target_path,
+                    "output": result.stdout or "" if result.stdout else "",
+                    "error": result.stderr or "" if result.stderr else "",
+                    "message": f"Install failed (exit {result.exit_code})",
+                }
+            )
 
         for post_cmd in provisioning.get("post_install_commands", []):
             logger.info(f"[provision] Post-install on {host}: {post_cmd}")
@@ -515,26 +543,30 @@ async def install_harness(
 
         await _ssh.run(host, f"rm -f {installer_path}")
 
-        return json.dumps({
-            "host": host,
-            "harness": harness_name,
-            "status": "success",
-            "exit_code": 0,
-            "install_path": target_path,
-            "constraints": constraints,
-            "contract": contract_result.get("deployed_files", []),
-            "output": result.stdout or "" if result.stdout else "",
-            "message": f"{harness_name} installed via public installer",
-        })
+        return json.dumps(
+            {
+                "host": host,
+                "harness": harness_name,
+                "status": "success",
+                "exit_code": 0,
+                "install_path": target_path,
+                "constraints": constraints,
+                "contract": contract_result.get("deployed_files", []),
+                "output": result.stdout or "" if result.stdout else "",
+                "message": f"{harness_name} installed via public installer",
+            }
+        )
 
     if install_method == "git_clone":
         git_url = provisioning.get("git_url")
         if not git_url:
-            return json.dumps({
-                "host": host,
-                "status": "failed",
-                "message": f"No git_url in private config for {harness_name}",
-            })
+            return json.dumps(
+                {
+                    "host": host,
+                    "status": "failed",
+                    "message": f"No git_url in private config for {harness_name}",
+                }
+            )
 
         pre_install_steps = provisioning.get("pre_install_steps", [])
         for step in pre_install_steps:
@@ -554,11 +586,13 @@ async def install_harness(
             timeout=300,
         )
         if result.exit_code != 0:
-            return json.dumps({
-                "host": host,
-                "status": "failed",
-                "message": f"Git clone failed: {result.stderr}",
-            })
+            return json.dumps(
+                {
+                    "host": host,
+                    "status": "failed",
+                    "message": f"Git clone failed: {result.stderr}",
+                }
+            )
 
         install_cmd = provisioning.get("run_install_as_root")
         if not install_cmd:
@@ -568,76 +602,90 @@ async def install_harness(
         logger.info(f"[provision] Running install on {host}: {cmd}")
         result = await _ssh.run(host, cmd, timeout=900)
 
-        return json.dumps({
-            "host": host,
-            "harness": harness_name,
-            "status": "success" if result.exit_code == 0 else "failed",
-            "exit_code": result.exit_code,
-            "install_path": target_path,
-            "constraints": constraints,
-            "contract": contract_result.get("deployed_files", []),
-            "output": result.stdout or "" if result.stdout else "",
-            "error": result.stderr or "" if result.stderr else "",
-            "message": f"{harness_name} installed" if result.exit_code == 0 else f"Install failed (exit {result.exit_code})",
-        })
+        return json.dumps(
+            {
+                "host": host,
+                "harness": harness_name,
+                "status": "success" if result.exit_code == 0 else "failed",
+                "exit_code": result.exit_code,
+                "install_path": target_path,
+                "constraints": constraints,
+                "contract": contract_result.get("deployed_files", []),
+                "output": result.stdout or "" if result.stdout else "",
+                "error": result.stderr or "" if result.stderr else "",
+                "message": f"{harness_name} installed"
+                if result.exit_code == 0
+                else f"Install failed (exit {result.exit_code})",
+            }
+        )
 
     if install_method == "binary_download":
         install_cmd = provisioning.get("install_command")
         if not install_cmd:
-            return json.dumps({
-                "host": host,
-                "status": "failed",
-                "message": f"No install_command in private config for {harness_name}",
-            })
+            return json.dumps(
+                {
+                    "host": host,
+                    "status": "failed",
+                    "message": f"No install_command in private config for {harness_name}",
+                }
+            )
 
         logger.info(f"[provision] Installing {harness_name} binary on {host}")
         result = await _ssh.run(host, install_cmd, timeout=120)
-        return json.dumps({
-            "host": host,
-            "harness": harness_name,
-            "status": "success" if result.exit_code == 0 else "failed",
-            "exit_code": result.exit_code,
-            "install_path": target_path,
-            "output": result.stdout or "" if result.stdout else "",
-            "error": result.stderr or "" if result.stderr else "",
-            "message": (
-                f"{harness_name} binary installed"
-                if result.exit_code == 0
-                else f"Binary install failed (exit {result.exit_code})"
-            ),
-        })
+        return json.dumps(
+            {
+                "host": host,
+                "harness": harness_name,
+                "status": "success" if result.exit_code == 0 else "failed",
+                "exit_code": result.exit_code,
+                "install_path": target_path,
+                "output": result.stdout or "" if result.stdout else "",
+                "error": result.stderr or "" if result.stderr else "",
+                "message": (
+                    f"{harness_name} binary installed"
+                    if result.exit_code == 0
+                    else f"Binary install failed (exit {result.exit_code})"
+                ),
+            }
+        )
 
     if install_method == "container_image":
         image = provisioning.get("container_image")
         if not image:
-            return json.dumps({
-                "host": host,
-                "status": "failed",
-                "message": f"No container_image in private config for {harness_name}",
-            })
+            return json.dumps(
+                {
+                    "host": host,
+                    "status": "failed",
+                    "message": f"No container_image in private config for {harness_name}",
+                }
+            )
 
         logger.info(f"[provision] Pulling container image {image} on {host}")
         result = await _ssh.run(host, f"podman pull {image}", timeout=300)
-        return json.dumps({
-            "host": host,
-            "harness": harness_name,
-            "status": "success" if result.exit_code == 0 else "failed",
-            "exit_code": result.exit_code,
-            "install_path": image,
-            "output": result.stdout[-1000:] if result.stdout else "",
-            "error": result.stderr[-1000:] if result.stderr else "",
-            "message": (
-                f"{harness_name} container image pulled"
-                if result.exit_code == 0
-                else f"Image pull failed (exit {result.exit_code})"
-            ),
-        })
+        return json.dumps(
+            {
+                "host": host,
+                "harness": harness_name,
+                "status": "success" if result.exit_code == 0 else "failed",
+                "exit_code": result.exit_code,
+                "install_path": image,
+                "output": result.stdout[-1000:] if result.stdout else "",
+                "error": result.stderr[-1000:] if result.stderr else "",
+                "message": (
+                    f"{harness_name} container image pulled"
+                    if result.exit_code == 0
+                    else f"Image pull failed (exit {result.exit_code})"
+                ),
+            }
+        )
 
-    return json.dumps({
-        "host": host,
-        "status": "failed",
-        "message": f"Unknown install_method '{install_method}' for {harness_name}",
-    })
+    return json.dumps(
+        {
+            "host": host,
+            "status": "failed",
+            "message": f"Unknown install_method '{install_method}' for {harness_name}",
+        }
+    )
 
 
 @mcp.tool()
@@ -651,19 +699,25 @@ async def verify_harness_install(
     await _ensure_init()
     private_config = await _skill_provider.get_all_private_config(harness_name)
     provisioning = private_config.get("provisioning", {})
-    path = install_path or provisioning.get("install_target_path", f"/opt/{harness_name}")
+    path = install_path or provisioning.get(
+        "install_target_path", f"/opt/{harness_name}"
+    )
     verify_cmd = provisioning.get("verify_command", f"{path}/bin/{harness_name} help")
 
     result = await _ssh.run(host, verify_cmd)
-    return json.dumps({
-        "host": host,
-        "harness": harness_name,
-        "verified": result.exit_code == 0,
-        "install_path": path,
-        "output": result.stdout[:500] if result.stdout else "",
-        "error": result.stderr[:500] if result.stderr else "",
-        "message": f"{harness_name} verified" if result.exit_code == 0 else f"Verification failed: {result.stderr[:200]}",
-    })
+    return json.dumps(
+        {
+            "host": host,
+            "harness": harness_name,
+            "verified": result.exit_code == 0,
+            "install_path": path,
+            "output": result.stdout[:500] if result.stdout else "",
+            "error": result.stderr[:500] if result.stderr else "",
+            "message": f"{harness_name} verified"
+            if result.exit_code == 0
+            else f"Verification failed: {result.stderr[:200]}",
+        }
+    )
 
 
 @mcp.tool()
@@ -677,31 +731,41 @@ async def check_existing_install(
     await _ensure_init()
     private_config = await _skill_provider.get_all_private_config(harness_name)
     provisioning = private_config.get("provisioning", {})
-    path = install_path or provisioning.get("install_target_path", f"/opt/{harness_name}")
+    path = install_path or provisioning.get(
+        "install_target_path", f"/opt/{harness_name}"
+    )
     verify_cmd = provisioning.get("verify_command", f"{path}/bin/{harness_name} help")
 
     # NOTE: ssh_debug dict removed — it previously leaked ssh.key_path (security issue)
 
     result = await _ssh.run(host, f"{verify_cmd} > /dev/null 2>&1")
     if result.exit_code == 0:
-        version_result = await _ssh.run(host, f"cd {path} && git log --oneline -1 2>/dev/null")
-        return json.dumps({
+        version_result = await _ssh.run(
+            host, f"cd {path} && git log --oneline -1 2>/dev/null"
+        )
+        return json.dumps(
+            {
+                "host": host,
+                "harness": harness_name,
+                "installed": True,
+                "install_path": path,
+                "version": version_result.stdout.strip()
+                if version_result.exit_code == 0
+                else "unknown",
+                "message": f"{harness_name} is already installed at {path}",
+            }
+        )
+    return json.dumps(
+        {
             "host": host,
             "harness": harness_name,
-            "installed": True,
+            "installed": False,
             "install_path": path,
-            "version": version_result.stdout.strip() if version_result.exit_code == 0 else "unknown",
-            "message": f"{harness_name} is already installed at {path}",
-        })
-    return json.dumps({
-        "host": host,
-        "harness": harness_name,
-        "installed": False,
-        "install_path": path,
-        "exit_code": result.exit_code,
-        "stderr": result.stderr[:500] if result.stderr else "",
-        "message": f"No {harness_name} installation found at {path} (exit_code={result.exit_code})",
-    })
+            "exit_code": result.exit_code,
+            "stderr": result.stderr[:500] if result.stderr else "",
+            "message": f"No {harness_name} installation found at {path} (exit_code={result.exit_code})",
+        }
+    )
 
 
 @mcp.tool()
@@ -715,20 +779,26 @@ async def update_install(
     await _ensure_init()
     private_config = await _skill_provider.get_all_private_config(harness_name)
     provisioning = private_config.get("provisioning", {})
-    path = install_path or provisioning.get("install_target_path", f"/opt/{harness_name}")
+    path = install_path or provisioning.get(
+        "install_target_path", f"/opt/{harness_name}"
+    )
     update_cmd = provisioning.get("update_command", f"cd {path} && git pull")
 
     logger.info(f"[provision] Running {harness_name} update on {host}")
     result = await _ssh.run(host, update_cmd, timeout=600)
-    return json.dumps({
-        "host": host,
-        "harness": harness_name,
-        "status": "success" if result.exit_code == 0 else "failed",
-        "exit_code": result.exit_code,
-        "output": result.stdout or "" if result.stdout else "",
-        "error": result.stderr or "" if result.stderr else "",
-        "message": "Update completed" if result.exit_code == 0 else f"Update failed (exit {result.exit_code})",
-    })
+    return json.dumps(
+        {
+            "host": host,
+            "harness": harness_name,
+            "status": "success" if result.exit_code == 0 else "failed",
+            "exit_code": result.exit_code,
+            "output": result.stdout or "" if result.stdout else "",
+            "error": result.stderr or "" if result.stderr else "",
+            "message": "Update completed"
+            if result.exit_code == 0
+            else f"Update failed (exit {result.exit_code})",
+        }
+    )
 
 
 @mcp.tool()
@@ -768,11 +838,13 @@ async def install_k3s(host: str, user: str = "root") -> str:
         timeout=300,
     )
     if result.exit_code != 0:
-        return json.dumps({
-            "host": host,
-            "status": "failed",
-            "message": f"K3s install failed: {result.stderr or ''}",
-        })
+        return json.dumps(
+            {
+                "host": host,
+                "status": "failed",
+                "message": f"K3s install failed: {result.stderr or ''}",
+            }
+        )
 
     for attempt in range(12):
         check = await _ssh.run(host, "k3s kubectl cluster-info 2>/dev/null")
@@ -780,11 +852,13 @@ async def install_k3s(host: str, user: str = "root") -> str:
             break
         await _ssh.run(host, "sleep 5")
     else:
-        return json.dumps({
-            "host": host,
-            "status": "failed",
-            "message": "K3s API server did not become ready within 60s",
-        })
+        return json.dumps(
+            {
+                "host": host,
+                "status": "failed",
+                "message": "K3s API server did not become ready within 60s",
+            }
+        )
 
     await _ssh.run(
         host,
@@ -800,9 +874,7 @@ async def install_k3s(host: str, user: str = "root") -> str:
 
     kubectl_check = await _ssh.run(host, "test -x /usr/local/bin/kubectl")
     if kubectl_check.exit_code != 0:
-        await _ssh.run(
-            host, "ln -sf /usr/local/bin/k3s /usr/local/bin/kubectl"
-        )
+        await _ssh.run(host, "ln -sf /usr/local/bin/k3s /usr/local/bin/kubectl")
 
     self_ssh_ok = False
     keygen = await _ssh.run(
@@ -826,31 +898,37 @@ async def install_k3s(host: str, user: str = "root") -> str:
     node_result = await _ssh.run(host, "kubectl get nodes -o wide --no-headers")
     version_result = await _ssh.run(host, "k3s --version 2>/dev/null | head -1")
 
-    return json.dumps({
-        "host": host,
-        "status": "success",
-        "k3s_version": version_result.stdout.strip() if version_result.exit_code == 0 else "unknown",
-        "node_info": node_result.stdout.strip() if node_result.exit_code == 0 else "",
-        "kubeconfig_path": "/root/.kube/config",
-        "self_ssh": self_ssh_ok,
-        "message": "K3s installed and cluster ready",
-    })
+    return json.dumps(
+        {
+            "host": host,
+            "status": "success",
+            "k3s_version": version_result.stdout.strip()
+            if version_result.exit_code == 0
+            else "unknown",
+            "node_info": node_result.stdout.strip()
+            if node_result.exit_code == 0
+            else "",
+            "kubeconfig_path": "/root/.kube/config",
+            "self_ssh": self_ssh_ok,
+            "message": "K3s installed and cluster ready",
+        }
+    )
 
 
 @mcp.tool()
-async def configure_host(
-    host: str, config: dict, user: str = "root"
-) -> str:
+async def configure_host(host: str, config: dict, user: str = "root") -> str:
     """Apply OS-level configuration for optimal benchmark performance. Supports CPU isolation, hugepages, IRQ affinity, tuned profiles."""
     await _ensure_init()
     # Keep simulated for now -- tuning is benchmark-specific
-    return json.dumps({
-        "host": host,
-        "config_applied": config,
-        "status": "success",
-        "reboot_required": False,
-        "message": f"Configuration applied on {host} (simulated)",
-    })
+    return json.dumps(
+        {
+            "host": host,
+            "config_applied": config,
+            "status": "success",
+            "reboot_required": False,
+            "message": f"Configuration applied on {host} (simulated)",
+        }
+    )
 
 
 @mcp.tool()
@@ -859,7 +937,13 @@ async def get_private_config(harness_name: str, key: str) -> str:
     await _ensure_init()
     result = await _skill_provider.get_private_config(harness_name, key)
     if result is None:
-        return json.dumps({"key": key, "value": None, "message": f"No private config for {harness_name}.{key}"})
+        return json.dumps(
+            {
+                "key": key,
+                "value": None,
+                "message": f"No private config for {harness_name}.{key}",
+            }
+        )
     return json.dumps({"key": key, "value": result})
 
 

@@ -6,7 +6,9 @@ from .base import BenchmarkSuite, RunfileTemplate, SkillProvider
 
 KEYWORD_MAP = {
     "vstorm": [
-        "vstorm-containerdisk", "vstorm-stress-ng", "vstorm-dirty-pages",
+        "vstorm-containerdisk",
+        "vstorm-stress-ng",
+        "vstorm-dirty-pages",
     ],
     "vm": ["vstorm-containerdisk", "vstorm-stress-ng"],
     "virtual machine": ["vstorm-containerdisk", "vstorm-stress-ng"],
@@ -96,9 +98,7 @@ _BENCHMARKS: dict[str, dict[str, Any]] = {
             **_COMMON_PARAMS,
             "dirty_rate_fraction": {
                 "type": "string",
-                "description": (
-                    "Fraction of guest RAM to dirty (0.1 to 0.9)"
-                ),
+                "description": ("Fraction of guest RAM to dirty (0.1 to 0.9)"),
                 "default": "0.5",
             },
         },
@@ -211,8 +211,7 @@ class VstormSkillProvider(SkillProvider):
                 "git_url": "https://github.com/gqlo/vstorm.git",
                 "install_target_path": "/opt/vstorm",
                 "run_install_as_root": (
-                    "echo 'export PATH=/opt/vstorm:$PATH'"
-                    " >> /etc/profile.d/vstorm.sh"
+                    "echo 'export PATH=/opt/vstorm:$PATH' >> /etc/profile.d/vstorm.sh"
                 ),
                 "verify_command": "/opt/vstorm/vstorm -h",
                 "on_existing_install": "skip",

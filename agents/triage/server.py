@@ -7,10 +7,10 @@ and provider internals never cross the LLM boundary.
 Run directly:  python agents/triage/server.py
 Connected via: AgentMCPClient (agents/mcp_client.py)
 """
+
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any

@@ -26,15 +26,23 @@ class SSHExecutor:
         self.connect_timeout = connect_timeout
 
     def _ssh_args(
-        self, host: str, key_path: str | None = None, allocate_pty: bool = False,
+        self,
+        host: str,
+        key_path: str | None = None,
+        allocate_pty: bool = False,
     ) -> list[str]:
         args = [
             "ssh",
-            "-o", f"ConnectTimeout={self.connect_timeout}",
-            "-o", "BatchMode=yes",
-            "-o", "StrictHostKeyChecking=accept-new",
-            "-o", "ServerAliveInterval=30",
-            "-o", "ServerAliveCountMax=3",
+            "-o",
+            f"ConnectTimeout={self.connect_timeout}",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            "-o",
+            "ServerAliveInterval=30",
+            "-o",
+            "ServerAliveCountMax=3",
         ]
         if allocate_pty:
             args.append("-tt")
@@ -52,7 +60,9 @@ class SSHExecutor:
         key_path: str | None = None,
         allocate_pty: bool = False,
     ) -> SSHResult:
-        args = self._ssh_args(host, key_path=key_path, allocate_pty=allocate_pty) + [command]
+        args = self._ssh_args(host, key_path=key_path, allocate_pty=allocate_pty) + [
+            command
+        ]
         logger.info(f"[ssh] {self.user}@{host}: {command[:120]}")
 
         proc = await asyncio.create_subprocess_exec(
@@ -64,7 +74,9 @@ class SSHExecutor:
         try:
             coro = proc.communicate()
             if timeout > 0:
-                stdout_bytes, stderr_bytes = await asyncio.wait_for(coro, timeout=timeout)
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    coro, timeout=timeout
+                )
             else:
                 stdout_bytes, stderr_bytes = await coro
         except asyncio.TimeoutError:
@@ -98,10 +110,14 @@ class SSHExecutor:
         key_path: str | None = None,
     ) -> SSHResult:
         args = [
-            "scp", "-r",
-            "-o", f"ConnectTimeout={self.connect_timeout}",
-            "-o", "BatchMode=yes",
-            "-o", "StrictHostKeyChecking=accept-new",
+            "scp",
+            "-r",
+            "-o",
+            f"ConnectTimeout={self.connect_timeout}",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
         ]
         effective_key = key_path or self.key_path
         if effective_key:
@@ -123,7 +139,9 @@ class SSHExecutor:
         except asyncio.TimeoutError:
             proc.kill()
             await proc.wait()
-            return SSHResult(stdout="", stderr=f"SCP timed out after {timeout}s", exit_code=-1)
+            return SSHResult(
+                stdout="", stderr=f"SCP timed out after {timeout}s", exit_code=-1
+            )
 
         return SSHResult(
             stdout=stdout_bytes.decode("utf-8", errors="replace"),

@@ -122,9 +122,7 @@ async def test_generate_runfile_custom_profiles(provider: K8sNetperfSkillProvide
 
 @pytest.mark.asyncio
 async def test_generate_runfile_iperf3(provider: K8sNetperfSkillProvider):
-    result = await provider.generate_runfile(
-        "k8s-netperf", {"driver": "iperf3"}
-    )
+    result = await provider.generate_runfile("k8s-netperf", {"driver": "iperf3"})
     t = result.template
     assert t["driver"] == "iperf3"
     assert "--iperf" in t["cli_flags"]
@@ -133,9 +131,7 @@ async def test_generate_runfile_iperf3(provider: K8sNetperfSkillProvider):
 
 @pytest.mark.asyncio
 async def test_generate_runfile_uperf(provider: K8sNetperfSkillProvider):
-    result = await provider.generate_runfile(
-        "k8s-netperf", {"driver": "uperf"}
-    )
+    result = await provider.generate_runfile("k8s-netperf", {"driver": "uperf"})
     t = result.template
     assert t["driver"] == "uperf"
     assert "--uperf" in t["cli_flags"]
@@ -143,33 +139,25 @@ async def test_generate_runfile_uperf(provider: K8sNetperfSkillProvider):
 
 @pytest.mark.asyncio
 async def test_generate_runfile_host_network(provider: K8sNetperfSkillProvider):
-    result = await provider.generate_runfile(
-        "k8s-netperf", {"hostNet": True}
-    )
+    result = await provider.generate_runfile("k8s-netperf", {"hostNet": True})
     assert "--hostNet" in result.template["cli_flags"]
 
 
 @pytest.mark.asyncio
 async def test_generate_runfile_local(provider: K8sNetperfSkillProvider):
-    result = await provider.generate_runfile(
-        "k8s-netperf", {"local": True}
-    )
+    result = await provider.generate_runfile("k8s-netperf", {"local": True})
     assert "--local" in result.template["cli_flags"]
 
 
 @pytest.mark.asyncio
 async def test_generate_runfile_across(provider: K8sNetperfSkillProvider):
-    result = await provider.generate_runfile(
-        "k8s-netperf", {"across": True}
-    )
+    result = await provider.generate_runfile("k8s-netperf", {"across": True})
     assert "--across" in result.template["cli_flags"]
 
 
 @pytest.mark.asyncio
 async def test_generate_runfile_service(provider: K8sNetperfSkillProvider):
-    result = await provider.generate_runfile(
-        "k8s-netperf", {"service": True}
-    )
+    result = await provider.generate_runfile("k8s-netperf", {"service": True})
     tests = result.template["config"]["tests"]
     for test in tests:
         test_config = next(iter(test.values()))
@@ -261,34 +249,40 @@ async def test_validate_runfile_missing_config(provider: K8sNetperfSkillProvider
 
 @pytest.mark.asyncio
 async def test_validate_runfile_missing_tests(provider: K8sNetperfSkillProvider):
-    validation = await provider.validate_runfile({
-        "config": {},
-        "driver": "netperf",
-    })
+    validation = await provider.validate_runfile(
+        {
+            "config": {},
+            "driver": "netperf",
+        }
+    )
     assert validation["valid"] is False
     assert any("tests" in e for e in validation["errors"])
 
 
 @pytest.mark.asyncio
 async def test_validate_runfile_invalid_profile(provider: K8sNetperfSkillProvider):
-    validation = await provider.validate_runfile({
-        "config": {
-            "tests": [{"bad_test": {"profile": "INVALID_PROFILE"}}],
-        },
-        "driver": "netperf",
-    })
+    validation = await provider.validate_runfile(
+        {
+            "config": {
+                "tests": [{"bad_test": {"profile": "INVALID_PROFILE"}}],
+            },
+            "driver": "netperf",
+        }
+    )
     assert validation["valid"] is False
     assert any("profile" in e for e in validation["errors"])
 
 
 @pytest.mark.asyncio
 async def test_validate_runfile_invalid_driver(provider: K8sNetperfSkillProvider):
-    validation = await provider.validate_runfile({
-        "config": {
-            "tests": [{"test1": {"profile": "TCP_STREAM"}}],
-        },
-        "driver": "invalid_driver",
-    })
+    validation = await provider.validate_runfile(
+        {
+            "config": {
+                "tests": [{"test1": {"profile": "TCP_STREAM"}}],
+            },
+            "driver": "invalid_driver",
+        }
+    )
     assert validation["valid"] is False
     assert any("driver" in e.lower() for e in validation["errors"])
 
@@ -297,12 +291,14 @@ async def test_validate_runfile_invalid_driver(provider: K8sNetperfSkillProvider
 async def test_validate_runfile_driver_profile_mismatch(
     provider: K8sNetperfSkillProvider,
 ):
-    validation = await provider.validate_runfile({
-        "config": {
-            "tests": [{"test1": {"profile": "TCP_CRR"}}],
-        },
-        "driver": "iperf3",
-    })
+    validation = await provider.validate_runfile(
+        {
+            "config": {
+                "tests": [{"test1": {"profile": "TCP_CRR"}}],
+            },
+            "driver": "iperf3",
+        }
+    )
     assert validation["valid"] is False
     assert any("not supported" in e for e in validation["errors"])
 
@@ -328,9 +324,7 @@ async def test_validate_generated_multiprofile_passes(
 
 @pytest.mark.asyncio
 async def test_test_name_includes_messagesize(provider: K8sNetperfSkillProvider):
-    result = await provider.generate_runfile(
-        "k8s-netperf", {"messagesize": 8192}
-    )
+    result = await provider.generate_runfile("k8s-netperf", {"messagesize": 8192})
     test = result.template["config"]["tests"][0]
     test_name = next(iter(test.keys()))
     assert "8192" in test_name
@@ -352,9 +346,7 @@ async def test_get_default_config(provider: K8sNetperfSkillProvider):
 
 @pytest.mark.asyncio
 async def test_string_profile_coerced_to_list(provider: K8sNetperfSkillProvider):
-    result = await provider.generate_runfile(
-        "k8s-netperf", {"profiles": "TCP_RR"}
-    )
+    result = await provider.generate_runfile("k8s-netperf", {"profiles": "TCP_RR"})
     tests = result.template["config"]["tests"]
     assert len(tests) == 1
     test_config = next(iter(tests[0].values()))

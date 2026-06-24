@@ -3,6 +3,7 @@
 Tests that AgentMCPClient can connect to a FastMCP server over stdio,
 list tools, and call them — proving the MCP pattern works end-to-end.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,7 +19,8 @@ from agents.mcp_client import AgentMCPClient
 def mock_triage_server(tmp_path: Path) -> Path:
     """Write a minimal FastMCP triage server that uses inline mock data."""
     script = tmp_path / "mock_server.py"
-    script.write_text(textwrap.dedent("""\
+    script.write_text(
+        textwrap.dedent("""\
         import json
         from fastmcp import FastMCP
 
@@ -70,7 +72,8 @@ def mock_triage_server(tmp_path: Path) -> Path:
 
         if __name__ == "__main__":
             mcp.run()
-    """))
+    """)
+    )
     return script
 
 
@@ -126,7 +129,9 @@ async def test_mcp_client_call_get_benchmark_not_found(mock_triage_server: Path)
     client = AgentMCPClient()
     await client.connect(str(mock_triage_server))
     try:
-        result = await client.call_tool("get_benchmark_details", {"name": "nonexistent"})
+        result = await client.call_tool(
+            "get_benchmark_details", {"name": "nonexistent"}
+        )
         details = json.loads(result)
         assert "error" in details
     finally:
@@ -182,8 +187,8 @@ async def test_base_agent_mcp_dispatch():
     """Verify AgentBase._execute_tool routes to MCP when no local handler matches."""
     from unittest.mock import AsyncMock, MagicMock
 
-    from providers.llm.base import ToolCall, ToolResult
     from agents.base import AgentBase
+    from providers.llm.base import ToolCall
 
     class _TestAgent(AgentBase):
         def _system_prompt(self):

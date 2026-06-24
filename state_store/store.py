@@ -1,20 +1,19 @@
 from __future__ import annotations
 
-import json
 import logging
 import threading
 import uuid
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
 
 from .models import (
+    VALID_TRANSITIONS,
     AddCommentRequest,
     Comment,
     CreateTicketRequest,
     Ticket,
     TicketStatus,
     TransitionRequest,
-    VALID_TRANSITIONS,
 )
 
 logger = logging.getLogger(__name__)

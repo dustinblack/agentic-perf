@@ -16,13 +16,10 @@ from .prompts import REVIEW_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
-_LOCAL_TOOL_NAMES = frozenset(
-    {"request_clarification", "submit_review_result"}
-)
+_LOCAL_TOOL_NAMES = frozenset({"request_clarification", "submit_review_result"})
 
 _MCP_TOOL_NAMES = frozenset(
-    t.name for t in get_review_tools()
-    if t.name not in _LOCAL_TOOL_NAMES
+    t.name for t in get_review_tools() if t.name not in _LOCAL_TOOL_NAMES
 ) | {"list_harness_docs", "read_harness_doc"}
 
 
@@ -41,7 +38,8 @@ class ReviewAgent(AgentBase):
         self._hitl_ticket_id: str | None = None
 
         local_tools = [
-            t for t in get_review_tools(repo_cache=repo_cache)
+            t
+            for t in get_review_tools(repo_cache=repo_cache)
             if t.name not in _MCP_TOOL_NAMES
         ]
 
@@ -75,7 +73,8 @@ class ReviewAgent(AgentBase):
 
         mcp = AgentMCPClient()
         await mcp.connect(
-            review_server, name="review",
+            review_server,
+            name="review",
             env={"TICKET_ID": ticket_id, "STATE_STORE_URL": self.store_url},
         )
         self._mcp = mcp
@@ -109,7 +108,9 @@ class ReviewAgent(AgentBase):
         if cf.get("benchmark_suite"):
             content += f"**Benchmark Suite:** {cf['benchmark_suite']}\n"
 
-        harness = cf.get("harness_name") or cf.get("directives", {}).get("harness", "crucible")
+        harness = cf.get("harness_name") or cf.get("directives", {}).get(
+            "harness", "crucible"
+        )
         content += f"**Harness:** {harness}\n"
 
         if cf.get("benchmark_duration"):
@@ -121,7 +122,7 @@ class ReviewAgent(AgentBase):
 
         ssh_ips = cf.get("ssh_hardware_ips") or cf.get("assigned_hardware_ips") or {}
         if ssh_ips.get("controller"):
-            content += f"\n## Connection Details\n"
+            content += "\n## Connection Details\n"
             content += f"**Controller (SSH):** {ssh_ips['controller']}\n"
             if cf.get("ssh_key_path"):
                 content += f"**SSH Key:** {cf['ssh_key_path']}\n"
@@ -152,9 +153,7 @@ class ReviewAgent(AgentBase):
 
         return [{"role": "user", "content": content}]
 
-    async def _handle_completion(
-        self, ticket_id: str, response: LLMResponse
-    ) -> None:
+    async def _handle_completion(self, ticket_id: str, response: LLMResponse) -> None:
         if self._hitl_triggered:
             logger.info(f"[review-agent] HITL triggered for {ticket_id}")
             return
