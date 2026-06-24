@@ -187,10 +187,13 @@ async def get_reservation_status(provider: str, reservation_id: str) -> str:
 
 
 @mcp.tool()
-async def validate_host(host: str, ssh_key_path: str = "", ssh_user: str = "root") -> str:
+async def validate_host(
+    host: str, ssh_key_path: str = "", ssh_user: str = "root"
+) -> str:
     """Validate that a host is reachable via SSH. Returns connectivity status, FQDN, and basic system info (OS, CPU count, RAM). Pass ssh_key_path from the reserve_resources result to use the correct key."""
     await _ensure_init()
     from providers.ssh import SSHExecutor
+
     if ssh_key_path:
         ssh = SSHExecutor(user=ssh_user, key_path=ssh_key_path)
     else:
