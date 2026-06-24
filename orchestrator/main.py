@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import fcntl
 import logging
 import os
 import signal
@@ -105,9 +106,7 @@ async def _block_absent_suite(store_url: str, ticket_id: str) -> None:
         )
 
 
-async def _block_handoff_failed(
-    store_url: str, ticket_id: str, reason: str
-) -> None:
+async def _block_handoff_failed(store_url: str, ticket_id: str, reason: str) -> None:
     import httpx
 
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -207,13 +206,9 @@ async def poll_loop(config: OrchestratorConfig) -> None:
 
                 ok, reason = check_handoff(status, ticket)
                 if not ok:
-                    logger.warning(
-                        f"Handoff blocked for {tid} at {status}: {reason}"
-                    )
+                    logger.warning(f"Handoff blocked for {tid} at {status}: {reason}")
                     dispatcher.mark_dispatched(tid, status)
-                    await _block_handoff_failed(
-                        config.state_store_url, tid, reason
-                    )
+                    await _block_handoff_failed(config.state_store_url, tid, reason)
                     continue
 
                 dispatcher.mark_active(tid)
@@ -226,29 +221,44 @@ async def poll_loop(config: OrchestratorConfig) -> None:
 
 LOCK_FILE = Path.home() / ".agentic-perf" / "orchestrator.pid"
 
+_lock_fd: int | None = None
+
 
 def _acquire_lock() -> None:
+    global _lock_fd
     LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
-    if LOCK_FILE.exists():
-        old_pid = LOCK_FILE.read_text().strip()
+    fd = os.open(str(LOCK_FILE), os.O_WRONLY | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
         try:
-            os.kill(int(old_pid), 0)
-            print(
-                f"ERROR: Orchestrator already running (PID {old_pid}). "
-                f"Kill it first or remove {LOCK_FILE}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        except (ProcessLookupError, ValueError):
-            pass
-    LOCK_FILE.write_text(str(os.getpid()))
+            old_pid = LOCK_FILE.read_text().strip()
+        except OSError:
+            old_pid = "unknown"
+        print(
+            f"ERROR: Orchestrator already running (PID {old_pid}). "
+            f"Kill it first or remove {LOCK_FILE}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    os.ftruncate(fd, 0)
+    os.write(fd, str(os.getpid()).encode())
+    _lock_fd = fd
     atexit.register(_release_lock)
 
 
 def _release_lock() -> None:
+    global _lock_fd
+    if _lock_fd is not None:
+        try:
+            fcntl.flock(_lock_fd, fcntl.LOCK_UN)
+            os.close(_lock_fd)
+        except OSError:
+            pass
+        _lock_fd = None
     try:
-        if LOCK_FILE.exists() and LOCK_FILE.read_text().strip() == str(os.getpid()):
-            LOCK_FILE.unlink()
+        LOCK_FILE.unlink(missing_ok=True)
     except OSError:
         pass
 
