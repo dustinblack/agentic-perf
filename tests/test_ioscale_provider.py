@@ -50,9 +50,7 @@ async def test_get_benchmark_not_found(provider: IoscaleSkillProvider):
 
 @pytest.mark.asyncio
 async def test_resolve_benchmark_fio(provider: IoscaleSkillProvider):
-    result = await provider.resolve_benchmark(
-        {"description": "fio vm storage test"}
-    )
+    result = await provider.resolve_benchmark({"description": "fio vm storage test"})
     assert result == "ioscale-fio"
 
 
@@ -122,8 +120,13 @@ async def test_generate_runfile_custom_storage(provider: IoscaleSkillProvider):
 async def test_generate_runfile_custom_fio_params(provider: IoscaleSkillProvider):
     result = await provider.generate_runfile(
         "ioscale-fio",
-        {"test_size": "10G", "runtime": 600, "block_sizes": "4k 8k",
-         "io_patterns": "randread randwrite", "numjobs": 4},
+        {
+            "test_size": "10G",
+            "runtime": 600,
+            "block_sizes": "4k 8k",
+            "io_patterns": "randread randwrite",
+            "numjobs": 4,
+        },
     )
     fio = result.template["test_config"]["fio"]
     assert fio["test_size"] == "10G"
@@ -188,36 +191,51 @@ async def test_validate_runfile_valid(provider: IoscaleSkillProvider):
 
 @pytest.mark.asyncio
 async def test_validate_runfile_missing_test_type(provider: IoscaleSkillProvider):
-    validation = await provider.validate_runfile({
-        "vm_config": {}, "test_config": {},
-    })
+    validation = await provider.validate_runfile(
+        {
+            "vm_config": {},
+            "test_config": {},
+        }
+    )
     assert validation["valid"] is False
     assert any("test_type" in e for e in validation["errors"])
 
 
 @pytest.mark.asyncio
 async def test_validate_runfile_invalid_test_type(provider: IoscaleSkillProvider):
-    validation = await provider.validate_runfile({
-        "test_type": "invalid", "vm_config": {}, "test_config": {},
-    })
+    validation = await provider.validate_runfile(
+        {
+            "test_type": "invalid",
+            "vm_config": {},
+            "test_config": {},
+        }
+    )
     assert validation["valid"] is False
     assert any("invalid" in e for e in validation["errors"])
 
 
 @pytest.mark.asyncio
 async def test_validate_runfile_fio_missing_section(provider: IoscaleSkillProvider):
-    validation = await provider.validate_runfile({
-        "test_type": "fio", "vm_config": {}, "test_config": {},
-    })
+    validation = await provider.validate_runfile(
+        {
+            "test_type": "fio",
+            "vm_config": {},
+            "test_config": {},
+        }
+    )
     assert validation["valid"] is False
     assert any("fio" in e for e in validation["errors"])
 
 
 @pytest.mark.asyncio
 async def test_validate_runfile_db_missing_section(provider: IoscaleSkillProvider):
-    validation = await provider.validate_runfile({
-        "test_type": "mariadb", "vm_config": {}, "test_config": {},
-    })
+    validation = await provider.validate_runfile(
+        {
+            "test_type": "mariadb",
+            "vm_config": {},
+            "test_config": {},
+        }
+    )
     assert validation["valid"] is False
     assert any("database" in e for e in validation["errors"])
 

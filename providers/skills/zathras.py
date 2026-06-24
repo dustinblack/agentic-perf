@@ -19,7 +19,12 @@ KEYWORD_MAP = {
     "network": ["uperf"],
     "throughput": ["uperf"],
     "latency": ["uperf"],
-    "database": ["hammerdb", "phoronix_cassandra", "phoronix_cockroach", "phoronix_sqlite"],
+    "database": [
+        "hammerdb",
+        "phoronix_cassandra",
+        "phoronix_cockroach",
+        "phoronix_sqlite",
+    ],
     "java": ["specjbb"],
     "python": ["pyperf"],
     "scheduler": ["pig"],

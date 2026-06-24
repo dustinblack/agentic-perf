@@ -69,7 +69,9 @@ async def test_resolve_benchmark_stress(provider: KubeBurnerSkillProvider):
 
 @pytest.mark.asyncio
 async def test_resolve_benchmark_kubernetes(provider: KubeBurnerSkillProvider):
-    result = await provider.resolve_benchmark({"description": "kubernetes scale testing"})
+    result = await provider.resolve_benchmark(
+        {"description": "kubernetes scale testing"}
+    )
     assert result is not None
     assert result in ("node-density", "cluster-density")
 
@@ -191,40 +193,50 @@ async def test_validate_runfile_missing_config(provider: KubeBurnerSkillProvider
 
 @pytest.mark.asyncio
 async def test_validate_runfile_missing_jobs(provider: KubeBurnerSkillProvider):
-    validation = await provider.validate_runfile({
-        "config": {"global": {}},
-        "templates": {},
-    })
+    validation = await provider.validate_runfile(
+        {
+            "config": {"global": {}},
+            "templates": {},
+        }
+    )
     assert validation["valid"] is False
     assert any("jobs" in e for e in validation["errors"])
 
 
 @pytest.mark.asyncio
 async def test_validate_runfile_invalid_job_type(provider: KubeBurnerSkillProvider):
-    validation = await provider.validate_runfile({
-        "config": {
-            "global": {},
-            "jobs": [{"name": "test", "jobType": "Invalid", "objects": []}],
-        },
-        "templates": {},
-    })
+    validation = await provider.validate_runfile(
+        {
+            "config": {
+                "global": {},
+                "jobs": [{"name": "test", "jobType": "Invalid", "objects": []}],
+            },
+            "templates": {},
+        }
+    )
     assert validation["valid"] is False
     assert any("jobType" in e for e in validation["errors"])
 
 
 @pytest.mark.asyncio
-async def test_validate_runfile_missing_template_reference(provider: KubeBurnerSkillProvider):
-    validation = await provider.validate_runfile({
-        "config": {
-            "global": {},
-            "jobs": [{
-                "name": "test",
-                "jobType": "create",
-                "objects": [{"objectTemplate": "missing.yml"}],
-            }],
-        },
-        "templates": {},
-    })
+async def test_validate_runfile_missing_template_reference(
+    provider: KubeBurnerSkillProvider,
+):
+    validation = await provider.validate_runfile(
+        {
+            "config": {
+                "global": {},
+                "jobs": [
+                    {
+                        "name": "test",
+                        "jobType": "create",
+                        "objects": [{"objectTemplate": "missing.yml"}],
+                    }
+                ],
+            },
+            "templates": {},
+        }
+    )
     assert validation["valid"] is False
     assert any("missing.yml" in e for e in validation["errors"])
 

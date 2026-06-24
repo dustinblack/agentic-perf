@@ -190,7 +190,11 @@ async def test_generate_runfile_llm_d_defaults(provider: ForgeSkillProvider):
 async def test_generate_runfile_llm_d_with_scheduler(provider: ForgeSkillProvider):
     result = await provider.generate_runfile(
         "forge-llm-d",
-        {"model": "qwen3-0_6b", "scheduler_profile": "precise", "benchmark_key": "short"},
+        {
+            "model": "qwen3-0_6b",
+            "scheduler_profile": "precise",
+            "benchmark_key": "short",
+        },
     )
     t = result.template
     assert "qwen3-0_6b" in t["presets"]
@@ -279,9 +283,7 @@ async def test_get_example_runfile_not_found(provider: ForgeSkillProvider):
 
 @pytest.mark.asyncio
 async def test_validate_runfile_valid(provider: ForgeSkillProvider):
-    result = await provider.generate_runfile(
-        "forge-rhaiis", {"model": "llama-3-1-8b"}
-    )
+    result = await provider.generate_runfile("forge-rhaiis", {"model": "llama-3-1-8b"})
     validation = await provider.validate_runfile(result.template)
     assert validation["valid"] is True
     assert validation["errors"] == []
@@ -325,7 +327,12 @@ async def test_validate_runfile_empty_presets(provider: ForgeSkillProvider):
 @pytest.mark.asyncio
 async def test_validate_runfile_bad_cli_args(provider: ForgeSkillProvider):
     validation = await provider.validate_runfile(
-        {"harness": "forge", "project": "rhaiis", "presets": ["llama-8b"], "cli_args": "not-a-list"}
+        {
+            "harness": "forge",
+            "project": "rhaiis",
+            "presets": ["llama-8b"],
+            "cli_args": "not-a-list",
+        }
     )
     assert validation["valid"] is False
     assert any("cli_args" in e for e in validation["errors"])
@@ -334,7 +341,12 @@ async def test_validate_runfile_bad_cli_args(provider: ForgeSkillProvider):
 @pytest.mark.asyncio
 async def test_validate_runfile_bad_config_overrides(provider: ForgeSkillProvider):
     validation = await provider.validate_runfile(
-        {"harness": "forge", "project": "rhaiis", "presets": ["llama-8b"], "config_overrides": "bad"}
+        {
+            "harness": "forge",
+            "project": "rhaiis",
+            "presets": ["llama-8b"],
+            "config_overrides": "bad",
+        }
     )
     assert validation["valid"] is False
     assert any("config_overrides" in e for e in validation["errors"])

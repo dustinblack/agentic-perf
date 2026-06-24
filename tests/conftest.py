@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import textwrap
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,7 +9,6 @@ import pytest
 
 from providers.secrets.base import SecretsProvider
 from providers.skills.base import BenchmarkSuite, RunfileTemplate, SkillProvider
-
 
 TEST_DEFS_YAML = textwrap.dedent("""\
     test_defs:
@@ -147,9 +145,7 @@ class MockSSHExecutor:
         self._default = SSHResult(exit_code=0, stdout="ok")
         self.calls: list[dict[str, Any]] = []
 
-    async def run(
-        self, host: str, command: str, timeout: int = 300
-    ) -> SSHResult:
+    async def run(self, host: str, command: str, timeout: int = 300) -> SSHResult:
         self.calls.append({"method": "run", "host": host, "command": command})
         for pattern, result in self._results.items():
             if pattern in command:
@@ -159,10 +155,12 @@ class MockSSHExecutor:
     async def copy_to(
         self, host: str, local_path: str, remote_path: str, timeout: int = 60
     ) -> SSHResult:
-        self.calls.append({
-            "method": "copy_to",
-            "host": host,
-            "local_path": local_path,
-            "remote_path": remote_path,
-        })
+        self.calls.append(
+            {
+                "method": "copy_to",
+                "host": host,
+                "local_path": local_path,
+                "remote_path": remote_path,
+            }
+        )
         return self._default

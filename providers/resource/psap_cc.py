@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -32,9 +31,7 @@ class PSAPCCResourceProvider(ResourceProvider):
         client = await PSAPControlCenterClient.from_secrets(secrets_provider)
         return cls(client)
 
-    async def check_available(
-        self, requirements: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def check_available(self, requirements: dict[str, Any]) -> dict[str, Any]:
         clusters = await self._client.list_clusters(active_only=True)
         healthy = [c for c in clusters if c.get("status") == "healthy"]
 
@@ -46,17 +43,11 @@ class PSAPCCResourceProvider(ResourceProvider):
             and r.get("status") in ("active", "scheduled")
         }
 
-        available = [
-            c for c in healthy if c["id"] not in reserved_cluster_ids
-        ]
+        available = [c for c in healthy if c["id"] not in reserved_cluster_ids]
 
         min_gpus = requirements.get("min_gpus")
         if min_gpus:
-            available = [
-                c
-                for c in available
-                if int(c.get("gpu_count", 0)) >= min_gpus
-            ]
+            available = [c for c in available if int(c.get("gpu_count", 0)) >= min_gpus]
 
         gpu_type = requirements.get("gpu_type")
         if gpu_type:
@@ -155,9 +146,7 @@ class PSAPCCResourceProvider(ResourceProvider):
                         }
                     )
         except Exception:
-            logger.warning(
-                f"[psap-cc] Could not fetch topology for {cluster_id}"
-            )
+            logger.warning(f"[psap-cc] Could not fetch topology for {cluster_id}")
 
         cluster_name = cluster.get("name", cluster_id)
         gpu_type = cluster.get("gpu_type", "unknown")
@@ -181,10 +170,7 @@ class PSAPCCResourceProvider(ResourceProvider):
                 "reservation_id": reservation_id,
                 "worker_nodes": worker_nodes,
             },
-            "message": (
-                f"Reserved cluster {cluster_name} "
-                f"({gpu_count}x {gpu_type})"
-            ),
+            "message": (f"Reserved cluster {cluster_name} ({gpu_count}x {gpu_type})"),
         }
 
     async def get_reservation_status(
@@ -201,12 +187,8 @@ class PSAPCCResourceProvider(ResourceProvider):
         cluster_healthy = False
         if cluster_id:
             try:
-                cluster_status = await self._client.get_cluster_status(
-                    cluster_id
-                )
-                cluster_healthy = (
-                    cluster_status.get("status") == "healthy"
-                )
+                cluster_status = await self._client.get_cluster_status(cluster_id)
+                cluster_healthy = cluster_status.get("status") == "healthy"
             except Exception:
                 pass
 
@@ -228,9 +210,7 @@ class PSAPCCResourceProvider(ResourceProvider):
         reservation_id: str,
         provider_metadata: dict[str, Any],
     ) -> dict[str, Any]:
-        logger.info(
-            f"[psap-cc] Cancelling reservation {reservation_id}"
-        )
+        logger.info(f"[psap-cc] Cancelling reservation {reservation_id}")
         result = await self._client.cancel_reservation(reservation_id)
         return {
             "provider": self.provider_name,
@@ -247,18 +227,14 @@ class PSAPCCResourceProvider(ResourceProvider):
             "status": "skipped",
             "ssh_key_path": "",
             "hosts": {},
-            "message": (
-                "psap-cc provides K8s cluster access, not SSH hosts"
-            ),
+            "message": ("psap-cc provides K8s cluster access, not SSH hosts"),
         }
 
     async def cleanup_ssh_keys(self, hosts: list[str]) -> dict[str, Any]:
         return {
             "status": "skipped",
             "hosts": {},
-            "message": (
-                "psap-cc provides K8s cluster access, not SSH hosts"
-            ),
+            "message": ("psap-cc provides K8s cluster access, not SSH hosts"),
         }
 
     async def close(self) -> None:

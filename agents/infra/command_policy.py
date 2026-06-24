@@ -4,6 +4,7 @@ Defense-in-depth: catches LLM hallucinations that would produce obviously
 destructive commands. Not a sandbox — shell constructs can bypass binary
 checks. True sandboxing (containers/seccomp) is Phase 4.
 """
+
 from __future__ import annotations
 
 import json
@@ -48,9 +49,7 @@ def load_policy(agent_name: str) -> CommandPolicy:
     with open(policy_path) as f:
         data: dict[str, Any] = json.load(f)
 
-    agent_blocked = [
-        re.compile(p) for p in data.get("blocked_patterns", [])
-    ]
+    agent_blocked = [re.compile(p) for p in data.get("blocked_patterns", [])]
 
     return CommandPolicy(
         agent_name=agent_name,
@@ -60,9 +59,7 @@ def load_policy(agent_name: str) -> CommandPolicy:
     )
 
 
-def check_command(
-    command: str, policy: CommandPolicy
-) -> tuple[bool, str]:
+def check_command(command: str, policy: CommandPolicy) -> tuple[bool, str]:
     """Check a command against a policy.
 
     Returns (allowed, reason). If allowed is False, reason explains why.

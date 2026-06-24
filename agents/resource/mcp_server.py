@@ -150,9 +150,7 @@ def get_resource_tools() -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="get_reservation_status",
-            description=(
-                "Check the status of an existing resource reservation."
-            ),
+            description=("Check the status of an existing resource reservation."),
             input_schema={
                 "type": "object",
                 "properties": {
@@ -226,7 +224,9 @@ def get_resource_tools() -> list[ToolDefinition]:
 
 
 IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
-FQDN_RE = re.compile(r"\b[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,})+\b")
+FQDN_RE = re.compile(
+    r"\b[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,})+\b"
+)
 
 
 def create_resource_tool_handlers(
@@ -243,6 +243,7 @@ def create_resource_tool_handlers(
             if secrets_provider is None:
                 raise ValueError("No secrets provider or registry configured")
             from providers.resource.registry import ResourceProviderRegistry
+
             _registry = ResourceProviderRegistry(secrets_provider)
         return _registry
 
@@ -264,7 +265,9 @@ def create_resource_tool_handlers(
             if user_match:
                 result["ssh_user"] = user_match.group(1)
 
-            key_match = re.search(r"(?:key|ssh_key|ssh-key|ssh_key_path)\s*[:=]\s*(\S+)", lower)
+            key_match = re.search(
+                r"(?:key|ssh_key|ssh-key|ssh_key_path)\s*[:=]\s*(\S+)", lower
+            )
             if key_match:
                 result["ssh_key_path"] = key_match.group(1)
 
@@ -293,7 +296,10 @@ def create_resource_tool_handlers(
     ) -> dict:
         effective_key = ssh_key_path if ssh_key_path != "~/.ssh/id_rsa" else None
         result = await ssh.run(
-            host, "echo SSH_OK", timeout=15, key_path=effective_key,
+            host,
+            "echo SSH_OK",
+            timeout=15,
+            key_path=effective_key,
         )
 
         if result.exit_code != 0 or "SSH_OK" not in result.stdout:
@@ -359,7 +365,9 @@ def create_resource_tool_handlers(
     ) -> dict:
         reg = _get_registry()
         prov = await reg.get_provider(provider)
-        result = await prov.reserve(selection, description, duration_hours, ticket_id=ticket_id)
+        result = await prov.reserve(
+            selection, description, duration_hours, ticket_id=ticket_id
+        )
 
         # Accumulate provider_metadata across multiple reserve calls
         # (e.g., separate calls for controller and endpoints).
@@ -381,9 +389,7 @@ def create_resource_tool_handlers(
 
         return result
 
-    async def get_reservation_status(
-        provider: str, reservation_id: str
-    ) -> dict:
+    async def get_reservation_status(provider: str, reservation_id: str) -> dict:
         reg = _get_registry()
         prov = await reg.get_provider(provider)
         return await prov.get_reservation_status(reservation_id)

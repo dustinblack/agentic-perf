@@ -22,7 +22,9 @@ class ClaudeLLMProvider(LLMProvider):
 
         backend = backend or os.environ.get("LLM_BACKEND", "auto")
         if backend == "auto":
-            if os.environ.get("ANTHROPIC_VERTEX_PROJECT_ID") or os.environ.get("CLAUDE_CODE_USE_VERTEX"):
+            if os.environ.get("ANTHROPIC_VERTEX_PROJECT_ID") or os.environ.get(
+                "CLAUDE_CODE_USE_VERTEX"
+            ):
                 backend = "vertex"
             elif os.environ.get("ANTHROPIC_API_KEY"):
                 backend = "direct"
@@ -61,12 +63,14 @@ class ClaudeLLMProvider(LLMProvider):
                 tool_calls.append(
                     ToolCall(id=block.id, name=block.name, input=block.input)
                 )
-                raw_content.append({
-                    "type": "tool_use",
-                    "id": block.id,
-                    "name": block.name,
-                    "input": block.input,
-                })
+                raw_content.append(
+                    {
+                        "type": "tool_use",
+                        "id": block.id,
+                        "name": block.name,
+                        "input": block.input,
+                    }
+                )
 
         return LLMResponse(
             text="\n".join(text_parts) if text_parts else None,
@@ -91,7 +95,5 @@ class ClaudeLLMProvider(LLMProvider):
         if tools:
             kwargs["tools"] = [self._tool_def_to_dict(t) for t in tools]
 
-        response = await asyncio.to_thread(
-            self._client.messages.create, **kwargs
-        )
+        response = await asyncio.to_thread(self._client.messages.create, **kwargs)
         return self._parse_response(response)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from .base import LLMProvider, LLMResponse, ToolCall, ToolDefinition
@@ -47,7 +46,13 @@ MOCK_BENCHMARK_RESULT = {
     "run_id": "RUN-20260608-a1b2c3",
     "benchmark_status": "completed",
     "run_file_used": {
-        "benchmarks": [{"name": "uperf", "ids": "1", "mv-params": {"test-types": "stream", "protocols": "tcp"}}],
+        "benchmarks": [
+            {
+                "name": "uperf",
+                "ids": "1",
+                "mv-params": {"test-types": "stream", "protocols": "tcp"},
+            }
+        ],
         "endpoints": [
             {"type": "remotehosts", "host": "10.0.5.3", "user": "root", "client": "1"},
             {"type": "remotehosts", "host": "10.0.5.4", "user": "root", "server": "1"},
@@ -143,12 +148,14 @@ class MockLLMProvider(LLMProvider):
             text=None,
             tool_calls=[ToolCall(id="tc_submit", name=tool_name, input=mock_data)],
             stop_reason="tool_use",
-            raw_content=[{
-                "type": "tool_use",
-                "id": "tc_submit",
-                "name": tool_name,
-                "input": mock_data,
-            }],
+            raw_content=[
+                {
+                    "type": "tool_use",
+                    "id": "tc_submit",
+                    "name": tool_name,
+                    "input": mock_data,
+                }
+            ],
         )
 
     @staticmethod

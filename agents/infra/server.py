@@ -7,6 +7,7 @@ API tokens, or secret file contents.
 Run directly:  python agents/infra/server.py
 Connected via: AgentMCPClient (agents/mcp_client.py)
 """
+
 from __future__ import annotations
 
 import json
@@ -44,9 +45,7 @@ _state_store_url: str | None = None
 
 def _get_ssh() -> SSHExecutor:
     if _ssh is None:
-        raise RuntimeError(
-            "SSH context not set. Call set_ssh_context() first."
-        )
+        raise RuntimeError("SSH context not set. Call set_ssh_context() first.")
     return _ssh
 
 
@@ -68,9 +67,7 @@ def _format_result(result: SSHResult) -> str:
 
 
 @mcp.tool()
-async def set_ssh_context(
-    ticket_id: str, agent_name: str = ""
-) -> str:
+async def set_ssh_context(ticket_id: str, agent_name: str = "") -> str:
     """Set SSH credentials by reading them from a ticket's custom_fields.
 
     Must be called before any SSH operations. Resolves ssh_key_path and
@@ -99,12 +96,14 @@ async def set_ssh_context(
         _agent_name = None
         _policy = None
 
-    return json.dumps({
-        "status": "ok",
-        "ssh_user": ssh_user,
-        "has_key": ssh_key is not None,
-        "agent_policy": agent_name or "none",
-    })
+    return json.dumps(
+        {
+            "status": "ok",
+            "ssh_user": ssh_user,
+            "has_key": ssh_key is not None,
+            "agent_policy": agent_name or "none",
+        }
+    )
 
 
 @mcp.tool()
@@ -114,10 +113,12 @@ async def check_host(host: str) -> str:
 
     result = await ssh.run(host, "echo SSH_OK", timeout=15)
     if result.exit_code != 0:
-        return json.dumps({
-            "reachable": False,
-            "error": result.stderr or result.stdout,
-        })
+        return json.dumps(
+            {
+                "reachable": False,
+                "error": result.stderr or result.stdout,
+            }
+        )
 
     info_cmd = (
         "hostname -f 2>/dev/null || hostname; "
@@ -126,18 +127,19 @@ async def check_host(host: str) -> str:
         "grep MemTotal /proc/meminfo 2>/dev/null | awk '{printf \"%.0f\\n\", $2/1024/1024}'"
     )
     info = await ssh.run(host, info_cmd, timeout=15)
-    return json.dumps({
-        "reachable": True,
-        "host": host,
-        "system_info": info.stdout.strip(),
-        "exit_code": info.exit_code,
-    }, indent=2)
+    return json.dumps(
+        {
+            "reachable": True,
+            "host": host,
+            "system_info": info.stdout.strip(),
+            "exit_code": info.exit_code,
+        },
+        indent=2,
+    )
 
 
 @mcp.tool()
-async def write_remote_file(
-    host: str, remote_path: str, content: str
-) -> str:
+async def write_remote_file(host: str, remote_path: str, content: str) -> str:
     """Write content to a file on a remote host. Creates parent directories."""
     ssh = _get_ssh()
 
@@ -145,14 +147,14 @@ async def write_remote_file(
         host, f"mkdir -p $(dirname {remote_path!r})", timeout=15
     )
     if mkdir_result.exit_code != 0:
-        return json.dumps({
-            "success": False,
-            "error": f"mkdir failed: {mkdir_result.stderr}",
-        })
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"mkdir failed: {mkdir_result.stderr}",
+            }
+        )
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".tmp", delete=False
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".tmp", delete=False) as f:
         f.write(content)
         local_path = f.name
 
@@ -161,30 +163,26 @@ async def write_remote_file(
     finally:
         Path(local_path).unlink(missing_ok=True)
 
-    return json.dumps({
-        "success": scp_result.exit_code == 0,
-        "remote_path": remote_path,
-        "bytes_written": len(content),
-        "error": scp_result.stderr if scp_result.exit_code != 0 else None,
-    })
+    return json.dumps(
+        {
+            "success": scp_result.exit_code == 0,
+            "remote_path": remote_path,
+            "bytes_written": len(content),
+            "error": scp_result.stderr if scp_result.exit_code != 0 else None,
+        }
+    )
 
 
 @mcp.tool()
-async def read_remote_file(
-    host: str, remote_path: str, max_bytes: int = 10000
-) -> str:
+async def read_remote_file(host: str, remote_path: str, max_bytes: int = 10000) -> str:
     """Read a file from a remote host. Truncates to max_bytes."""
     ssh = _get_ssh()
-    result = await ssh.run(
-        host, f"head -c {max_bytes} {remote_path!r}", timeout=30
-    )
+    result = await ssh.run(host, f"head -c {max_bytes} {remote_path!r}", timeout=30)
     return _format_result(result)
 
 
 @mcp.tool()
-async def deploy_secret(
-    host: str, secret_path: str, remote_path: str
-) -> str:
+async def deploy_secret(host: str, secret_path: str, remote_path: str) -> str:
     """Deploy a secret file to a remote host.
 
     Resolves the secret locally via the secrets provider, then SCPs it.
@@ -195,27 +193,33 @@ async def deploy_secret(
 
     local_path = await sp.get_secret_file(secret_path)
     if local_path is None:
-        return json.dumps({
-            "success": False,
-            "error": f"Secret not found: {secret_path}",
-        })
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"Secret not found: {secret_path}",
+            }
+        )
 
     mkdir_result = await ssh.run(
         host, f"mkdir -p $(dirname {remote_path!r})", timeout=15
     )
     if mkdir_result.exit_code != 0:
-        return json.dumps({
-            "success": False,
-            "error": f"mkdir failed: {mkdir_result.stderr}",
-        })
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"mkdir failed: {mkdir_result.stderr}",
+            }
+        )
 
     result = await ssh.copy_to(host, str(local_path), remote_path)
-    return json.dumps({
-        "success": result.exit_code == 0,
-        "secret_path": secret_path,
-        "remote_path": remote_path,
-        "error": result.stderr if result.exit_code != 0 else None,
-    })
+    return json.dumps(
+        {
+            "success": result.exit_code == 0,
+            "secret_path": secret_path,
+            "remote_path": remote_path,
+            "error": result.stderr if result.exit_code != 0 else None,
+        }
+    )
 
 
 @mcp.tool()
@@ -235,10 +239,14 @@ async def transfer_file(
         result = await ssh.copy_to(host, local_path, remote_path)
     elif direction == "pull":
         args = [
-            "scp", "-r",
-            "-o", f"ConnectTimeout={ssh.connect_timeout}",
-            "-o", "BatchMode=yes",
-            "-o", "StrictHostKeyChecking=accept-new",
+            "scp",
+            "-r",
+            "-o",
+            f"ConnectTimeout={ssh.connect_timeout}",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
         ]
         if ssh.key_path:
             args.extend(["-i", ssh.key_path])
@@ -251,30 +259,30 @@ async def transfer_file(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=120
-        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
         result = SSHResult(
             stdout=stdout.decode("utf-8", errors="replace"),
             stderr=stderr.decode("utf-8", errors="replace"),
             exit_code=proc.returncode or 0,
         )
     else:
-        return json.dumps({"success": False, "error": f"Unknown direction: {direction}"})
+        return json.dumps(
+            {"success": False, "error": f"Unknown direction: {direction}"}
+        )
 
-    return json.dumps({
-        "success": result.exit_code == 0,
-        "direction": direction,
-        "local_path": local_path,
-        "remote_path": remote_path,
-        "error": result.stderr if result.exit_code != 0 else None,
-    })
+    return json.dumps(
+        {
+            "success": result.exit_code == 0,
+            "direction": direction,
+            "local_path": local_path,
+            "remote_path": remote_path,
+            "error": result.stderr if result.exit_code != 0 else None,
+        }
+    )
 
 
 @mcp.tool()
-async def execute_command(
-    host: str, command: str, timeout: int = 300
-) -> str:
+async def execute_command(host: str, command: str, timeout: int = 300) -> str:
     """Execute a command on a remote host via SSH.
 
     Subject to per-agent command policy: the command's binary must be in
@@ -292,12 +300,14 @@ async def execute_command(
                 command[:120],
                 reason,
             )
-            return json.dumps({
-                "exit_code": -1,
-                "stdout": "",
-                "stderr": f"Command blocked by policy: {reason}",
-                "blocked": True,
-            })
+            return json.dumps(
+                {
+                    "exit_code": -1,
+                    "stdout": "",
+                    "stderr": f"Command blocked by policy: {reason}",
+                    "blocked": True,
+                }
+            )
 
         if timeout > _policy.max_timeout:
             timeout = _policy.max_timeout

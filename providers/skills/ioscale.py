@@ -124,8 +124,7 @@ _BENCHMARKS: dict[str, dict[str, Any]] = {
             "user_count": {
                 "type": "string",
                 "description": (
-                    "Space-separated virtual user counts to test "
-                    "(e.g., '1 5 10')"
+                    "Space-separated virtual user counts to test (e.g., '1 5 10')"
                 ),
                 "default": "1 5 10",
             },
@@ -155,8 +154,7 @@ _BENCHMARKS: dict[str, dict[str, Any]] = {
             "user_count": {
                 "type": "string",
                 "description": (
-                    "Space-separated virtual user counts to test "
-                    "(e.g., '1 5 10')"
+                    "Space-separated virtual user counts to test (e.g., '1 5 10')"
                 ),
                 "default": "1 5 10",
             },
@@ -361,8 +359,7 @@ class IoscaleSkillProvider(SkillProvider):
             errors.append("test_type is 'fio' but test_config missing 'fio' section")
         elif test_type in ("mariadb", "postgresql") and "database" not in test_config:
             errors.append(
-                f"test_type is '{test_type}' but test_config missing "
-                f"'database' section"
+                f"test_type is '{test_type}' but test_config missing 'database' section"
             )
 
         return {"valid": len(errors) == 0, "errors": errors}

@@ -25,29 +25,23 @@ class RunfileTemplate:
 
 class SkillProvider(ABC):
     @abstractmethod
-    async def list_benchmarks(self) -> list[BenchmarkSuite]:
-        ...
+    async def list_benchmarks(self) -> list[BenchmarkSuite]: ...
 
     @abstractmethod
-    async def get_benchmark(self, name: str) -> BenchmarkSuite | None:
-        ...
+    async def get_benchmark(self, name: str) -> BenchmarkSuite | None: ...
 
     @abstractmethod
-    async def resolve_benchmark(self, requirements: dict[str, Any]) -> str | None:
-        ...
+    async def resolve_benchmark(self, requirements: dict[str, Any]) -> str | None: ...
 
     @abstractmethod
     async def generate_runfile(
         self, benchmark: str, params: dict[str, Any]
-    ) -> RunfileTemplate:
-        ...
+    ) -> RunfileTemplate: ...
 
     async def get_default_config(self) -> dict[str, Any]:
         return {}
 
-    async def get_private_config(
-        self, suite_name: str, key: str
-    ) -> Any | None:
+    async def get_private_config(self, suite_name: str, key: str) -> Any | None:
         return None
 
     async def get_runfile_schema(self) -> dict[str, Any] | None:

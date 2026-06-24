@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from providers.skills.base import RunfileTemplate
 from agents.benchmark.mcp_server import create_benchmark_tool_handlers
-
+from providers.skills.base import RunfileTemplate
 from tests.conftest import MockSkillProvider
-
 
 MOCK_SCHEMA = {
     "type": "object",
@@ -215,7 +213,10 @@ async def test_execute_benchmark_accepts_llm_constructed_runfile(handlers_with_s
                 "remotes": [
                     {
                         "engines": [{"role": "client", "ids": [1]}],
-                        "config": {"host": "10.0.0.1", "settings": {"osruntime": "podman"}},
+                        "config": {
+                            "host": "10.0.0.1",
+                            "settings": {"osruntime": "podman"},
+                        },
                     },
                 ],
             },

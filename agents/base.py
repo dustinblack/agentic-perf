@@ -41,7 +41,9 @@ class AgentBase(ABC):
     async def close(self) -> None:
         await self._client.aclose()
 
-    def _emit(self, ticket_id: str, event_type: str, data: dict[str, Any] | None = None) -> None:
+    def _emit(
+        self, ticket_id: str, event_type: str, data: dict[str, Any] | None = None
+    ) -> None:
         if self._events:
             self._events.emit(ticket_id, self.agent_name, event_type, data)
 
@@ -50,10 +52,14 @@ class AgentBase(ABC):
         ticket = await self._get_ticket(ticket_id)
         system_prompt = self._system_prompt()
         messages = self._build_messages(ticket)
-        self._emit(ticket_id, "agent_started", {
-            "system_prompt": system_prompt,
-            "initial_messages": messages,
-        })
+        self._emit(
+            ticket_id,
+            "agent_started",
+            {
+                "system_prompt": system_prompt,
+                "initial_messages": messages,
+            },
+        )
         max_iterations = 20
 
         try:
@@ -64,14 +70,18 @@ class AgentBase(ABC):
                     messages=messages,
                     tools=self.tools if self.tools else None,
                 )
-                self._emit(ticket_id, "llm_response", {
-                    "iteration": i,
-                    "stop_reason": response.stop_reason,
-                    "tool_calls": [tc.name for tc in response.tool_calls],
-                    "text_length": len(response.text) if response.text else 0,
-                    "text": response.text,
-                    "raw_content": response.raw_content,
-                })
+                self._emit(
+                    ticket_id,
+                    "llm_response",
+                    {
+                        "iteration": i,
+                        "stop_reason": response.stop_reason,
+                        "tool_calls": [tc.name for tc in response.tool_calls],
+                        "text_length": len(response.text) if response.text else 0,
+                        "text": response.text,
+                        "raw_content": response.raw_content,
+                    },
+                )
 
                 if response.stop_reason == "end_turn" or not response.tool_calls:
                     await self._handle_completion(ticket_id, response)
@@ -82,11 +92,15 @@ class AgentBase(ABC):
                     None,
                 )
                 if submit_call:
-                    self._emit(ticket_id, "tool_called", {
-                        "tool": submit_call.name,
-                        "input_keys": list(submit_call.input.keys()),
-                        "input": submit_call.input,
-                    })
+                    self._emit(
+                        ticket_id,
+                        "tool_called",
+                        {
+                            "tool": submit_call.name,
+                            "input_keys": list(submit_call.input.keys()),
+                            "input": submit_call.input,
+                        },
+                    )
                     submit_response = LLMResponse(
                         text=None,
                         tool_calls=[submit_call],
@@ -101,46 +115,61 @@ class AgentBase(ABC):
                 calls_to_run = response.tool_calls
                 if len(calls_to_run) > 1:
                     non_clarify = [
-                        tc for tc in calls_to_run
-                        if tc.name != "request_clarification"
+                        tc for tc in calls_to_run if tc.name != "request_clarification"
                     ]
                     if non_clarify:
                         skipped = [tc for tc in calls_to_run if tc not in non_clarify]
                         for tc in skipped:
-                            self._emit(ticket_id, "tool_skipped", {
-                                "tool": tc.name,
-                                "reason": "other tools executed first",
-                            })
+                            self._emit(
+                                ticket_id,
+                                "tool_skipped",
+                                {
+                                    "tool": tc.name,
+                                    "reason": "other tools executed first",
+                                },
+                            )
                         calls_to_run = non_clarify
 
                 tool_results_content = []
                 for tc in calls_to_run:
-                    self._emit(ticket_id, "tool_called", {
-                        "tool": tc.name,
-                        "input_keys": list(tc.input.keys()),
-                        "input": tc.input,
-                    })
+                    self._emit(
+                        ticket_id,
+                        "tool_called",
+                        {
+                            "tool": tc.name,
+                            "input_keys": list(tc.input.keys()),
+                            "input": tc.input,
+                        },
+                    )
                     result = await self._execute_tool(tc)
-                    self._emit(ticket_id, "tool_result", {
-                        "tool": tc.name,
-                        "is_error": result.is_error,
-                        "content_length": len(result.content),
-                        "content": result.content,
-                    })
-                    tool_results_content.append({
-                        "type": "tool_result",
-                        "tool_use_id": tc.id,
-                        "content": result.content,
-                        "is_error": result.is_error,
-                    })
-                for tc in response.tool_calls:
-                    if tc not in calls_to_run:
-                        tool_results_content.append({
+                    self._emit(
+                        ticket_id,
+                        "tool_result",
+                        {
+                            "tool": tc.name,
+                            "is_error": result.is_error,
+                            "content_length": len(result.content),
+                            "content": result.content,
+                        },
+                    )
+                    tool_results_content.append(
+                        {
                             "type": "tool_result",
                             "tool_use_id": tc.id,
-                            "content": "Skipped: other tools executed first",
-                            "is_error": False,
-                        })
+                            "content": result.content,
+                            "is_error": result.is_error,
+                        }
+                    )
+                for tc in response.tool_calls:
+                    if tc not in calls_to_run:
+                        tool_results_content.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tc.id,
+                                "content": "Skipped: other tools executed first",
+                                "is_error": False,
+                            }
+                        )
 
                 messages.append({"role": "user", "content": tool_results_content})
             else:
@@ -158,18 +187,15 @@ class AgentBase(ABC):
         logger.info(f"[{self.agent_name}] Finished on ticket {ticket_id}")
 
     @abstractmethod
-    def _system_prompt(self) -> str:
-        ...
+    def _system_prompt(self) -> str: ...
 
     @abstractmethod
-    def _build_messages(self, ticket: dict[str, Any]) -> list[dict[str, Any]]:
-        ...
+    def _build_messages(self, ticket: dict[str, Any]) -> list[dict[str, Any]]: ...
 
     @abstractmethod
     async def _handle_completion(
         self, ticket_id: str, response: LLMResponse
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @staticmethod
     def _parse_json_response(text: str | None) -> dict[str, Any]:
@@ -185,6 +211,7 @@ class AgentBase(ABC):
 
         # Extract JSON from markdown code fences
         import re
+
         fence_match = re.search(r"```(?:json)?\s*\n(.*?)\n```", text, re.DOTALL)
         if fence_match:
             try:
@@ -237,9 +264,7 @@ class AgentBase(ABC):
 
         if self._mcp is not None:
             try:
-                content = await self._mcp.call_tool(
-                    tool_call.name, tool_call.input
-                )
+                content = await self._mcp.call_tool(tool_call.name, tool_call.input)
                 return ToolResult(tool_use_id=tool_call.id, content=content)
             except Exception as e:
                 logger.exception(
@@ -294,9 +319,7 @@ class AgentBase(ABC):
         r.raise_for_status()
         return r.json()
 
-    async def _request_human_input(
-        self, ticket_id: str, question: str
-    ) -> None:
+    async def _request_human_input(self, ticket_id: str, question: str) -> None:
         await self._add_comment(ticket_id, f"**Input needed:** {question}")
         await self._transition_ticket(
             ticket_id,

@@ -105,7 +105,9 @@ class ProvisioningAgent(AgentBase):
         if cf.get("ssh_key_path"):
             content += f"**SSH Key:** {cf['ssh_key_path']}\n"
         if cf.get("fresh_host"):
-            content += f"\n**Fresh Host:** true (freshly provisioned, no existing harness)\n"
+            content += (
+                "\n**Fresh Host:** true (freshly provisioned, no existing harness)\n"
+            )
         if cf.get("directives"):
             content += f"\n## User Directives\n```json\n{json.dumps(cf['directives'], indent=2)}\n```\n"
         if cf.get("parsed_specs"):
@@ -122,9 +124,7 @@ class ProvisioningAgent(AgentBase):
 
         return [{"role": "user", "content": content}]
 
-    async def _handle_completion(
-        self, ticket_id: str, response: LLMResponse
-    ) -> None:
+    async def _handle_completion(self, ticket_id: str, response: LLMResponse) -> None:
         if self._hitl_triggered:
             logger.info(f"[provisioning-agent] HITL triggered for {ticket_id}")
             return

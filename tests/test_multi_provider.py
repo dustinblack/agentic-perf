@@ -5,30 +5,92 @@ import pytest
 from providers.skills.base import BenchmarkSuite, RunfileTemplate
 from providers.skills.multi import MultiHarnessSkillProvider
 from providers.skills.private import PrivateSkillProvider
-
 from tests.conftest import MockSkillProvider
 
-
 CRUCIBLE_BENCHMARKS = [
-    BenchmarkSuite(name="fio", description="Crucible fio", roles=["client"], min_hosts=1, harness="crucible"),
-    BenchmarkSuite(name="uperf", description="Crucible uperf", roles=["client", "server"], min_hosts=2, harness="crucible"),
-    BenchmarkSuite(name="trafficgen", description="Crucible trafficgen", roles=["client", "server"], min_hosts=2, harness="crucible"),
+    BenchmarkSuite(
+        name="fio",
+        description="Crucible fio",
+        roles=["client"],
+        min_hosts=1,
+        harness="crucible",
+    ),
+    BenchmarkSuite(
+        name="uperf",
+        description="Crucible uperf",
+        roles=["client", "server"],
+        min_hosts=2,
+        harness="crucible",
+    ),
+    BenchmarkSuite(
+        name="trafficgen",
+        description="Crucible trafficgen",
+        roles=["client", "server"],
+        min_hosts=2,
+        harness="crucible",
+    ),
 ]
 
 ZATHRAS_BENCHMARKS = [
-    BenchmarkSuite(name="fio", description="Zathras fio", roles=["client"], min_hosts=1, harness="zathras"),
-    BenchmarkSuite(name="streams", description="Zathras streams", roles=["client"], min_hosts=1, harness="zathras"),
-    BenchmarkSuite(name="linpack", description="Zathras linpack", roles=["client"], min_hosts=1, harness="zathras"),
+    BenchmarkSuite(
+        name="fio",
+        description="Zathras fio",
+        roles=["client"],
+        min_hosts=1,
+        harness="zathras",
+    ),
+    BenchmarkSuite(
+        name="streams",
+        description="Zathras streams",
+        roles=["client"],
+        min_hosts=1,
+        harness="zathras",
+    ),
+    BenchmarkSuite(
+        name="linpack",
+        description="Zathras linpack",
+        roles=["client"],
+        min_hosts=1,
+        harness="zathras",
+    ),
 ]
 
 KUBE_BURNER_BENCHMARKS = [
-    BenchmarkSuite(name="node-density", description="Pod density stress test", roles=["client"], min_hosts=1, harness="kube-burner", endpoint_types=["kube"]),
-    BenchmarkSuite(name="cluster-density", description="API/etcd stress test", roles=["client"], min_hosts=1, harness="kube-burner", endpoint_types=["kube"]),
+    BenchmarkSuite(
+        name="node-density",
+        description="Pod density stress test",
+        roles=["client"],
+        min_hosts=1,
+        harness="kube-burner",
+        endpoint_types=["kube"],
+    ),
+    BenchmarkSuite(
+        name="cluster-density",
+        description="API/etcd stress test",
+        roles=["client"],
+        min_hosts=1,
+        harness="kube-burner",
+        endpoint_types=["kube"],
+    ),
 ]
 
 BENCHMARK_RUNNER_BENCHMARKS = [
-    BenchmarkSuite(name="stressng_pod", description="CPU stress test in pod", roles=["client"], min_hosts=1, harness="benchmark-runner", endpoint_types=["kube"]),
-    BenchmarkSuite(name="fio_pod", description="Storage IO in pod", roles=["client"], min_hosts=1, harness="benchmark-runner", endpoint_types=["kube"]),
+    BenchmarkSuite(
+        name="stressng_pod",
+        description="CPU stress test in pod",
+        roles=["client"],
+        min_hosts=1,
+        harness="benchmark-runner",
+        endpoint_types=["kube"],
+    ),
+    BenchmarkSuite(
+        name="fio_pod",
+        description="Storage IO in pod",
+        roles=["client"],
+        min_hosts=1,
+        harness="benchmark-runner",
+        endpoint_types=["kube"],
+    ),
 ]
 
 
@@ -37,7 +99,9 @@ def mock_crucible() -> MockSkillProvider:
     return MockSkillProvider(
         benchmarks=CRUCIBLE_BENCHMARKS,
         resolve_result="fio",
-        runfile_template=RunfileTemplate(benchmark="fio", template={"harness": "crucible"}),
+        runfile_template=RunfileTemplate(
+            benchmark="fio", template={"harness": "crucible"}
+        ),
     )
 
 
@@ -46,7 +110,9 @@ def mock_zathras() -> MockSkillProvider:
     return MockSkillProvider(
         benchmarks=ZATHRAS_BENCHMARKS,
         resolve_result="streams",
-        runfile_template=RunfileTemplate(benchmark="streams", template={"harness": "zathras"}),
+        runfile_template=RunfileTemplate(
+            benchmark="streams", template={"harness": "zathras"}
+        ),
     )
 
 
@@ -55,7 +121,9 @@ def mock_kube_burner() -> MockSkillProvider:
     return MockSkillProvider(
         benchmarks=KUBE_BURNER_BENCHMARKS,
         resolve_result="node-density",
-        runfile_template=RunfileTemplate(benchmark="node-density", template={"harness": "kube-burner"}),
+        runfile_template=RunfileTemplate(
+            benchmark="node-density", template={"harness": "kube-burner"}
+        ),
     )
 
 
@@ -64,12 +132,16 @@ def mock_benchmark_runner() -> MockSkillProvider:
     return MockSkillProvider(
         benchmarks=BENCHMARK_RUNNER_BENCHMARKS,
         resolve_result="stressng_pod",
-        runfile_template=RunfileTemplate(benchmark="stressng_pod", template={"harness": "benchmark-runner"}),
+        runfile_template=RunfileTemplate(
+            benchmark="stressng_pod", template={"harness": "benchmark-runner"}
+        ),
     )
 
 
 @pytest.fixture
-def multi(mock_crucible, mock_zathras, mock_kube_burner, mock_benchmark_runner) -> MultiHarnessSkillProvider:
+def multi(
+    mock_crucible, mock_zathras, mock_kube_burner, mock_benchmark_runner
+) -> MultiHarnessSkillProvider:
     return MultiHarnessSkillProvider(
         harnesses={
             "crucible": mock_crucible,
@@ -125,10 +197,12 @@ async def test_get_benchmark_not_found(multi: MultiHarnessSkillProvider):
 
 @pytest.mark.asyncio
 async def test_resolve_benchmark_with_harness_pref(multi: MultiHarnessSkillProvider):
-    result = await multi.resolve_benchmark({
-        "description": "anything",
-        "harness": "zathras",
-    })
+    result = await multi.resolve_benchmark(
+        {
+            "description": "anything",
+            "harness": "zathras",
+        }
+    )
     assert result == "streams"
 
 
@@ -153,19 +227,25 @@ async def test_resolve_benchmark_fallback_to_other(mock_zathras):
 
 
 @pytest.mark.asyncio
-async def test_generate_runfile_delegates_by_harness_param(multi: MultiHarnessSkillProvider):
+async def test_generate_runfile_delegates_by_harness_param(
+    multi: MultiHarnessSkillProvider,
+):
     result = await multi.generate_runfile("fio", {"harness": "zathras"})
     assert result.template["harness"] == "zathras"
 
 
 @pytest.mark.asyncio
-async def test_generate_runfile_delegates_by_benchmark_lookup(multi: MultiHarnessSkillProvider):
+async def test_generate_runfile_delegates_by_benchmark_lookup(
+    multi: MultiHarnessSkillProvider,
+):
     result = await multi.generate_runfile("streams", {})
     assert result.template["harness"] == "zathras"
 
 
 @pytest.mark.asyncio
-async def test_generate_runfile_defaults_to_default_harness(multi: MultiHarnessSkillProvider):
+async def test_generate_runfile_defaults_to_default_harness(
+    multi: MultiHarnessSkillProvider,
+):
     result = await multi.generate_runfile("fio", {})
     assert result.template["harness"] == "crucible"
 
@@ -208,11 +288,15 @@ async def test_find_capable_harnesses_kube_burner(multi: MultiHarnessSkillProvid
 
 
 @pytest.mark.asyncio
-async def test_resolve_benchmark_with_kube_burner_pref(multi: MultiHarnessSkillProvider):
-    result = await multi.resolve_benchmark({
-        "description": "anything",
-        "harness": "kube-burner",
-    })
+async def test_resolve_benchmark_with_kube_burner_pref(
+    multi: MultiHarnessSkillProvider,
+):
+    result = await multi.resolve_benchmark(
+        {
+            "description": "anything",
+            "harness": "kube-burner",
+        }
+    )
     assert result == "node-density"
 
 
@@ -230,7 +314,9 @@ async def test_get_benchmark_runner(multi: MultiHarnessSkillProvider):
 
 
 @pytest.mark.asyncio
-async def test_find_capable_harnesses_benchmark_runner(multi: MultiHarnessSkillProvider):
+async def test_find_capable_harnesses_benchmark_runner(
+    multi: MultiHarnessSkillProvider,
+):
     capable = await multi.find_capable_harnesses("stressng_pod")
     assert len(capable) == 1
     assert capable[0]["harness"] == "benchmark-runner"

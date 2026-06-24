@@ -8,9 +8,9 @@ over the original mcp_server.py which exposed ssh_key_path to the LLM.
 Run directly:  python agents/review/server.py
 Connected via: AgentMCPClient (agents/mcp_client.py)
 """
+
 import json
 import logging
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -21,7 +21,11 @@ if _project_root not in sys.path:
 
 from fastmcp import FastMCP
 
-from agents.server_utils import build_skill_provider, build_ssh_from_ticket, build_repo_cache
+from agents.server_utils import (
+    build_repo_cache,
+    build_skill_provider,
+    build_ssh_from_ticket,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,16 +70,20 @@ async def read_skill(harness: str, filename: str) -> str:
         harness_dir = SKILLS_DIR / harness
         if harness_dir.is_dir():
             available = [f.name for f in harness_dir.glob("*.md")]
-        return json.dumps({
-            "status": "not_found",
-            "path": str(skill_path),
-            "available": available,
-        })
-    return json.dumps({
-        "status": "ok",
-        "filename": filename,
-        "content": skill_path.read_text(),
-    })
+        return json.dumps(
+            {
+                "status": "not_found",
+                "path": str(skill_path),
+                "available": available,
+            }
+        )
+    return json.dumps(
+        {
+            "status": "ok",
+            "filename": filename,
+            "content": skill_path.read_text(),
+        }
+    )
 
 
 @mcp.tool()
@@ -135,17 +143,21 @@ async def retrieve_results(
             f"ls -laR {results_dir} 2>/dev/null | head -100",
             timeout=15,
         )
-        return json.dumps({
-            "status": "no_files_found",
-            "results_dir": results_dir,
-            "pattern": file_pattern or "(default)",
-            "directory_listing": ls_result.stdout[:3000] if ls_result.stdout else "",
-            "message": (
-                "No matching result files found. The directory listing is "
-                "included — use it to identify the correct file paths and "
-                "call retrieve_results again with a more specific pattern."
-            ),
-        })
+        return json.dumps(
+            {
+                "status": "no_files_found",
+                "results_dir": results_dir,
+                "pattern": file_pattern or "(default)",
+                "directory_listing": ls_result.stdout[:3000]
+                if ls_result.stdout
+                else "",
+                "message": (
+                    "No matching result files found. The directory listing is "
+                    "included — use it to identify the correct file paths and "
+                    "call retrieve_results again with a more specific pattern."
+                ),
+            }
+        )
 
     files = find_result.stdout.strip().split("\n")
     contents = {}
@@ -165,14 +177,18 @@ async def retrieve_results(
             contents[fpath] = result.stdout
             total_size += len(result.stdout)
         else:
-            contents[fpath] = f"(read error: {result.stderr[:200] if result.stderr else 'empty'})"
+            contents[fpath] = (
+                f"(read error: {result.stderr[:200] if result.stderr else 'empty'})"
+            )
 
-    return json.dumps({
-        "status": "ok",
-        "results_dir": results_dir,
-        "files_found": len(files),
-        "contents": contents,
-    })
+    return json.dumps(
+        {
+            "status": "ok",
+            "results_dir": results_dir,
+            "files_found": len(files),
+            "contents": contents,
+        }
+    )
 
 
 @mcp.tool()
@@ -191,32 +207,38 @@ async def get_run_summary(
     )
     run_dir = find_result.stdout.strip() if find_result.exit_code == 0 else ""
     if not run_dir:
-        return json.dumps({
-            "run_id": run_id,
-            "status": "not_found",
-            "message": f"No run directory found matching {run_id}",
-        })
+        return json.dumps(
+            {
+                "run_id": run_id,
+                "status": "not_found",
+                "message": f"No run directory found matching {run_id}",
+            }
+        )
 
     summary_path = f"{run_dir}/run/result-summary.json"
     result = await _ssh.run(controller, f"cat {summary_path}", timeout=30)
     if result.exit_code != 0:
-        return json.dumps({
-            "run_id": run_id,
-            "status": "error",
-            "run_dir": run_dir,
-            "message": f"{summary_path} not found — run may still be indexing",
-            "stderr": result.stderr[:500] if result.stderr else "",
-        })
+        return json.dumps(
+            {
+                "run_id": run_id,
+                "status": "error",
+                "run_dir": run_dir,
+                "message": f"{summary_path} not found — run may still be indexing",
+                "stderr": result.stderr[:500] if result.stderr else "",
+            }
+        )
 
     try:
         return json.dumps(json.loads(result.stdout))
     except json.JSONDecodeError:
-        return json.dumps({
-            "run_id": run_id,
-            "status": "error",
-            "message": "result-summary.json exists but is not valid JSON",
-            "raw": result.stdout[:2000],
-        })
+        return json.dumps(
+            {
+                "run_id": run_id,
+                "status": "error",
+                "message": "result-summary.json exists but is not valid JSON",
+                "raw": result.stdout[:2000],
+            }
+        )
 
 
 @mcp.tool()
@@ -231,10 +253,7 @@ async def cdm_api_request(
     await _ensure_init()
 
     if method == "GET":
-        cmd = (
-            f"curl --silent --show-error --fail "
-            f"-X GET http://localhost:{port}{path}"
-        )
+        cmd = f"curl --silent --show-error --fail -X GET http://localhost:{port}{path}"
     else:
         body_json = json.dumps(body or {})
         cmd = (
@@ -246,24 +265,28 @@ async def cdm_api_request(
 
     result = await _ssh.run(controller, cmd, timeout=60)
     if result.exit_code != 0:
-        return json.dumps({
-            "status": "error",
-            "method": method,
-            "path": path,
-            "exit_code": result.exit_code,
-            "error": result.stderr or "",
-        })
+        return json.dumps(
+            {
+                "status": "error",
+                "method": method,
+                "path": path,
+                "exit_code": result.exit_code,
+                "error": result.stderr or "",
+            }
+        )
 
     try:
         return json.dumps(json.loads(result.stdout))
     except json.JSONDecodeError:
-        return json.dumps({
-            "status": "error",
-            "method": method,
-            "path": path,
-            "raw_output": result.stdout or "",
-            "error": "Response is not valid JSON",
-        })
+        return json.dumps(
+            {
+                "status": "error",
+                "method": method,
+                "path": path,
+                "raw_output": result.stdout or "",
+                "error": "Response is not valid JSON",
+            }
+        )
 
 
 @mcp.tool()
@@ -303,12 +326,14 @@ async def compare_results(
                     "raw_output": api_result.stdout[:2000] if api_result.stdout else "",
                 }
 
-    return json.dumps({
-        "status": "ok",
-        "run_ids": run_ids,
-        "metric_name": metric_name,
-        "results": results,
-    })
+    return json.dumps(
+        {
+            "status": "ok",
+            "run_ids": run_ids,
+            "metric_name": metric_name,
+            "results": results,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -322,36 +347,44 @@ async def get_review_config(harness_name: str) -> str:
     await _ensure_init()
 
     if not _skill_provider:
-        return json.dumps({
-            "status": "error",
-            "message": "No skill provider configured — cannot look up review config",
-        })
+        return json.dumps(
+            {
+                "status": "error",
+                "message": "No skill provider configured — cannot look up review config",
+            }
+        )
     try:
         config = await _skill_provider.get_all_private_config(harness_name)
     except Exception as e:
-        return json.dumps({
-            "status": "error",
-            "message": f"Failed to load private config for {harness_name}: {e}",
-        })
+        return json.dumps(
+            {
+                "status": "error",
+                "message": f"Failed to load private config for {harness_name}: {e}",
+            }
+        )
     review = config.get("review", {})
     if not review:
         execution = config.get("execution", {})
-        return json.dumps({
-            "status": "no_review_config",
+        return json.dumps(
+            {
+                "status": "no_review_config",
+                "harness": harness_name,
+                "message": (
+                    f"No 'review' section found in {harness_name} private-skills config. "
+                    f"Try using retrieve_results with the results directory from the "
+                    f"run file or execution config."
+                ),
+                "results_dir_pattern": execution.get("results_dir_pattern", ""),
+                "execution_keys": list(execution.keys()),
+            }
+        )
+    return json.dumps(
+        {
+            "status": "ok",
             "harness": harness_name,
-            "message": (
-                f"No 'review' section found in {harness_name} private-skills config. "
-                f"Try using retrieve_results with the results directory from the "
-                f"run file or execution config."
-            ),
-            "results_dir_pattern": execution.get("results_dir_pattern", ""),
-            "execution_keys": list(execution.keys()),
-        })
-    return json.dumps({
-        "status": "ok",
-        "harness": harness_name,
-        "review_config": review,
-    })
+            "review_config": review,
+        }
+    )
 
 
 if __name__ == "__main__":

@@ -19,8 +19,15 @@ VALID_PROFILES = {
 
 DRIVER_PROFILES = {
     "netperf": {
-        "TCP_STREAM", "UDP_STREAM", "TCP_RR", "UDP_RR",
-        "TCP_CRR", "UDP_CRR", "SCTP_STREAM", "SCTP_RR", "SCTP_CRR",
+        "TCP_STREAM",
+        "UDP_STREAM",
+        "TCP_RR",
+        "UDP_RR",
+        "TCP_CRR",
+        "UDP_CRR",
+        "SCTP_STREAM",
+        "SCTP_RR",
+        "SCTP_CRR",
     },
     "iperf3": {"TCP_STREAM", "UDP_STREAM"},
     "uperf": {"TCP_STREAM", "TCP_STREAM_LAT", "UDP_STREAM", "TCP_RR", "UDP_RR"},
@@ -333,8 +340,7 @@ class K8sNetperfSkillProvider(SkillProvider):
         driver = run_file.get("driver", "netperf")
         if driver not in DRIVER_PROFILES:
             errors.append(
-                f"Invalid driver '{driver}', expected one of "
-                f"{sorted(DRIVER_PROFILES)}"
+                f"Invalid driver '{driver}', expected one of {sorted(DRIVER_PROFILES)}"
             )
         elif isinstance(tests, list):
             supported = DRIVER_PROFILES[driver]

@@ -57,7 +57,9 @@ async def main():
         intel_hosts = await client.get_available(vendor_filter="Intel")
         print(f"  Hosts with Intel NICs: {len(intel_hosts)}")
         for h in intel_hosts[:3]:
-            print(f"    {h['hostname']} model={h['model']} cores={h['cores']} mem={h['memory_gb']}GB")
+            print(
+                f"    {h['hostname']} model={h['model']} cores={h['cores']} mem={h['memory_gb']}GB"
+            )
             for nic in h.get("matching_nics", [])[:2]:
                 print(f"      {nic['name']}: {nic['vendor']} {nic.get('speed', '?')}G")
 
@@ -67,6 +69,7 @@ async def main():
     except Exception as e:
         print(f"\nFAIL: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
     finally:

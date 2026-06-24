@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from providers.skills.base import RunfileTemplate
 from agents.benchmark.mcp_server import create_benchmark_tool_handlers
-
+from providers.skills.base import RunfileTemplate
 from tests.conftest import MockSkillProvider
 
 
@@ -37,13 +36,17 @@ def mock_provider() -> MockSkillProvider:
                 },
             },
         },
-        runfile_template=RunfileTemplate(benchmark="fio", template={"harness": "crucible"}),
+        runfile_template=RunfileTemplate(
+            benchmark="fio", template={"harness": "crucible"}
+        ),
     )
 
 
 @pytest.fixture
 def handlers(mock_provider):
-    async def noop_clarification(q): pass
+    async def noop_clarification(q):
+        pass
+
     h, ssh = create_benchmark_tool_handlers(
         skill_provider=mock_provider,
         request_clarification_fn=noop_clarification,

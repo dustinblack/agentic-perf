@@ -73,14 +73,14 @@ async def validate_platform_contract(
         if not _os_matches(detected, supported_os):
             result["os_match"] = False
             result["status"] = "failed"
-            failures.append(
-                f"OS '{detected}' is not in supported list: {supported_os}"
-            )
+            failures.append(f"OS '{detected}' is not in supported list: {supported_os}")
 
     # Repo validation
     required_repos = contract.get("required_repos", [])
     if required_repos:
-        repo_result = await ssh.run(host, "dnf repolist --enabled 2>/dev/null || yum repolist 2>/dev/null")
+        repo_result = await ssh.run(
+            host, "dnf repolist --enabled 2>/dev/null || yum repolist 2>/dev/null"
+        )
         repo_output = repo_result.stdout.lower() if repo_result.exit_code == 0 else ""
         for repo in required_repos:
             if repo.lower() not in repo_output:
@@ -93,7 +93,9 @@ async def validate_platform_contract(
     required_packages = contract.get("required_packages", [])
     if required_packages:
         for pkg in required_packages:
-            pkg_result = await ssh.run(host, f"which {pkg} 2>/dev/null || rpm -q {pkg} 2>/dev/null")
+            pkg_result = await ssh.run(
+                host, f"which {pkg} 2>/dev/null || rpm -q {pkg} 2>/dev/null"
+            )
             if pkg_result.exit_code != 0:
                 result["missing_packages"].append(pkg)
         if result["missing_packages"]:
@@ -115,14 +117,19 @@ async def validate_platform_contract(
     return result
 
 
-async def _discover_crucible_token_files(ssh: SSHExecutor, host: str, install_path: str) -> list[str]:
+async def _discover_crucible_token_files(
+    ssh: SSHExecutor, host: str, install_path: str
+) -> list[str]:
     """Read registries.json on the host and extract all referenced token file paths."""
-    result = await ssh.run(host, f"cat {install_path}/config/registries.json 2>/dev/null")
+    result = await ssh.run(
+        host, f"cat {install_path}/config/registries.json 2>/dev/null"
+    )
     if result.exit_code != 0 or not result.stdout.strip():
         return []
 
     try:
         import json as _json
+
         reg = _json.loads(result.stdout)
     except Exception:
         logger.warning(f"[provision] Could not parse registries.json on {host}")
@@ -165,7 +172,7 @@ async def cleanup_harness(
     path = install_path or f"/opt/{harness_name}"
     cleanup_details = []
 
-    for cmd in (pre_uninstall_commands or []):
+    for cmd in pre_uninstall_commands or []:
         logger.info(f"[provision] Pre-uninstall on {host}: {cmd}")
         await ssh.run(host, cmd, timeout=120)
 
@@ -174,10 +181,12 @@ async def cleanup_harness(
         # 1. Discover auth token files from registries.json before removing anything
         token_files = await _discover_crucible_token_files(ssh, host, path)
         if token_files:
-            logger.info(f"[provision] Found {len(token_files)} token files in registries.json on {host}")
+            logger.info(
+                f"[provision] Found {len(token_files)} token files in registries.json on {host}"
+            )
 
         # 2. Stop and remove all crucible containers
-        stop_result = await ssh.run(
+        await ssh.run(
             host,
             "podman ps -a --format '{{.Names}}' 2>/dev/null | grep '^crucible-'"
             " | xargs -r podman stop 2>/dev/null"
@@ -186,7 +195,7 @@ async def cleanup_harness(
             " ; echo done",
             timeout=120,
         )
-        cleanup_details.append(f"containers: stopped and removed")
+        cleanup_details.append("containers: stopped and removed")
         logger.info(f"[provision] Stopped crucible containers on {host}")
 
         # 3. Remove auth token files discovered from registries.json
@@ -254,7 +263,10 @@ def get_provisioning_tools() -> list[ToolDefinition]:
                         "type": "string",
                         "description": "Harness name (e.g., 'crucible', 'zathras')",
                     },
-                    "user": {"type": "string", "description": "SSH user (default: root)"},
+                    "user": {
+                        "type": "string",
+                        "description": "SSH user (default: root)",
+                    },
                 },
                 "required": ["host", "harness_name"],
             },
@@ -269,7 +281,10 @@ def get_provisioning_tools() -> list[ToolDefinition]:
                 "type": "object",
                 "properties": {
                     "host": {"type": "string", "description": "IP or hostname"},
-                    "user": {"type": "string", "description": "SSH user (default: root)"},
+                    "user": {
+                        "type": "string",
+                        "description": "SSH user (default: root)",
+                    },
                 },
                 "required": ["host"],
             },
@@ -286,7 +301,10 @@ def get_provisioning_tools() -> list[ToolDefinition]:
                         "items": {"type": "string"},
                         "description": "Package names to install",
                     },
-                    "user": {"type": "string", "description": "SSH user (default: root)"},
+                    "user": {
+                        "type": "string",
+                        "description": "SSH user (default: root)",
+                    },
                 },
                 "required": ["host", "packages"],
             },
@@ -304,9 +322,18 @@ def get_provisioning_tools() -> list[ToolDefinition]:
                 "type": "object",
                 "properties": {
                     "host": {"type": "string", "description": "Target host"},
-                    "harness_name": {"type": "string", "description": "Harness name (e.g., 'crucible', 'zathras')"},
-                    "user": {"type": "string", "description": "SSH user (default: root)"},
-                    "branch": {"type": "string", "description": "Specific git branch or release tag. Omit to install the default/latest version."},
+                    "harness_name": {
+                        "type": "string",
+                        "description": "Harness name (e.g., 'crucible', 'zathras')",
+                    },
+                    "user": {
+                        "type": "string",
+                        "description": "SSH user (default: root)",
+                    },
+                    "branch": {
+                        "type": "string",
+                        "description": "Specific git branch or release tag. Omit to install the default/latest version.",
+                    },
                 },
                 "required": ["host", "harness_name"],
             },
@@ -321,9 +348,18 @@ def get_provisioning_tools() -> list[ToolDefinition]:
                 "type": "object",
                 "properties": {
                     "host": {"type": "string", "description": "Target host"},
-                    "harness_name": {"type": "string", "description": "Harness name (e.g., 'crucible', 'zathras')"},
-                    "user": {"type": "string", "description": "SSH user (default: root)"},
-                    "install_path": {"type": "string", "description": "Install path override"},
+                    "harness_name": {
+                        "type": "string",
+                        "description": "Harness name (e.g., 'crucible', 'zathras')",
+                    },
+                    "user": {
+                        "type": "string",
+                        "description": "SSH user (default: root)",
+                    },
+                    "install_path": {
+                        "type": "string",
+                        "description": "Install path override",
+                    },
                 },
                 "required": ["host", "harness_name"],
             },
@@ -338,9 +374,18 @@ def get_provisioning_tools() -> list[ToolDefinition]:
                 "type": "object",
                 "properties": {
                     "host": {"type": "string", "description": "Target host"},
-                    "harness_name": {"type": "string", "description": "Harness name (e.g., 'crucible', 'zathras')"},
-                    "install_path": {"type": "string", "description": "Path to check (read from private config if omitted)"},
-                    "user": {"type": "string", "description": "SSH user (default: root)"},
+                    "harness_name": {
+                        "type": "string",
+                        "description": "Harness name (e.g., 'crucible', 'zathras')",
+                    },
+                    "install_path": {
+                        "type": "string",
+                        "description": "Path to check (read from private config if omitted)",
+                    },
+                    "user": {
+                        "type": "string",
+                        "description": "SSH user (default: root)",
+                    },
                 },
                 "required": ["host", "harness_name"],
             },
@@ -355,9 +400,18 @@ def get_provisioning_tools() -> list[ToolDefinition]:
                 "type": "object",
                 "properties": {
                     "host": {"type": "string", "description": "Target host"},
-                    "harness_name": {"type": "string", "description": "Harness name (e.g., 'crucible', 'zathras')"},
-                    "install_path": {"type": "string", "description": "Install path override"},
-                    "user": {"type": "string", "description": "SSH user (default: root)"},
+                    "harness_name": {
+                        "type": "string",
+                        "description": "Harness name (e.g., 'crucible', 'zathras')",
+                    },
+                    "install_path": {
+                        "type": "string",
+                        "description": "Install path override",
+                    },
+                    "user": {
+                        "type": "string",
+                        "description": "SSH user (default: root)",
+                    },
                 },
                 "required": ["host", "harness_name"],
             },
@@ -373,8 +427,14 @@ def get_provisioning_tools() -> list[ToolDefinition]:
                 "type": "object",
                 "properties": {
                     "host": {"type": "string", "description": "Target host"},
-                    "harness_name": {"type": "string", "description": "Harness name (e.g., 'crucible', 'zathras')"},
-                    "user": {"type": "string", "description": "SSH user (default: root)"},
+                    "harness_name": {
+                        "type": "string",
+                        "description": "Harness name (e.g., 'crucible', 'zathras')",
+                    },
+                    "user": {
+                        "type": "string",
+                        "description": "SSH user (default: root)",
+                    },
                 },
                 "required": ["host", "harness_name"],
             },
@@ -390,8 +450,14 @@ def get_provisioning_tools() -> list[ToolDefinition]:
             input_schema={
                 "type": "object",
                 "properties": {
-                    "host": {"type": "string", "description": "Target host IP or hostname"},
-                    "user": {"type": "string", "description": "SSH user (default: root)"},
+                    "host": {
+                        "type": "string",
+                        "description": "Target host IP or hostname",
+                    },
+                    "user": {
+                        "type": "string",
+                        "description": "SSH user (default: root)",
+                    },
                 },
                 "required": ["host"],
             },
@@ -406,7 +472,10 @@ def get_provisioning_tools() -> list[ToolDefinition]:
                 "type": "object",
                 "properties": {
                     "host": {"type": "string", "description": "Target host"},
-                    "user": {"type": "string", "description": "SSH user (default: root)"},
+                    "user": {
+                        "type": "string",
+                        "description": "SSH user (default: root)",
+                    },
                     "config": {
                         "type": "object",
                         "description": "Configuration to apply",
@@ -433,8 +502,14 @@ def get_provisioning_tools() -> list[ToolDefinition]:
             input_schema={
                 "type": "object",
                 "properties": {
-                    "harness_name": {"type": "string", "description": "Harness name (e.g., 'crucible', 'zathras')"},
-                    "key": {"type": "string", "description": "Config key to fetch (e.g., 'constraints', 'provisioning', 'execution')"},
+                    "harness_name": {
+                        "type": "string",
+                        "description": "Harness name (e.g., 'crucible', 'zathras')",
+                    },
+                    "key": {
+                        "type": "string",
+                        "description": "Config key to fetch (e.g., 'constraints', 'provisioning', 'execution')",
+                    },
                 },
                 "required": ["harness_name", "key"],
             },
@@ -485,12 +560,14 @@ def create_provisioning_tool_handlers(
 
     ssh = SSHExecutor(user="root")
 
-    async def _validate_and_deploy_contract(
-        host: str, private_config: dict
-    ) -> dict:
+    async def _validate_and_deploy_contract(host: str, private_config: dict) -> dict:
         contract = private_config.get("install_contract")
         if not contract:
-            return {"status": "ok", "deployed_files": [], "message": "No install contract"}
+            return {
+                "status": "ok",
+                "deployed_files": [],
+                "message": "No install contract",
+            }
 
         secrets_map = private_config.get("secrets", {})
         secret_files = contract.get("secret_files", [])
@@ -516,15 +593,19 @@ def create_provisioning_tool_handlers(
             local_path = await secrets_provider.get_secret_file(secret_path)
             if local_path is None:
                 if required:
-                    missing.append(f"{description} ({secret_path}): not found in secrets store")
+                    missing.append(
+                        f"{description} ({secret_path}): not found in secrets store"
+                    )
                 continue
 
-            resolved.append({
-                "secret_key": secret_key,
-                "local_path": str(local_path),
-                "remote_path": entry["remote_path"],
-                "description": description,
-            })
+            resolved.append(
+                {
+                    "secret_key": secret_key,
+                    "local_path": str(local_path),
+                    "remote_path": entry["remote_path"],
+                    "description": description,
+                }
+            )
 
         if missing:
             return {
@@ -575,10 +656,16 @@ def create_provisioning_tool_handlers(
     async def check_host_prerequisites(host: str, user: str = "root") -> dict:
         prereqs = {}
         for cmd in ["podman", "git", "jq", "curl"]:
-            result = await ssh.run(host, f"which {cmd} 2>/dev/null && {cmd} --version 2>/dev/null | head -1")
+            result = await ssh.run(
+                host,
+                f"which {cmd} 2>/dev/null && {cmd} --version 2>/dev/null | head -1",
+            )
             if result.exit_code == 0 and result.stdout.strip():
                 lines = result.stdout.strip().split("\n")
-                prereqs[cmd] = {"installed": True, "version": lines[-1] if len(lines) > 1 else lines[0]}
+                prereqs[cmd] = {
+                    "installed": True,
+                    "version": lines[-1] if len(lines) > 1 else lines[0],
+                }
             else:
                 prereqs[cmd] = {"installed": False, "version": None}
 
@@ -587,7 +674,9 @@ def create_provisioning_tool_handlers(
             "host": host,
             "prerequisites": prereqs,
             "all_met": all_met,
-            "message": f"All prerequisites met on {host}" if all_met else f"Missing prerequisites on {host}",
+            "message": f"All prerequisites met on {host}"
+            if all_met
+            else f"Missing prerequisites on {host}",
         }
 
     async def install_packages(
@@ -759,7 +848,9 @@ def create_provisioning_tool_handlers(
                 "contract": contract_result.get("deployed_files", []),
                 "output": result.stdout or "" if result.stdout else "",
                 "error": result.stderr or "" if result.stderr else "",
-                "message": f"{harness_name} installed" if result.exit_code == 0 else f"Install failed (exit {result.exit_code})",
+                "message": f"{harness_name} installed"
+                if result.exit_code == 0
+                else f"Install failed (exit {result.exit_code})",
             }
 
         if install_method == "binary_download":
@@ -828,8 +919,12 @@ def create_provisioning_tool_handlers(
     ) -> dict:
         private_config = await skill_provider.get_all_private_config(harness_name)
         provisioning = private_config.get("provisioning", {})
-        path = install_path or provisioning.get("install_target_path", f"/opt/{harness_name}")
-        verify_cmd = provisioning.get("verify_command", f"{path}/bin/{harness_name} help")
+        path = install_path or provisioning.get(
+            "install_target_path", f"/opt/{harness_name}"
+        )
+        verify_cmd = provisioning.get(
+            "verify_command", f"{path}/bin/{harness_name} help"
+        )
 
         result = await ssh.run(host, verify_cmd)
         return {
@@ -839,7 +934,9 @@ def create_provisioning_tool_handlers(
             "install_path": path,
             "output": result.stdout[:500] if result.stdout else "",
             "error": result.stderr[:500] if result.stderr else "",
-            "message": f"{harness_name} verified" if result.exit_code == 0 else f"Verification failed: {result.stderr[:200]}",
+            "message": f"{harness_name} verified"
+            if result.exit_code == 0
+            else f"Verification failed: {result.stderr[:200]}",
         }
 
     async def check_existing_install(
@@ -850,8 +947,12 @@ def create_provisioning_tool_handlers(
     ) -> dict:
         private_config = await skill_provider.get_all_private_config(harness_name)
         provisioning = private_config.get("provisioning", {})
-        path = install_path or provisioning.get("install_target_path", f"/opt/{harness_name}")
-        verify_cmd = provisioning.get("verify_command", f"{path}/bin/{harness_name} help")
+        path = install_path or provisioning.get(
+            "install_target_path", f"/opt/{harness_name}"
+        )
+        verify_cmd = provisioning.get(
+            "verify_command", f"{path}/bin/{harness_name} help"
+        )
 
         ssh_debug = {
             "user": ssh.user,
@@ -862,13 +963,17 @@ def create_provisioning_tool_handlers(
 
         result = await ssh.run(host, f"{verify_cmd} > /dev/null 2>&1")
         if result.exit_code == 0:
-            version_result = await ssh.run(host, f"cd {path} && git log --oneline -1 2>/dev/null")
+            version_result = await ssh.run(
+                host, f"cd {path} && git log --oneline -1 2>/dev/null"
+            )
             return {
                 "host": host,
                 "harness": harness_name,
                 "installed": True,
                 "install_path": path,
-                "version": version_result.stdout.strip() if version_result.exit_code == 0 else "unknown",
+                "version": version_result.stdout.strip()
+                if version_result.exit_code == 0
+                else "unknown",
                 "message": f"{harness_name} is already installed at {path}",
             }
         return {
@@ -890,7 +995,9 @@ def create_provisioning_tool_handlers(
     ) -> dict:
         private_config = await skill_provider.get_all_private_config(harness_name)
         provisioning = private_config.get("provisioning", {})
-        path = install_path or provisioning.get("install_target_path", f"/opt/{harness_name}")
+        path = install_path or provisioning.get(
+            "install_target_path", f"/opt/{harness_name}"
+        )
         update_cmd = provisioning.get("update_command", f"cd {path} && git pull")
 
         logger.info(f"[provision] Running {harness_name} update on {host}")
@@ -902,7 +1009,9 @@ def create_provisioning_tool_handlers(
             "exit_code": result.exit_code,
             "output": result.stdout or "" if result.stdout else "",
             "error": result.stderr or "" if result.stderr else "",
-            "message": "Update completed" if result.exit_code == 0 else f"Update failed (exit {result.exit_code})",
+            "message": "Update completed"
+            if result.exit_code == 0
+            else f"Update failed (exit {result.exit_code})",
         }
 
     async def uninstall_harness(
@@ -924,7 +1033,10 @@ def create_provisioning_tool_handlers(
         logger.info(f"[provision] Installing K3s on {host}")
 
         selinux_result = await ssh.run(host, "getenforce 2>/dev/null")
-        if selinux_result.exit_code == 0 and selinux_result.stdout.strip() == "Enforcing":
+        if (
+            selinux_result.exit_code == 0
+            and selinux_result.stdout.strip() == "Enforcing"
+        ):
             logger.info(f"[provision] Setting SELinux to permissive on {host}")
             await ssh.run(host, "setenforce 0")
 
@@ -937,7 +1049,7 @@ def create_provisioning_tool_handlers(
             return {
                 "host": host,
                 "status": "failed",
-                "message": f"K3s install failed: {result.stderr or "" if result.stderr else ''}",
+                "message": f"K3s install failed: {result.stderr or '' if result.stderr else ''}",
             }
 
         for attempt in range(12):
@@ -966,9 +1078,7 @@ def create_provisioning_tool_handlers(
 
         kubectl_check = await ssh.run(host, "test -x /usr/local/bin/kubectl")
         if kubectl_check.exit_code != 0:
-            await ssh.run(
-                host, "ln -sf /usr/local/bin/k3s /usr/local/bin/kubectl"
-            )
+            await ssh.run(host, "ln -sf /usr/local/bin/k3s /usr/local/bin/kubectl")
 
         self_ssh_ok = False
         keygen = await ssh.run(
@@ -995,16 +1105,18 @@ def create_provisioning_tool_handlers(
         return {
             "host": host,
             "status": "success",
-            "k3s_version": version_result.stdout.strip() if version_result.exit_code == 0 else "unknown",
-            "node_info": node_result.stdout.strip() if node_result.exit_code == 0 else "",
+            "k3s_version": version_result.stdout.strip()
+            if version_result.exit_code == 0
+            else "unknown",
+            "node_info": node_result.stdout.strip()
+            if node_result.exit_code == 0
+            else "",
             "kubeconfig_path": "/root/.kube/config",
             "self_ssh": self_ssh_ok,
             "message": "K3s installed and cluster ready",
         }
 
-    async def configure_host(
-        host: str, config: dict, user: str = "root"
-    ) -> dict:
+    async def configure_host(host: str, config: dict, user: str = "root") -> dict:
         # Keep simulated for now — tuning is benchmark-specific
         return {
             "host": host,
@@ -1017,7 +1129,11 @@ def create_provisioning_tool_handlers(
     async def get_private_config(harness_name: str, key: str) -> Any:
         result = await skill_provider.get_private_config(harness_name, key)
         if result is None:
-            return {"key": key, "value": None, "message": f"No private config for {harness_name}.{key}"}
+            return {
+                "key": key,
+                "value": None,
+                "message": f"No private config for {harness_name}.{key}",
+            }
         return {"key": key, "value": result}
 
     async def request_clarification(question: str) -> str:

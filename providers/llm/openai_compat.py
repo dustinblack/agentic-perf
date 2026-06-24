@@ -7,6 +7,7 @@ Messages throughout agentic-perf use Anthropic-native format. This provider
 converts at the boundary: Anthropic→OpenAI on the way in, OpenAI→Anthropic
 on the way out. No changes to AgentBase or agent code required.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -68,28 +69,26 @@ class OpenAICompatLLMProvider(LLMProvider):
     def _convert_messages(
         system_prompt: str, messages: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
-        oai: list[dict[str, Any]] = [
-            {"role": "system", "content": system_prompt}
-        ]
+        oai: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
 
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content")
 
             if role == "user" and isinstance(content, list):
-                tool_results = [
-                    b for b in content if b.get("type") == "tool_result"
-                ]
+                tool_results = [b for b in content if b.get("type") == "tool_result"]
                 if tool_results:
                     for tr in tool_results:
                         tool_content = tr.get("content", "")
                         if tr.get("is_error"):
                             tool_content = f"Error: {tool_content}"
-                        oai.append({
-                            "role": "tool",
-                            "tool_call_id": tr["tool_use_id"],
-                            "content": tool_content,
-                        })
+                        oai.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tr["tool_use_id"],
+                                "content": tool_content,
+                            }
+                        )
                     continue
 
             if role == "assistant" and isinstance(content, list):
@@ -99,14 +98,16 @@ class OpenAICompatLLMProvider(LLMProvider):
                     if block.get("type") == "text":
                         text_parts.append(block.get("text", ""))
                     elif block.get("type") == "tool_use":
-                        tool_calls.append({
-                            "id": block["id"],
-                            "type": "function",
-                            "function": {
-                                "name": block["name"],
-                                "arguments": json.dumps(block.get("input", {})),
-                            },
-                        })
+                        tool_calls.append(
+                            {
+                                "id": block["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": block["name"],
+                                    "arguments": json.dumps(block.get("input", {})),
+                                },
+                            }
+                        )
 
                 assistant_msg: dict[str, Any] = {"role": "assistant"}
                 text = "\n".join(text_parts) if text_parts else None
@@ -159,12 +160,14 @@ class OpenAICompatLLMProvider(LLMProvider):
                         input=arguments,
                     )
                 )
-                raw_content.append({
-                    "type": "tool_use",
-                    "id": tc.id,
-                    "name": tc.function.name,
-                    "input": arguments,
-                })
+                raw_content.append(
+                    {
+                        "type": "tool_use",
+                        "id": tc.id,
+                        "name": tc.function.name,
+                        "input": arguments,
+                    }
+                )
 
         finish_reason = choice.finish_reason
         if finish_reason == "stop":

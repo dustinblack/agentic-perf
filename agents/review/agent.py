@@ -109,7 +109,9 @@ class ReviewAgent(AgentBase):
         if cf.get("benchmark_suite"):
             content += f"**Benchmark Suite:** {cf['benchmark_suite']}\n"
 
-        harness = cf.get("harness_name") or cf.get("directives", {}).get("harness", "crucible")
+        harness = cf.get("harness_name") or cf.get("directives", {}).get(
+            "harness", "crucible"
+        )
         content += f"**Harness:** {harness}\n"
 
         if cf.get("benchmark_duration"):
@@ -121,7 +123,7 @@ class ReviewAgent(AgentBase):
 
         ssh_ips = cf.get("ssh_hardware_ips") or cf.get("assigned_hardware_ips") or {}
         if ssh_ips.get("controller"):
-            content += f"\n## Connection Details\n"
+            content += "\n## Connection Details\n"
             content += f"**Controller (SSH):** {ssh_ips['controller']}\n"
             if cf.get("ssh_key_path"):
                 content += f"**SSH Key:** {cf['ssh_key_path']}\n"
@@ -152,9 +154,7 @@ class ReviewAgent(AgentBase):
 
         return [{"role": "user", "content": content}]
 
-    async def _handle_completion(
-        self, ticket_id: str, response: LLMResponse
-    ) -> None:
+    async def _handle_completion(self, ticket_id: str, response: LLMResponse) -> None:
         if self._hitl_triggered:
             logger.info(f"[review-agent] HITL triggered for {ticket_id}")
             return

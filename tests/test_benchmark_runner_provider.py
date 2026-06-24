@@ -163,40 +163,52 @@ async def test_validate_runfile_valid(provider: BenchmarkRunnerSkillProvider):
 
 
 @pytest.mark.asyncio
-async def test_validate_runfile_missing_workload(provider: BenchmarkRunnerSkillProvider):
-    validation = await provider.validate_runfile({
-        "container_image": "quay.io/test",
-        "env_vars": {},
-    })
+async def test_validate_runfile_missing_workload(
+    provider: BenchmarkRunnerSkillProvider,
+):
+    validation = await provider.validate_runfile(
+        {
+            "container_image": "quay.io/test",
+            "env_vars": {},
+        }
+    )
     assert validation["valid"] is False
     assert any("WORKLOAD" in e for e in validation["errors"])
 
 
 @pytest.mark.asyncio
-async def test_validate_runfile_unknown_workload(provider: BenchmarkRunnerSkillProvider):
-    validation = await provider.validate_runfile({
-        "container_image": "quay.io/test",
-        "env_vars": {"WORKLOAD": "unknown_thing"},
-    })
+async def test_validate_runfile_unknown_workload(
+    provider: BenchmarkRunnerSkillProvider,
+):
+    validation = await provider.validate_runfile(
+        {
+            "container_image": "quay.io/test",
+            "env_vars": {"WORKLOAD": "unknown_thing"},
+        }
+    )
     assert validation["valid"] is False
     assert any("unknown_thing" in e for e in validation["errors"])
 
 
 @pytest.mark.asyncio
 async def test_validate_runfile_missing_image(provider: BenchmarkRunnerSkillProvider):
-    validation = await provider.validate_runfile({
-        "env_vars": {"WORKLOAD": "stressng_pod"},
-    })
+    validation = await provider.validate_runfile(
+        {
+            "env_vars": {"WORKLOAD": "stressng_pod"},
+        }
+    )
     assert validation["valid"] is False
     assert any("container_image" in e for e in validation["errors"])
 
 
 @pytest.mark.asyncio
 async def test_validate_runfile_invalid_cluster(provider: BenchmarkRunnerSkillProvider):
-    validation = await provider.validate_runfile({
-        "container_image": "quay.io/test",
-        "env_vars": {"WORKLOAD": "stressng_pod", "CLUSTER": "invalid"},
-    })
+    validation = await provider.validate_runfile(
+        {
+            "container_image": "quay.io/test",
+            "env_vars": {"WORKLOAD": "stressng_pod", "CLUSTER": "invalid"},
+        }
+    )
     assert validation["valid"] is False
     assert any("CLUSTER" in e for e in validation["errors"])
 

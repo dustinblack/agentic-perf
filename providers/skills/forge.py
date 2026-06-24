@@ -285,9 +285,7 @@ class ForgeSkillProvider(SkillProvider):
                 "post_install_commands": [
                     "cd /opt/forge && pip install -e . 2>&1",
                 ],
-                "verify_command": (
-                    "cd /opt/forge && python -m projects.core --help"
-                ),
+                "verify_command": ("cd /opt/forge && python -m projects.core --help"),
                 "on_existing_install": "skip",
                 "pre_install_commands": [
                     "dnf install -y python3.12 python3.12-pip git 2>/dev/null; true",

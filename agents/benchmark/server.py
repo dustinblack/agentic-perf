@@ -9,9 +9,9 @@ boundary.
 Run directly:  python agents/benchmark/server.py
 Connected via: AgentMCPClient (agents/mcp_client.py)
 """
+
 import json
 import logging
-import os
 import re
 import sys
 import tempfile
@@ -25,7 +25,11 @@ if _project_root not in sys.path:
 
 from fastmcp import FastMCP
 
-from agents.server_utils import build_skill_provider, build_ssh_from_ticket, build_repo_cache
+from agents.server_utils import (
+    build_repo_cache,
+    build_skill_provider,
+    build_ssh_from_ticket,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,17 +65,22 @@ async def _ensure_init():
 # Skill / Doc tools (no SSH)
 # ---------------------------------------------------------------------------
 
+
 @mcp.tool()
 async def read_skill(harness: str, filename: str) -> str:
     """Read a skill document containing critical lessons learned from prior benchmark runs. These are listed in the 'Skills' section of the ticket context. Read ALL skill docs before constructing a run file — they contain pitfalls that will cause failures."""
     await _ensure_init()
     skill_path = SKILLS_DIR / harness / filename
     if not skill_path.is_file():
-        return json.dumps({"found": False, "message": f"Skill not found: {harness}/{filename}"})
+        return json.dumps(
+            {"found": False, "message": f"Skill not found: {harness}/{filename}"}
+        )
     resolved = skill_path.resolve()
     if not str(resolved).startswith(str(SKILLS_DIR.resolve())):
         return json.dumps({"found": False, "message": "Invalid path"})
-    return json.dumps({"found": True, "filename": filename, "content": skill_path.read_text()})
+    return json.dumps(
+        {"found": True, "filename": filename, "content": skill_path.read_text()}
+    )
 
 
 @mcp.tool()
@@ -82,7 +91,9 @@ async def list_harness_docs(harness: str) -> str:
         return json.dumps({"docs": [], "message": "No repo cache configured"})
     docs = _repo_cache.list_docs(harness, subdirs=["docs", "config"])
     if not docs:
-        return json.dumps({"docs": [], "message": f"No docs found for harness '{harness}'"})
+        return json.dumps(
+            {"docs": [], "message": f"No docs found for harness '{harness}'"}
+        )
     return json.dumps({"docs": docs, "count": len(docs)})
 
 
@@ -94,13 +105,16 @@ async def read_harness_doc(harness: str, doc_path: str) -> str:
         return json.dumps({"found": False, "message": "No repo cache configured"})
     content = _repo_cache.read_file(harness, doc_path)
     if content is None:
-        return json.dumps({"found": False, "message": f"File not found: {harness}/{doc_path}"})
+        return json.dumps(
+            {"found": False, "message": f"File not found: {harness}/{doc_path}"}
+        )
     return json.dumps({"found": True, "path": doc_path, "content": content})
 
 
 # ---------------------------------------------------------------------------
 # Config tools (no SSH)
 # ---------------------------------------------------------------------------
+
 
 @mcp.tool()
 async def get_execution_config(harness_name: str) -> str:
@@ -109,24 +123,28 @@ async def get_execution_config(harness_name: str) -> str:
     config = await _skill_provider.get_all_private_config(harness_name)
     execution = config.get("execution", {})
     if not execution:
-        return json.dumps({
+        return json.dumps(
+            {
+                "harness": harness_name,
+                "found": False,
+                "message": f"No execution config found for harness '{harness_name}'",
+            }
+        )
+    return json.dumps(
+        {
             "harness": harness_name,
-            "found": False,
-            "message": f"No execution config found for harness '{harness_name}'",
-        })
-    return json.dumps({
-        "harness": harness_name,
-        "found": True,
-        "controller_required": execution.get("controller_required", False),
-        "run_command": execution.get("run_command", ""),
-        "endpoint_type": execution.get("endpoint_type", "remotehosts"),
-        "endpoint_user": execution.get("endpoint_user", "root"),
-        "default_userenv": execution.get("default_userenv", "default"),
-        "default_osruntime": execution.get("default_osruntime", "podman"),
-        "pre_run": execution.get("pre_run", []),
-        "run_file_format": execution.get("run_file_format", "json"),
-        "results_dir_pattern": execution.get("results_dir_pattern", ""),
-    })
+            "found": True,
+            "controller_required": execution.get("controller_required", False),
+            "run_command": execution.get("run_command", ""),
+            "endpoint_type": execution.get("endpoint_type", "remotehosts"),
+            "endpoint_user": execution.get("endpoint_user", "root"),
+            "default_userenv": execution.get("default_userenv", "default"),
+            "default_osruntime": execution.get("default_osruntime", "podman"),
+            "pre_run": execution.get("pre_run", []),
+            "run_file_format": execution.get("run_file_format", "json"),
+            "results_dir_pattern": execution.get("results_dir_pattern", ""),
+        }
+    )
 
 
 @mcp.tool()
@@ -140,7 +158,12 @@ async def get_runfile_schema(harness: str = "crucible") -> str:
     else:
         schema = await _skill_provider.get_runfile_schema()
     if schema is None:
-        return json.dumps({"found": False, "message": f"No run-file schema for harness '{harness_name}'"})
+        return json.dumps(
+            {
+                "found": False,
+                "message": f"No run-file schema for harness '{harness_name}'",
+            }
+        )
     return json.dumps({"found": True, "harness": harness_name, "schema": schema})
 
 
@@ -155,8 +178,20 @@ async def get_benchmark_params(benchmark: str, harness: str = "crucible") -> str
     else:
         params = await _skill_provider.get_benchmark_params(benchmark)
     if params is None:
-        return json.dumps({"found": False, "message": f"No parameter definitions for '{benchmark}' in '{harness_name}'"})
-    return json.dumps({"found": True, "benchmark": benchmark, "harness": harness_name, "params": params})
+        return json.dumps(
+            {
+                "found": False,
+                "message": f"No parameter definitions for '{benchmark}' in '{harness_name}'",
+            }
+        )
+    return json.dumps(
+        {
+            "found": True,
+            "benchmark": benchmark,
+            "harness": harness_name,
+            "params": params,
+        }
+    )
 
 
 @mcp.tool()
@@ -169,17 +204,37 @@ async def get_example_runfile(
     ep_type = endpoint_type or "remotehosts"
     if hasattr(_skill_provider, "get_provider"):
         provider = _skill_provider.get_provider(harness_name)
-        example = await provider.get_example_runfile(benchmark, endpoint_type=ep_type) if provider else None
+        example = (
+            await provider.get_example_runfile(benchmark, endpoint_type=ep_type)
+            if provider
+            else None
+        )
     else:
-        example = await _skill_provider.get_example_runfile(benchmark, endpoint_type=ep_type)
+        example = await _skill_provider.get_example_runfile(
+            benchmark, endpoint_type=ep_type
+        )
     if example is None:
-        return json.dumps({"found": False, "message": f"No example run-file for '{benchmark}' ({ep_type}) in '{harness_name}'"})
-    return json.dumps({"found": True, "benchmark": benchmark, "harness": harness_name, "endpoint_type": ep_type, "run_file": example})
+        return json.dumps(
+            {
+                "found": False,
+                "message": f"No example run-file for '{benchmark}' ({ep_type}) in '{harness_name}'",
+            }
+        )
+    return json.dumps(
+        {
+            "found": True,
+            "benchmark": benchmark,
+            "harness": harness_name,
+            "endpoint_type": ep_type,
+            "run_file": example,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
 # SSH tools
 # ---------------------------------------------------------------------------
+
 
 @mcp.tool()
 async def setup_controller_ssh_keys(
@@ -197,7 +252,12 @@ async def setup_controller_ssh_keys(
             f'ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -C "{CONTROLLER_KEY_COMMENT}" -N ""',
         )
         if keygen_result.exit_code != 0:
-            return json.dumps({"status": "failed", "message": f"Key generation failed: {keygen_result.stderr}"})
+            return json.dumps(
+                {
+                    "status": "failed",
+                    "message": f"Key generation failed: {keygen_result.stderr}",
+                }
+            )
         pubkey_result = await _ssh.run(controller, "cat /root/.ssh/id_rsa.pub")
 
     pubkey = pubkey_result.stdout.strip()
@@ -214,10 +274,13 @@ async def setup_controller_ssh_keys(
     for endpoint in endpoints:
         check = await _ssh.run(
             controller,
-            f'ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new {user}@{endpoint} hostname',
+            f"ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new {user}@{endpoint} hostname",
         )
         if check.exit_code == 0:
-            results[endpoint] = {"status": "already_accessible", "hostname": check.stdout.strip()}
+            results[endpoint] = {
+                "status": "already_accessible",
+                "hostname": check.stdout.strip(),
+            }
             continue
 
         inject = await _ssh.run(
@@ -230,7 +293,7 @@ async def setup_controller_ssh_keys(
 
         verify = await _ssh.run(
             controller,
-            f'ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new {user}@{endpoint} hostname',
+            f"ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new {user}@{endpoint} hostname",
         )
         results[endpoint] = {
             "status": "configured" if verify.exit_code == 0 else "failed",
@@ -238,12 +301,18 @@ async def setup_controller_ssh_keys(
             "message": verify.stderr if verify.exit_code != 0 else "",
         }
 
-    all_ok = all(r["status"] in ("already_accessible", "configured") for r in results.values())
-    return json.dumps({
-        "status": "success" if all_ok else "partial_failure",
-        "results": results,
-        "message": "All endpoints accessible" if all_ok else "Some endpoints failed SSH setup",
-    })
+    all_ok = all(
+        r["status"] in ("already_accessible", "configured") for r in results.values()
+    )
+    return json.dumps(
+        {
+            "status": "success" if all_ok else "partial_failure",
+            "results": results,
+            "message": "All endpoints accessible"
+            if all_ok
+            else "Some endpoints failed SSH setup",
+        }
+    )
 
 
 @mcp.tool()
@@ -262,6 +331,7 @@ async def execute_benchmark(
     if harness_name == "kube-burner":
         try:
             import yaml
+
             yaml_dump = yaml.dump
         except ImportError:
             yaml_dump = None
@@ -296,30 +366,38 @@ async def execute_benchmark(
         logger.info(f"[benchmark] Executing kube-burner: {cmd}")
         result = await _ssh.run(controller, cmd, timeout=0, allocate_pty=True)
 
-        return json.dumps({
-            "status": "completed" if result.exit_code == 0 else "failed",
-            "exit_code": result.exit_code,
-            "run_id": f"kube-burner-{run_uuid}",
-            "harness": "kube-burner",
-            "output": result.stdout or "" if result.stdout else "",
-            "error": result.stderr or "" if result.stderr else "",
-            "message": (
-                "Benchmark completed"
-                if result.exit_code == 0
-                else f"Benchmark failed (exit {result.exit_code})"
-            ),
-        })
+        return json.dumps(
+            {
+                "status": "completed" if result.exit_code == 0 else "failed",
+                "exit_code": result.exit_code,
+                "run_id": f"kube-burner-{run_uuid}",
+                "harness": "kube-burner",
+                "output": result.stdout or "" if result.stdout else "",
+                "error": result.stderr or "" if result.stderr else "",
+                "message": (
+                    "Benchmark completed"
+                    if result.exit_code == 0
+                    else f"Benchmark failed (exit {result.exit_code})"
+                ),
+            }
+        )
 
     if harness_name == "benchmark-runner":
         env_vars = dict(run_file.get("env_vars", {}))
-        container_image = run_file.get("container_image", "quay.io/benchmark-runner/benchmark-runner:latest")
-        artifacts_dir = run_file.get("artifacts_dir", "/tmp/benchmark-runner-run-artifacts")
+        container_image = run_file.get(
+            "container_image", "quay.io/benchmark-runner/benchmark-runner:latest"
+        )
+        artifacts_dir = run_file.get(
+            "artifacts_dir", "/tmp/benchmark-runner-run-artifacts"
+        )
         kubeconfig_path = run_file.get("kubeconfig_path", "/root/.kube/config")
 
         if "KUBEADMIN_PASSWORD" not in env_vars:
             password_path = run_file.get("kubeadmin_password_path", "")
             if password_path:
-                pw_result = await _ssh.run(controller, f"cat {password_path} 2>/dev/null")
+                pw_result = await _ssh.run(
+                    controller, f"cat {password_path} 2>/dev/null"
+                )
                 if pw_result.exit_code == 0 and pw_result.stdout.strip():
                     env_vars["KUBEADMIN_PASSWORD"] = pw_result.stdout.strip()
 
@@ -339,28 +417,33 @@ async def execute_benchmark(
 
         artifacts_cmd = f"ls {artifacts_dir}/ 2>/dev/null | tail -1"
         artifacts_result = await _ssh.run(controller, artifacts_cmd)
-        run_dir = artifacts_result.stdout.strip() if artifacts_result.exit_code == 0 else ""
+        run_dir = (
+            artifacts_result.stdout.strip() if artifacts_result.exit_code == 0 else ""
+        )
 
-        return json.dumps({
-            "status": "completed" if result.exit_code == 0 else "failed",
-            "exit_code": result.exit_code,
-            "run_id": f"benchmark-runner-{run_uuid}",
-            "run_dir": f"{artifacts_dir}/{run_dir}" if run_dir else "",
-            "harness": "benchmark-runner",
-            "output": result.stdout[-3000:] if result.stdout else "",
-            "error": result.stderr[-1000:] if result.stderr else "",
-            "message": (
-                "Benchmark completed"
-                if result.exit_code == 0
-                else f"Benchmark failed (exit {result.exit_code})"
-            ),
-        })
+        return json.dumps(
+            {
+                "status": "completed" if result.exit_code == 0 else "failed",
+                "exit_code": result.exit_code,
+                "run_id": f"benchmark-runner-{run_uuid}",
+                "run_dir": f"{artifacts_dir}/{run_dir}" if run_dir else "",
+                "harness": "benchmark-runner",
+                "output": result.stdout[-3000:] if result.stdout else "",
+                "error": result.stderr[-1000:] if result.stderr else "",
+                "message": (
+                    "Benchmark completed"
+                    if result.exit_code == 0
+                    else f"Benchmark failed (exit {result.exit_code})"
+                ),
+            }
+        )
 
     if harness_name == "zathras":
         scenario = run_file.get("scenario", {})
         if not scenario and ("global" in run_file or "systems" in run_file):
             scenario = {
-                k: v for k, v in run_file.items()
+                k: v
+                for k, v in run_file.items()
                 if k not in ("harness", "local_config", "host_config_name", "tags")
             }
         local_config = run_file.get("local_config")
@@ -374,11 +457,20 @@ async def execute_benchmark(
             )
 
         ZATHRAS_NO_ARG_FLAGS = {
-            "no_clean_up", "no_packages", "no_pip_packages",
-            "no_system_packages", "no_spot_recover", "persistent_log",
-            "preflight_check", "run_chronicler", "run_chronicler_strict",
-            "skip_test_version_check", "ignore_repo_errors",
-            "create_only", "force_upload", "verbose",
+            "no_clean_up",
+            "no_packages",
+            "no_pip_packages",
+            "no_system_packages",
+            "no_spot_recover",
+            "persistent_log",
+            "preflight_check",
+            "run_chronicler",
+            "run_chronicler_strict",
+            "skip_test_version_check",
+            "ignore_repo_errors",
+            "create_only",
+            "force_upload",
+            "verbose",
         }
         for section in ("global", "systems"):
             if section not in scenario:
@@ -386,19 +478,35 @@ async def execute_benchmark(
             if section == "global":
                 items = scenario["global"]
                 for key in list(items.keys()):
-                    if key in ZATHRAS_NO_ARG_FLAGS and items[key] in (True, "true", "True", "yes"):
+                    if key in ZATHRAS_NO_ARG_FLAGS and items[key] in (
+                        True,
+                        "true",
+                        "True",
+                        "yes",
+                    ):
                         items[key] = ""
-                    if key == "ssh_key_file" and isinstance(items[key], str) and items[key].startswith("~"):
+                    if (
+                        key == "ssh_key_file"
+                        and isinstance(items[key], str)
+                        and items[key].startswith("~")
+                    ):
                         items[key] = "/root" + items[key][1:]
             else:
                 for sys_name, sys_conf in scenario["systems"].items():
                     if not isinstance(sys_conf, dict):
                         continue
-                    if "ssh_key_file" in sys_conf and isinstance(sys_conf["ssh_key_file"], str) and sys_conf["ssh_key_file"].startswith("~"):
-                        sys_conf["ssh_key_file"] = "/root" + sys_conf["ssh_key_file"][1:]
+                    if (
+                        "ssh_key_file" in sys_conf
+                        and isinstance(sys_conf["ssh_key_file"], str)
+                        and sys_conf["ssh_key_file"].startswith("~")
+                    ):
+                        sys_conf["ssh_key_file"] = (
+                            "/root" + sys_conf["ssh_key_file"][1:]
+                        )
 
         try:
             import yaml
+
             scenario_yaml = yaml.dump(scenario, default_flow_style=False)
         except ImportError:
             scenario_yaml = json.dumps(scenario, indent=2)
@@ -415,16 +523,18 @@ async def execute_benchmark(
         logger.info(f"[benchmark] Running zathras preflight: {preflight_cmd}")
         preflight = await _ssh.run(controller, preflight_cmd, timeout=120)
         if preflight.exit_code != 0:
-            return json.dumps({
-                "status": "rejected",
-                "harness": "zathras",
-                "message": (
-                    "Scenario failed zathras preflight_check and was NOT executed. "
-                    "Fix the scenario and try again.\n"
-                    + (preflight.stdout or "")
-                    + (preflight.stderr or "")
-                ),
-            })
+            return json.dumps(
+                {
+                    "status": "rejected",
+                    "harness": "zathras",
+                    "message": (
+                        "Scenario failed zathras preflight_check and was NOT executed. "
+                        "Fix the scenario and try again.\n"
+                        + (preflight.stdout or "")
+                        + (preflight.stderr or "")
+                    ),
+                }
+            )
 
         cmd = f"cd /opt/zathras && {burden_cmd} --scenario {scenario_path}"
         logger.info(f"[benchmark] Executing zathras: {cmd}")
@@ -438,20 +548,27 @@ async def execute_benchmark(
                 run_dir = m.group(1)
                 break
 
-        return json.dumps({
-            "status": "completed" if result.exit_code == 0 else "failed",
-            "exit_code": result.exit_code,
-            "run_dir": run_dir,
-            "run_id": run_dir.rstrip("/").split("/")[-1] if run_dir else f"zathras-{run_uuid}",
-            "harness": "zathras",
-            "output": result.stdout or "" if result.stdout else "",
-            "error": result.stderr or "" if result.stderr else "",
-            "message": "Benchmark completed" if result.exit_code == 0 else f"Benchmark failed (exit {result.exit_code})",
-        })
+        return json.dumps(
+            {
+                "status": "completed" if result.exit_code == 0 else "failed",
+                "exit_code": result.exit_code,
+                "run_dir": run_dir,
+                "run_id": run_dir.rstrip("/").split("/")[-1]
+                if run_dir
+                else f"zathras-{run_uuid}",
+                "harness": "zathras",
+                "output": result.stdout or "" if result.stdout else "",
+                "error": result.stderr or "" if result.stderr else "",
+                "message": "Benchmark completed"
+                if result.exit_code == 0
+                else f"Benchmark failed (exit {result.exit_code})",
+            }
+        )
 
     if harness_name == "ioscale":
         try:
             import yaml
+
             yaml_dump = yaml.dump
         except ImportError:
             yaml_dump = None
@@ -474,18 +591,20 @@ async def execute_benchmark(
             )
             storage_class = sc_result.stdout.strip()
             if not storage_class:
-                return json.dumps({
-                    "status": "failed",
-                    "harness": "ioscale",
-                    "message": "No StorageClass found on cluster",
-                })
+                return json.dumps(
+                    {
+                        "status": "failed",
+                        "harness": "ioscale",
+                        "message": "No StorageClass found on cluster",
+                    }
+                )
 
         vm_name = f"ioscale-vm-{run_uuid}"
         ns = "default"
         cores = vm_config.get("cores", 4)
         memory = vm_config.get("memory", "8Gi")
         storage_size = vm_config.get("storage_size", "100Gi")
-        image_url = vm_config.get(
+        vm_config.get(
             "image_url",
             "https://dl.fedoraproject.org/pub/fedora/linux/releases/43/"
             "Cloud/x86_64/images/Fedora-Cloud-Base-Generic-43-1.6.x86_64.qcow2",
@@ -522,7 +641,8 @@ async def execute_benchmark(
 
         logger.info(f"[benchmark] Creating ioscale VM: {vm_name}")
         await _ssh.run(
-            controller, f"{kc} oc apply -f {template_dir}/vm.yaml -n {ns}",
+            controller,
+            f"{kc} oc apply -f {template_dir}/vm.yaml -n {ns}",
         )
 
         for i in range(60):
@@ -535,11 +655,13 @@ async def execute_benchmark(
                 break
             await _ssh.run(controller, "sleep 10")
         else:
-            return json.dumps({
-                "status": "failed",
-                "harness": "ioscale",
-                "message": f"VM {vm_name} did not reach Running in 10 minutes",
-            })
+            return json.dumps(
+                {
+                    "status": "failed",
+                    "harness": "ioscale",
+                    "message": f"VM {vm_name} did not reach Running in 10 minutes",
+                }
+            )
 
         vm_ip_result = await _ssh.run(
             controller,
@@ -627,21 +749,23 @@ async def execute_benchmark(
         logger.info(f"[benchmark] Executing ioscale {test_type}: {cmd}")
         result = await _ssh.run(controller, cmd, timeout=0, allocate_pty=True)
 
-        return json.dumps({
-            "status": "completed" if result.exit_code == 0 else "failed",
-            "exit_code": result.exit_code,
-            "run_id": f"ioscale-{run_uuid}",
-            "harness": "ioscale",
-            "vm_name": vm_name,
-            "vm_ip": vm_ip,
-            "output": result.stdout[-3000:] if result.stdout else "",
-            "error": result.stderr[-1000:] if result.stderr else "",
-            "message": (
-                "Benchmark completed"
-                if result.exit_code == 0
-                else f"Benchmark failed (exit {result.exit_code})"
-            ),
-        })
+        return json.dumps(
+            {
+                "status": "completed" if result.exit_code == 0 else "failed",
+                "exit_code": result.exit_code,
+                "run_id": f"ioscale-{run_uuid}",
+                "harness": "ioscale",
+                "vm_name": vm_name,
+                "vm_ip": vm_ip,
+                "output": result.stdout[-3000:] if result.stdout else "",
+                "error": result.stderr[-1000:] if result.stderr else "",
+                "message": (
+                    "Benchmark completed"
+                    if result.exit_code == 0
+                    else f"Benchmark failed (exit {result.exit_code})"
+                ),
+            }
+        )
 
     if harness_name == "vstorm":
         cli_args = run_file.get("cli_args", [])
@@ -657,31 +781,34 @@ async def execute_benchmark(
         for line in (result.stdout or "").split("\n"):
             if "batch" in line.lower():
                 import re as _re
+
                 m = _re.search(r"[0-9a-f]{6}", line)
                 if m:
                     batch_id = m.group(0)
                     break
 
-        return json.dumps({
-            "status": "completed" if result.exit_code == 0 else "failed",
-            "exit_code": result.exit_code,
-            "run_id": f"vstorm-{batch_id or run_uuid}",
-            "harness": "vstorm",
-            "batch_id": batch_id,
-            "output": result.stdout[-3000:] if result.stdout else "",
-            "error": result.stderr[-1000:] if result.stderr else "",
-            "message": (
-                "Benchmark completed"
-                if result.exit_code == 0
-                else f"Benchmark failed (exit {result.exit_code})"
-            ),
-        })
+        return json.dumps(
+            {
+                "status": "completed" if result.exit_code == 0 else "failed",
+                "exit_code": result.exit_code,
+                "run_id": f"vstorm-{batch_id or run_uuid}",
+                "harness": "vstorm",
+                "batch_id": batch_id,
+                "output": result.stdout[-3000:] if result.stdout else "",
+                "error": result.stderr[-1000:] if result.stderr else "",
+                "message": (
+                    "Benchmark completed"
+                    if result.exit_code == 0
+                    else f"Benchmark failed (exit {result.exit_code})"
+                ),
+            }
+        )
 
     if harness_name == "forge":
         project = run_file.get("project", "rhaiis")
         presets = run_file.get("presets", [])
         cli_args = run_file.get("cli_args", [])
-        config_overrides = run_file.get("config_overrides", {})
+        run_file.get("config_overrides", {})
         artifacts_dir = run_file.get(
             "artifacts_dir", f"/tmp/forge-artifacts-{run_uuid}"
         )
@@ -697,31 +824,29 @@ async def execute_benchmark(
 
         prep_cmd = f"{env_prefix} {forge_cmd} {project} {preset_flags} prepare 2>&1"
         logger.info(f"[benchmark] Forge prepare: {prep_cmd}")
-        prep_result = await _ssh.run(
-            controller, prep_cmd, timeout=0, allocate_pty=True
-        )
+        prep_result = await _ssh.run(controller, prep_cmd, timeout=0, allocate_pty=True)
 
         if prep_result.exit_code != 0:
-            return json.dumps({
-                "status": "failed",
-                "exit_code": prep_result.exit_code,
-                "phase": "prepare",
-                "run_id": f"forge-{run_uuid}",
-                "harness": "forge",
-                "project": project,
-                "output": prep_result.stdout[-3000:] if prep_result.stdout else "",
-                "error": prep_result.stderr[-1000:] if prep_result.stderr else "",
-                "message": f"Forge prepare failed (exit {prep_result.exit_code})",
-            })
+            return json.dumps(
+                {
+                    "status": "failed",
+                    "exit_code": prep_result.exit_code,
+                    "phase": "prepare",
+                    "run_id": f"forge-{run_uuid}",
+                    "harness": "forge",
+                    "project": project,
+                    "output": prep_result.stdout[-3000:] if prep_result.stdout else "",
+                    "error": prep_result.stderr[-1000:] if prep_result.stderr else "",
+                    "message": f"Forge prepare failed (exit {prep_result.exit_code})",
+                }
+            )
 
         test_cmd = (
             f"{env_prefix} {forge_cmd} {project} {preset_flags} test"
             f"{' ' + args_str if args_str else ''} 2>&1"
         )
         logger.info(f"[benchmark] Forge test: {test_cmd}")
-        result = await _ssh.run(
-            controller, test_cmd, timeout=0, allocate_pty=True
-        )
+        result = await _ssh.run(controller, test_cmd, timeout=0, allocate_pty=True)
 
         ai_eval = "{}"
         eval_cmd = (
@@ -732,26 +857,29 @@ async def execute_benchmark(
         if eval_result.exit_code == 0 and eval_result.stdout.strip():
             ai_eval = eval_result.stdout.strip()
 
-        return json.dumps({
-            "status": "completed" if result.exit_code == 0 else "failed",
-            "exit_code": result.exit_code,
-            "run_id": f"forge-{run_uuid}",
-            "harness": "forge",
-            "project": project,
-            "artifacts_dir": artifacts_dir,
-            "ai_eval_payload": ai_eval,
-            "output": result.stdout[-3000:] if result.stdout else "",
-            "error": result.stderr[-1000:] if result.stderr else "",
-            "message": (
-                "Benchmark completed"
-                if result.exit_code == 0
-                else f"Benchmark failed (exit {result.exit_code})"
-            ),
-        })
+        return json.dumps(
+            {
+                "status": "completed" if result.exit_code == 0 else "failed",
+                "exit_code": result.exit_code,
+                "run_id": f"forge-{run_uuid}",
+                "harness": "forge",
+                "project": project,
+                "artifacts_dir": artifacts_dir,
+                "ai_eval_payload": ai_eval,
+                "output": result.stdout[-3000:] if result.stdout else "",
+                "error": result.stderr[-1000:] if result.stderr else "",
+                "message": (
+                    "Benchmark completed"
+                    if result.exit_code == 0
+                    else f"Benchmark failed (exit {result.exit_code})"
+                ),
+            }
+        )
 
     if harness_name == "clusterbuster":
         try:
             import yaml
+
             yaml_dump = yaml.dump
         except ImportError:
             yaml_dump = None
@@ -778,19 +906,21 @@ async def execute_benchmark(
         logger.info(f"[benchmark] Executing clusterbuster: {cmd}")
         result = await _ssh.run(controller, cmd, timeout=0, allocate_pty=True)
 
-        return json.dumps({
-            "status": "completed" if result.exit_code == 0 else "failed",
-            "exit_code": result.exit_code,
-            "run_id": f"clusterbuster-{run_uuid}",
-            "harness": "clusterbuster",
-            "output": result.stdout[-3000:] if result.stdout else "",
-            "error": result.stderr[-1000:] if result.stderr else "",
-            "message": (
-                "Benchmark completed"
-                if result.exit_code == 0
-                else f"Benchmark failed (exit {result.exit_code})"
-            ),
-        })
+        return json.dumps(
+            {
+                "status": "completed" if result.exit_code == 0 else "failed",
+                "exit_code": result.exit_code,
+                "run_id": f"clusterbuster-{run_uuid}",
+                "harness": "clusterbuster",
+                "output": result.stdout[-3000:] if result.stdout else "",
+                "error": result.stderr[-1000:] if result.stderr else "",
+                "message": (
+                    "Benchmark completed"
+                    if result.exit_code == 0
+                    else f"Benchmark failed (exit {result.exit_code})"
+                ),
+            }
+        )
 
     if harness_name == "k8s-netperf":
         config = run_file.get("config", {})
@@ -843,26 +973,26 @@ async def execute_benchmark(
         logger.info(f"[benchmark] Executing k8s-netperf: {cmd}")
         result = await _ssh.run(controller, cmd, timeout=0, allocate_pty=True)
 
-        return json.dumps({
-            "status": "completed" if result.exit_code == 0 else "failed",
-            "exit_code": result.exit_code,
-            "run_id": f"k8s-netperf-{run_uuid}",
-            "harness": "k8s-netperf",
-            "output": result.stdout[-3000:] if result.stdout else "",
-            "error": result.stderr[-1000:] if result.stderr else "",
-            "message": (
-                "Benchmark completed"
-                if result.exit_code == 0
-                else f"Benchmark failed (exit {result.exit_code})"
-            ),
-        })
+        return json.dumps(
+            {
+                "status": "completed" if result.exit_code == 0 else "failed",
+                "exit_code": result.exit_code,
+                "run_id": f"k8s-netperf-{run_uuid}",
+                "harness": "k8s-netperf",
+                "output": result.stdout[-3000:] if result.stdout else "",
+                "error": result.stderr[-1000:] if result.stderr else "",
+                "message": (
+                    "Benchmark completed"
+                    if result.exit_code == 0
+                    else f"Benchmark failed (exit {result.exit_code})"
+                ),
+            }
+        )
 
     # Default: crucible (and any unknown harness that uses JSON run-files)
     remote_path = f"/tmp/run-file-{run_uuid}.json"
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(run_file, f, indent=2)
         local_path = f.name
 
@@ -871,10 +1001,12 @@ async def execute_benchmark(
     Path(local_path).unlink(missing_ok=True)
 
     if scp_result.exit_code != 0:
-        return json.dumps({
-            "status": "failed",
-            "message": f"Failed to copy run-file: {scp_result.stderr}",
-        })
+        return json.dumps(
+            {
+                "status": "failed",
+                "message": f"Failed to copy run-file: {scp_result.stderr}",
+            }
+        )
 
     # Stop stale valkey container if no run is active (crucible issue #607)
     valkey_check = await _ssh.run(
@@ -884,7 +1016,9 @@ async def execute_benchmark(
         " && podman stop crucible-valkey 2>/dev/null && echo STOPPED || echo OK",
     )
     if "STOPPED" in (valkey_check.stdout or ""):
-        logger.info(f"[benchmark] Stopped stale crucible-valkey container on {controller}")
+        logger.info(
+            f"[benchmark] Stopped stale crucible-valkey container on {controller}"
+        )
 
     cmd = f"{run_command or 'crucible run'} {remote_path}"
     logger.info(f"[benchmark] Executing: {cmd}")
@@ -904,16 +1038,20 @@ async def execute_benchmark(
         uuid_match = re.search(r"--([0-9a-f-]{36})$", dirname)
         run_id = uuid_match.group(1) if uuid_match else dirname
 
-    return json.dumps({
-        "status": "completed" if result.exit_code == 0 else "failed",
-        "exit_code": result.exit_code,
-        "run_dir": run_dir,
-        "run_id": run_id or f"unknown-{run_uuid}",
-        "harness": "crucible",
-        "output": result.stdout or "" if result.stdout else "",
-        "error": result.stderr or "" if result.stderr else "",
-        "message": "Benchmark completed" if result.exit_code == 0 else f"Benchmark failed (exit {result.exit_code})",
-    })
+    return json.dumps(
+        {
+            "status": "completed" if result.exit_code == 0 else "failed",
+            "exit_code": result.exit_code,
+            "run_dir": run_dir,
+            "run_id": run_id or f"unknown-{run_uuid}",
+            "harness": "crucible",
+            "output": result.stdout or "" if result.stdout else "",
+            "error": result.stderr or "" if result.stderr else "",
+            "message": "Benchmark completed"
+            if result.exit_code == 0
+            else f"Benchmark failed (exit {result.exit_code})",
+        }
+    )
 
 
 @mcp.tool()
@@ -943,7 +1081,9 @@ async def get_run_logs(
         run_dir = result.stdout.strip()
 
     if not run_dir:
-        return json.dumps({"status": "not_found", "message": f"Run directory not found for {run_id}"})
+        return json.dumps(
+            {"status": "not_found", "message": f"Run directory not found for {run_id}"}
+        )
 
     if harness == "zathras":
         log_result = await _ssh.run(
@@ -956,11 +1096,13 @@ async def get_run_logs(
             f"test -f {run_dir}/crucible.log.xz && xzcat {run_dir}/crucible.log.xz | tail -100 || cat {run_dir}/crucible.log 2>/dev/null | tail -100",
         )
 
-    return json.dumps({
-        "run_dir": run_dir,
-        "log_lines": log_result.stdout or "" if log_result.stdout else "",
-        "status": "ok" if log_result.exit_code == 0 else "error",
-    })
+    return json.dumps(
+        {
+            "run_dir": run_dir,
+            "log_lines": log_result.stdout or "" if log_result.stdout else "",
+            "status": "ok" if log_result.exit_code == 0 else "error",
+        }
+    )
 
 
 if __name__ == "__main__":

@@ -23,19 +23,24 @@ def get_client(args) -> tuple[httpx.Client, str]:
 def cmd_submit(args):
     client, url = get_client(args)
     description = args.description or args.summary
-    r = client.post("/api/v1/tickets", json={
-        "summary": args.summary,
-        "description": description,
-    })
+    r = client.post(
+        "/api/v1/tickets",
+        json={
+            "summary": args.summary,
+            "description": description,
+        },
+    )
     r.raise_for_status()
     ticket = r.json()
     tid = ticket["id"]
 
-    r = client.post(f"/api/v1/tickets/{tid}/transition", json={"status": "triage_pending"})
+    r = client.post(
+        f"/api/v1/tickets/{tid}/transition", json={"status": "triage_pending"}
+    )
     r.raise_for_status()
 
     print(f"Created ticket: {tid}")
-    print(f"Status: triage_pending")
+    print("Status: triage_pending")
     print(f"Summary: {args.summary}")
 
 
@@ -185,7 +190,7 @@ def cmd_watch(args):
 
     print(f"Watching ticket {args.ticket_id} (Ctrl+C to stop)")
     if verbose:
-        print(f"  Verbose mode: reading events from ~/.agentic-perf/logs/")
+        print("  Verbose mode: reading events from ~/.agentic-perf/logs/")
     print()
 
     try:
@@ -209,7 +214,9 @@ def cmd_watch(args):
                 while last_comment_count < len(comments):
                     c = comments[last_comment_count]
                     first_line = c["body"].split("\n")[0][:80]
-                    print(f"  [{time.strftime('%H:%M:%S')}] {c['author']}: {first_line}")
+                    print(
+                        f"  [{time.strftime('%H:%M:%S')}] {c['author']}: {first_line}"
+                    )
                     last_comment_count += 1
 
             if status in ("closed",):
@@ -220,8 +227,10 @@ def cmd_watch(args):
             if status == "awaiting_customer_guidance":
                 print()
                 print("  >>> Agent is waiting for your input.")
-                print(f"  >>> Use: agentic-perf reply {args.ticket_id} \"your response\"")
-                print(f"  >>> Or:  agentic-perf abort {args.ticket_id} to skip to cleanup")
+                print(f'  >>> Use: agentic-perf reply {args.ticket_id} "your response"')
+                print(
+                    f"  >>> Or:  agentic-perf abort {args.ticket_id} to skip to cleanup"
+                )
                 if not args.follow:
                     break
 
@@ -241,19 +250,25 @@ def cmd_reply(args):
         print(f"Ticket is not waiting for input (status: {t['status']})")
         return
 
-    r = client.post(f"/api/v1/tickets/{args.ticket_id}/comments", json={
-        "author": "user",
-        "body": args.message,
-    })
+    r = client.post(
+        f"/api/v1/tickets/{args.ticket_id}/comments",
+        json={
+            "author": "user",
+            "body": args.message,
+        },
+    )
     r.raise_for_status()
 
     if args.abort:
-        r = client.post(f"/api/v1/tickets/{args.ticket_id}/transition", json={
-            "status": "awaiting_teardown",
-            "comment": "User requested abort, skipping to cleanup",
-        })
+        r = client.post(
+            f"/api/v1/tickets/{args.ticket_id}/transition",
+            json={
+                "status": "awaiting_teardown",
+                "comment": "User requested abort, skipping to cleanup",
+            },
+        )
         r.raise_for_status()
-        print(f"Reply added and ticket aborted — moving to teardown.")
+        print("Reply added and ticket aborted — moving to teardown.")
         return
 
     previous = t.get("previous_status")
@@ -261,10 +276,13 @@ def cmd_reply(args):
         print("Warning: no previous_status recorded, cannot resume automatically.")
         return
 
-    r = client.post(f"/api/v1/tickets/{args.ticket_id}/transition", json={
-        "status": previous,
-        "comment": "User responded, resuming pipeline",
-    })
+    r = client.post(
+        f"/api/v1/tickets/{args.ticket_id}/transition",
+        json={
+            "status": previous,
+            "comment": "User responded, resuming pipeline",
+        },
+    )
     r.raise_for_status()
 
     print(f"Reply added and ticket resumed to: {previous}")
@@ -279,20 +297,28 @@ def cmd_abort(args):
 
     if t["status"] != "awaiting_customer_guidance":
         print(f"Ticket is not waiting for input (status: {t['status']})")
-        print("Abort is only available when the ticket is in awaiting_customer_guidance.")
+        print(
+            "Abort is only available when the ticket is in awaiting_customer_guidance."
+        )
         return
 
     reason = args.reason or "User requested abort"
-    r = client.post(f"/api/v1/tickets/{args.ticket_id}/comments", json={
-        "author": "user",
-        "body": f"**Abort requested:** {reason}",
-    })
+    r = client.post(
+        f"/api/v1/tickets/{args.ticket_id}/comments",
+        json={
+            "author": "user",
+            "body": f"**Abort requested:** {reason}",
+        },
+    )
     r.raise_for_status()
 
-    r = client.post(f"/api/v1/tickets/{args.ticket_id}/transition", json={
-        "status": "awaiting_teardown",
-        "comment": "User requested abort, skipping to cleanup",
-    })
+    r = client.post(
+        f"/api/v1/tickets/{args.ticket_id}/transition",
+        json={
+            "status": "awaiting_teardown",
+            "comment": "User requested abort, skipping to cleanup",
+        },
+    )
     r.raise_for_status()
 
     print(f"Ticket {args.ticket_id} aborted — moving to teardown.")
@@ -351,10 +377,7 @@ def cmd_cleanup(args):
 
     if args.older_than:
         cutoff = datetime.now(timezone.utc).timestamp() - (args.older_than * 3600)
-        instances = [
-            i for i in instances
-            if i["LaunchTime"].timestamp() < cutoff
-        ]
+        instances = [i for i in instances if i["LaunchTime"].timestamp() < cutoff]
 
     if not instances:
         print("No matching agentic-perf instances found.")
@@ -376,7 +399,7 @@ def cmd_cleanup(args):
         return
 
     if not args.yes:
-        ids = [i["InstanceId"] for i in instances]
+        [i["InstanceId"] for i in instances]
         answer = input(f"\nTerminate {len(instances)} instance(s)? [y/N] ")
         if answer.lower() not in ("y", "yes"):
             print("Aborted.")
@@ -385,7 +408,9 @@ def cmd_cleanup(args):
     instance_ids = [i["InstanceId"] for i in instances]
     result = ec2.terminate_instances(InstanceIds=instance_ids)
     for i in result.get("TerminatingInstances", []):
-        print(f"  {i['InstanceId']}: {i['PreviousState']['Name']} → {i['CurrentState']['Name']}")
+        print(
+            f"  {i['InstanceId']}: {i['PreviousState']['Name']} → {i['CurrentState']['Name']}"
+        )
     print(f"\nTerminated {len(instance_ids)} instance(s).")
 
 
@@ -497,7 +522,8 @@ def _render_transcript(events, ticket, agent_filter=None):
                 print(_indent(text))
 
             tool_calls_in_raw = [
-                block for block in (raw or [])
+                block
+                for block in (raw or [])
                 if isinstance(block, dict) and block.get("type") == "tool_use"
             ]
             if tool_calls_in_raw:
@@ -582,9 +608,7 @@ def cmd_transcript(args):
             "events": events,
         }
         if args.agent:
-            output["events"] = [
-                e for e in events if e.get("agent") == args.agent
-            ]
+            output["events"] = [e for e in events if e.get("agent") == args.agent]
         json.dump(output, sys.stdout, indent=2, default=str)
         print()
         return
@@ -618,7 +642,9 @@ def main():
 
     p_submit = sub.add_parser("submit", help="Create a new test ticket")
     p_submit.add_argument("summary", help="Test request summary")
-    p_submit.add_argument("-d", "--description", help="Detailed description (defaults to summary)")
+    p_submit.add_argument(
+        "-d", "--description", help="Detailed description (defaults to summary)"
+    )
 
     p_list = sub.add_parser("list", help="List tickets")
     p_list.add_argument("-s", "--status", help="Filter by status")
@@ -628,30 +654,58 @@ def main():
 
     p_watch = sub.add_parser("watch", help="Watch ticket progress")
     p_watch.add_argument("ticket_id", help="Ticket ID")
-    p_watch.add_argument("-i", "--interval", type=float, default=3.0, help="Poll interval (seconds)")
-    p_watch.add_argument("-f", "--follow", action="store_true", help="Keep watching after HITL pause")
-    p_watch.add_argument("-v", "--verbose", action="store_true", help="Show agent events (tool calls, LLM interactions)")
+    p_watch.add_argument(
+        "-i", "--interval", type=float, default=3.0, help="Poll interval (seconds)"
+    )
+    p_watch.add_argument(
+        "-f", "--follow", action="store_true", help="Keep watching after HITL pause"
+    )
+    p_watch.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show agent events (tool calls, LLM interactions)",
+    )
 
     p_reply = sub.add_parser("reply", help="Reply to an agent's question")
     p_reply.add_argument("ticket_id", help="Ticket ID")
     p_reply.add_argument("message", help="Your response")
-    p_reply.add_argument("--abort", action="store_true", help="Abort the ticket after replying (skip to cleanup)")
+    p_reply.add_argument(
+        "--abort",
+        action="store_true",
+        help="Abort the ticket after replying (skip to cleanup)",
+    )
 
     p_abort = sub.add_parser("abort", help="Abort a paused ticket and skip to cleanup")
     p_abort.add_argument("ticket_id", help="Ticket ID")
     p_abort.add_argument("reason", nargs="?", help="Reason for aborting (optional)")
 
-    p_transcript = sub.add_parser("transcript", help="Show full agent conversation transcript")
+    p_transcript = sub.add_parser(
+        "transcript", help="Show full agent conversation transcript"
+    )
     p_transcript.add_argument("ticket_id", help="Ticket ID")
-    p_transcript.add_argument("--json", action="store_true", help="Output raw events as JSON")
-    p_transcript.add_argument("--agent", help="Filter to a single agent (e.g. triage-agent)")
+    p_transcript.add_argument(
+        "--json", action="store_true", help="Output raw events as JSON"
+    )
+    p_transcript.add_argument(
+        "--agent", help="Filter to a single agent (e.g. triage-agent)"
+    )
 
-    p_health = sub.add_parser("health", help="Check state store health")
+    sub.add_parser("health", help="Check state store health")
 
     p_cleanup = sub.add_parser("cleanup", help="Find/terminate orphaned AWS instances")
-    p_cleanup.add_argument("--older-than", type=float, metavar="HOURS", help="Only instances older than N hours")
-    p_cleanup.add_argument("--terminate", action="store_true", help="Terminate matched instances")
-    p_cleanup.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
+    p_cleanup.add_argument(
+        "--older-than",
+        type=float,
+        metavar="HOURS",
+        help="Only instances older than N hours",
+    )
+    p_cleanup.add_argument(
+        "--terminate", action="store_true", help="Terminate matched instances"
+    )
+    p_cleanup.add_argument(
+        "--yes", "-y", action="store_true", help="Skip confirmation prompt"
+    )
 
     args = parser.parse_args()
     if not args.command:

@@ -8,11 +8,11 @@ data, so credentials and provider internals never cross the LLM boundary.
 Run directly:  python agents/resource/server.py
 Connected via: AgentMCPClient (agents/mcp_client.py)
 """
+
 from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import sys
 from pathlib import Path
@@ -49,6 +49,7 @@ async def _ensure_init():
     _ssh, _ticket = await build_ssh_from_ticket()
     secrets = build_secrets_provider()
     from providers.resource.registry import ResourceProviderRegistry
+
     _registry = ResourceProviderRegistry(secrets)
     _initialized = True
 
@@ -68,6 +69,7 @@ FQDN_RE = re.compile(
 # MCP Tools (6 tools -- everything except submit_resource_result)
 # ---------------------------------------------------------------------------
 
+
 @mcp.tool()
 async def parse_host_config(text: str) -> str:
     """Extract structured host configuration from free-form text. Parses IP addresses, hostnames, roles (controller/target/client/server), SSH user, and SSH key path."""
@@ -84,9 +86,7 @@ async def parse_host_config(text: str) -> str:
     for line in lines:
         lower = line.lower().strip()
 
-        user_match = re.search(
-            r"(?:user|ssh_user|ssh-user)\s*[:=]\s*(\S+)", lower
-        )
+        user_match = re.search(r"(?:user|ssh_user|ssh-user)\s*[:=]\s*(\S+)", lower)
         if user_match:
             result["ssh_user"] = user_match.group(1)
 
@@ -122,10 +122,12 @@ async def list_resource_providers() -> str:
     """List resource providers that are configured and available. Returns provider names and types (bare_metal, cloud). Call this first if no resource_provider directive is set."""
     await _ensure_init()
     providers = await _registry.list_configured_providers()
-    return json.dumps({
-        "configured_providers": providers,
-        "count": len(providers),
-    })
+    return json.dumps(
+        {
+            "configured_providers": providers,
+            "count": len(providers),
+        }
+    )
 
 
 @mcp.tool()
@@ -176,9 +178,7 @@ async def reserve_resources(
 
 
 @mcp.tool()
-async def get_reservation_status(
-    provider: str, reservation_id: str
-) -> str:
+async def get_reservation_status(provider: str, reservation_id: str) -> str:
     """Check the status of an existing resource reservation."""
     await _ensure_init()
     prov = await _registry.get_provider(provider)
@@ -193,11 +193,13 @@ async def validate_host(host: str) -> str:
     result = await _ssh.run(host, "echo SSH_OK", timeout=15)
 
     if result.exit_code != 0 or "SSH_OK" not in result.stdout:
-        return json.dumps({
-            "host": host,
-            "reachable": False,
-            "message": f"SSH failed: {result.stderr.strip() or 'no response'}",
-        })
+        return json.dumps(
+            {
+                "host": host,
+                "reachable": False,
+                "message": f"SSH failed: {result.stderr.strip() or 'no response'}",
+            }
+        )
 
     info_cmd = (
         "hostname -f 2>/dev/null || hostname; "
@@ -219,15 +221,17 @@ async def validate_host(host: str) -> str:
     except ValueError:
         ram_gb = 0
 
-    return json.dumps({
-        "host": host,
-        "fqdn": fqdn,
-        "reachable": True,
-        "os": os_info,
-        "cpu_count": cpu_count,
-        "ram_gb": ram_gb,
-        "message": f"Host {host} validated via SSH",
-    })
+    return json.dumps(
+        {
+            "host": host,
+            "fqdn": fqdn,
+            "reachable": True,
+            "os": os_info,
+            "cpu_count": cpu_count,
+            "ram_gb": ram_gb,
+            "message": f"Host {host} validated via SSH",
+        }
+    )
 
 
 if __name__ == "__main__":

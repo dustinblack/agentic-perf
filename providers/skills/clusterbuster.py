@@ -17,12 +17,24 @@ VALID_WORKLOADS = {
 
 KEYWORD_MAP = {
     "clusterbuster": [
-        "cb-cpusoaker", "cb-fio", "cb-uperf", "cb-sysbench",
-        "cb-memory", "cb-files", "cb-hammerdb", "cb-server",
+        "cb-cpusoaker",
+        "cb-fio",
+        "cb-uperf",
+        "cb-sysbench",
+        "cb-memory",
+        "cb-files",
+        "cb-hammerdb",
+        "cb-server",
     ],
     "cb": [
-        "cb-cpusoaker", "cb-fio", "cb-uperf", "cb-sysbench",
-        "cb-memory", "cb-files", "cb-hammerdb", "cb-server",
+        "cb-cpusoaker",
+        "cb-fio",
+        "cb-uperf",
+        "cb-sysbench",
+        "cb-memory",
+        "cb-files",
+        "cb-hammerdb",
+        "cb-server",
     ],
     "cpusoaker": ["cb-cpusoaker"],
     "cpu soak": ["cb-cpusoaker"],
@@ -366,9 +378,7 @@ class ClusterbusterSkillProvider(SkillProvider):
         return {
             "provisioning": {
                 "install_method": "git_clone",
-                "git_url": (
-                    "https://github.com/redhat-performance/clusterbuster.git"
-                ),
+                "git_url": ("https://github.com/redhat-performance/clusterbuster.git"),
                 "install_target_path": "/opt/clusterbuster",
                 "run_install_as_root": "pip install -e .",
                 "verify_command": "clusterbuster --help",
@@ -441,7 +451,10 @@ class ClusterbusterSkillProvider(SkillProvider):
 
         options = job_file.get("options")
         if not isinstance(options, dict):
-            return {"valid": False, "errors": ["Missing or invalid 'options' in job_file"]}
+            return {
+                "valid": False,
+                "errors": ["Missing or invalid 'options' in job_file"],
+            }
 
         workload = options.get("workload", "")
         if not workload:
