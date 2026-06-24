@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import tempfile
 import uuid
 from pathlib import Path
@@ -369,7 +370,6 @@ def create_benchmark_tool_handlers(
     request_clarification_fn=None,
     repo_cache: RepoCache | None = None,
 ) -> tuple[dict[str, Any], SSHExecutor]:
-
     ssh = SSHExecutor(user="root")
 
     async def list_harness_docs(harness: str) -> dict:
@@ -398,6 +398,28 @@ def create_benchmark_tool_handlers(
         return {"found": True, "filename": filename, "content": skill_path.read_text()}
 
     async def get_execution_config(harness_name: str) -> dict:
+        # Arcaflow plugins run as containers via podman — no private
+        # execution config or harness installation is needed.
+        if harness_name == "arcaflow-plugins":
+            return {
+                "harness": harness_name,
+                "found": True,
+                "controller_required": False,
+                "run_command": "podman run",
+                "endpoint_type": "remotehosts",
+                "endpoint_user": "root",
+                "run_file_format": "yaml",
+                "results_dir_pattern": "",
+                "note": (
+                    "Arcaflow plugins are self-contained "
+                    "containers. Pass the run_file directly "
+                    "to execute_benchmark — input is piped "
+                    "to the container via stdin. Supports "
+                    "local execution when controller is "
+                    "localhost/127.0.0.1."
+                ),
+            }
+
         config = await skill_provider.get_all_private_config(harness_name)
         execution = config.get("execution", {})
         if not execution:
@@ -1146,6 +1168,143 @@ def create_benchmark_tool_handlers(
                     "Benchmark completed"
                     if result.exit_code == 0
                     else f"Benchmark failed (exit {result.exit_code})"
+                ),
+            }
+
+        if harness_name == "arcaflow-plugins":
+            import asyncio as _asyncio
+
+            plugin_image = run_file.get("plugin_image", "")
+            plugin_input = run_file.get("input", {})
+            plugin_step = run_file.get("plugin_step", "")
+
+            if not plugin_image:
+                return {
+                    "status": "failed",
+                    "exit_code": -1,
+                    "run_id": f"arcaflow-{run_uuid}",
+                    "harness": "arcaflow-plugins",
+                    "output": "",
+                    "error": "No plugin_image specified in run file",
+                    "message": "Missing plugin_image",
+                }
+
+            # Determine if we can run locally (no SSH needed)
+            is_local = controller in (
+                "localhost",
+                "127.0.0.1",
+                "::1",
+            )
+
+            # Serialize input as YAML if pyyaml available, else JSON
+            try:
+                import yaml
+
+                input_content = yaml.dump(plugin_input, default_flow_style=False)
+            except ImportError:
+                input_content = json.dumps(plugin_input, indent=2)
+
+            if is_local:
+                # Run directly via subprocess — no SSH needed
+                logger.info(f"[benchmark] Local execution: podman run {plugin_image}")
+
+                # Verify podman is available locally
+                podman_path = shutil.which("podman")
+                if not podman_path:
+                    return {
+                        "status": "failed",
+                        "exit_code": -1,
+                        "run_id": f"arcaflow-{run_uuid}",
+                        "harness": "arcaflow-plugins",
+                        "output": "",
+                        "error": "podman not found locally",
+                        "message": ("Arcaflow plugins require podman"),
+                    }
+
+                # Build container args: optional -s step,
+                # then -f - for stdin input
+                container_args = []
+                if plugin_step:
+                    container_args += ["-s", plugin_step]
+                container_args += ["-f", "-"]
+
+                proc = await _asyncio.create_subprocess_exec(
+                    podman_path,
+                    "run",
+                    "-i",
+                    "--rm",
+                    "--network=host",
+                    plugin_image,
+                    *container_args,
+                    stdin=_asyncio.subprocess.PIPE,
+                    stdout=_asyncio.subprocess.PIPE,
+                    stderr=_asyncio.subprocess.PIPE,
+                )
+                stdout_bytes, stderr_bytes = await proc.communicate(
+                    input=input_content.encode()
+                )
+                exit_code = proc.returncode or 0
+                stdout_str = stdout_bytes.decode(errors="replace")
+                stderr_str = stderr_bytes.decode(errors="replace")
+            else:
+                # Run via SSH on the remote target
+                # Verify podman is available on the target
+                podman_check = await ssh.run(controller, "which podman", timeout=10)
+                if podman_check.exit_code != 0:
+                    return {
+                        "status": "failed",
+                        "exit_code": -1,
+                        "run_id": f"arcaflow-{run_uuid}",
+                        "harness": "arcaflow-plugins",
+                        "output": "",
+                        "error": ("podman not found on target host"),
+                        "message": (
+                            "Arcaflow plugins require podman on the target host"
+                        ),
+                    }
+
+                input_path = f"/tmp/arcaflow-input-{run_uuid}.yaml"
+                await ssh.run(
+                    controller,
+                    (f"cat > {input_path} << 'ARCAEOF'\n{input_content}\nARCAEOF"),
+                )
+
+                step_flag = f"-s {plugin_step} " if plugin_step else ""
+                cmd = (
+                    f"cat {input_path} | podman run -i --rm "
+                    f"{plugin_image} {step_flag}-f - 2>&1"
+                )
+                logger.info(f"[benchmark] Executing Arcaflow plugin via SSH: {cmd}")
+                result = await ssh.run(
+                    controller,
+                    cmd,
+                    timeout=0,
+                    allocate_pty=True,
+                )
+                exit_code = result.exit_code
+                stdout_str = result.stdout or ""
+                stderr_str = result.stderr or ""
+
+                # Clean up input file
+                await ssh.run(
+                    controller,
+                    f"rm -f {input_path}",
+                    timeout=10,
+                )
+
+            return {
+                "status": ("completed" if exit_code == 0 else "failed"),
+                "exit_code": exit_code,
+                "run_id": f"arcaflow-{run_uuid}",
+                "harness": "arcaflow-plugins",
+                "plugin_image": plugin_image,
+                "execution_mode": ("local" if is_local else "ssh"),
+                "output": (stdout_str[-3000:] if stdout_str else ""),
+                "error": (stderr_str[-1000:] if stderr_str else ""),
+                "message": (
+                    "Arcaflow plugin completed"
+                    if exit_code == 0
+                    else (f"Arcaflow plugin failed (exit {exit_code})")
                 ),
             }
 

@@ -233,7 +233,6 @@ def create_resource_tool_handlers(
     registry=None,
     secrets_provider=None,
 ) -> tuple[dict[str, Any], dict[str, Any], SSHExecutor]:
-
     _registry = registry
     ssh = SSHExecutor(user="root")
 
