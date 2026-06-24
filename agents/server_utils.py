@@ -26,6 +26,7 @@ def build_skill_provider():
 
     Reads CRUCIBLE_HOME and ZATHRAS_HOME from env vars.
     """
+    from providers.skills.arcaflow_plugins import ArcaflowPluginSkillProvider
     from providers.skills.benchmark_runner import BenchmarkRunnerSkillProvider
     from providers.skills.clusterbuster import ClusterbusterSkillProvider
     from providers.skills.crucible import CrucibleSkillProvider
@@ -50,6 +51,7 @@ def build_skill_provider():
         "vstorm": VstormSkillProvider(),
         "ioscale": IoscaleSkillProvider(),
         "forge": ForgeSkillProvider(),
+        "arcaflow-plugins": ArcaflowPluginSkillProvider(),
     }
 
     if zathras_home:

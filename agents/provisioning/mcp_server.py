@@ -557,7 +557,6 @@ def create_provisioning_tool_handlers(
     secrets_provider=None,
     request_clarification_fn=None,
 ) -> tuple[dict[str, Any], SSHExecutor]:
-
     ssh = SSHExecutor(user="root")
 
     async def _validate_and_deploy_contract(host: str, private_config: dict) -> dict:

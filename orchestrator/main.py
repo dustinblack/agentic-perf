@@ -4,12 +4,14 @@ import asyncio
 import atexit
 import logging
 import os
+import signal
 import sys
 from pathlib import Path
 
 from providers.events import EventBus
 from providers.llm.factory import create_llm_provider
 from providers.secrets.local import LocalSecretsProvider
+from providers.skills.arcaflow_plugins import ArcaflowPluginSkillProvider
 from providers.skills.benchmark_runner import BenchmarkRunnerSkillProvider
 from providers.skills.clusterbuster import ClusterbusterSkillProvider
 from providers.skills.crucible import CrucibleSkillProvider
@@ -129,6 +131,7 @@ async def poll_loop(config: OrchestratorConfig) -> None:
     harnesses["vstorm"] = VstormSkillProvider()
     harnesses["ioscale"] = IoscaleSkillProvider()
     harnesses["forge"] = ForgeSkillProvider()
+    harnesses["arcaflow-plugins"] = ArcaflowPluginSkillProvider()
     skills = MultiHarnessSkillProvider(
         harnesses, PrivateSkillProvider(), default_harness="crucible"
     )
@@ -212,6 +215,11 @@ def _release_lock() -> None:
 
 
 def main():
+    # Ignore SIGPIPE so broken stderr (e.g., parent shell exited)
+    # doesn't kill the orchestrator. Python's logging handles the
+    # resulting BrokenPipeError internally.
+    signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",

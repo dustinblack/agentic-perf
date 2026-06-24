@@ -299,7 +299,6 @@ def create_review_tool_handlers(
     skill_provider=None,
     repo_cache: RepoCache | None = None,
 ) -> dict[str, Any]:
-
     ssh = SSHExecutor(user="root")
 
     async def get_review_config(harness_name: str) -> dict:
