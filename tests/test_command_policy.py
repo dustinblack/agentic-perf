@@ -1,4 +1,5 @@
 """Unit tests for the infra MCP server command policy engine."""
+
 from __future__ import annotations
 
 import pytest
@@ -49,12 +50,16 @@ class TestLoadPolicy:
 
 class TestCheckCommand:
     def test_allowed_command(self, provisioning_policy):
-        allowed, reason = check_command("git clone https://example.com/repo", provisioning_policy)
+        allowed, reason = check_command(
+            "git clone https://example.com/repo", provisioning_policy
+        )
         assert allowed
         assert reason == "OK"
 
     def test_binary_not_in_allowlist(self, resource_policy):
-        allowed, reason = check_command("git clone https://example.com/repo", resource_policy)
+        allowed, reason = check_command(
+            "git clone https://example.com/repo", resource_policy
+        )
         assert not allowed
         assert "not in allowlist" in reason
 
@@ -78,7 +83,9 @@ class TestCheckCommand:
         assert not allowed
 
     def test_global_blocked_dd(self, provisioning_policy):
-        allowed, reason = check_command("dd if=/dev/zero of=/dev/sda bs=1M", provisioning_policy)
+        allowed, reason = check_command(
+            "dd if=/dev/zero of=/dev/sda bs=1M", provisioning_policy
+        )
         assert not allowed
 
     def test_allowed_rm_specific_path(self, provisioning_policy):
@@ -97,11 +104,15 @@ class TestCheckCommand:
         assert "No binaries allowed" in reason
 
     def test_env_var_prefix(self, benchmark_policy):
-        allowed, _ = check_command("KUBECONFIG=/root/.kube/config kubectl get pods", benchmark_policy)
+        allowed, _ = check_command(
+            "KUBECONFIG=/root/.kube/config kubectl get pods", benchmark_policy
+        )
         assert allowed
 
     def test_absolute_path_binary(self, provisioning_policy):
-        allowed, _ = check_command("/usr/bin/git clone https://example.com", provisioning_policy)
+        allowed, _ = check_command(
+            "/usr/bin/git clone https://example.com", provisioning_policy
+        )
         assert allowed
 
     def test_review_read_only(self, review_policy):

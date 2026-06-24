@@ -18,22 +18,25 @@ class QuadsResourceProvider(ResourceProvider):
 
     def __init__(self, client) -> None:
         from providers.quads import QuadsClient
+
         self._client: QuadsClient = client
 
     @classmethod
     async def from_secrets(cls, secrets_provider) -> QuadsResourceProvider:
         from providers.quads import QuadsClient
+
         client = await QuadsClient.from_secrets(secrets_provider)
         return cls(client)
 
-    async def check_available(
-        self, requirements: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def check_available(self, requirements: dict[str, Any]) -> dict[str, Any]:
         hosts = await self._client.get_available(
             model_filter=requirements.get("model_filter"),
-            vendor_filter=requirements.get("nic_vendor") or requirements.get("vendor_filter"),
-            speed_filter=requirements.get("nic_speed") or requirements.get("speed_filter"),
-            disk_type_filter=requirements.get("disk_type") or requirements.get("disk_type_filter"),
+            vendor_filter=requirements.get("nic_vendor")
+            or requirements.get("vendor_filter"),
+            speed_filter=requirements.get("nic_speed")
+            or requirements.get("speed_filter"),
+            disk_type_filter=requirements.get("disk_type")
+            or requirements.get("disk_type_filter"),
             duration_hours=requirements.get("duration_hours", 36),
         )
         return {
@@ -73,13 +76,17 @@ class QuadsResourceProvider(ResourceProvider):
 
         scheduled = []
         for hostname in hostnames:
-            logger.info(f"[quads-provider] Scheduling {hostname} -> {assignment['cloud_name']}")
+            logger.info(
+                f"[quads-provider] Scheduling {hostname} -> {assignment['cloud_name']}"
+            )
             sched = await self._client.schedule_host(
                 assignment["cloud_name"], hostname, duration_hours=duration_hours
             )
             scheduled.append(sched)
 
-        logger.info(f"[quads-provider] Waiting for validation of assignment {assignment['id']}...")
+        logger.info(
+            f"[quads-provider] Waiting for validation of assignment {assignment['id']}..."
+        )
         await self._client.poll_until_validated(assignment["id"])
         logger.info(f"[quads-provider] Assignment {assignment['id']} validated")
 

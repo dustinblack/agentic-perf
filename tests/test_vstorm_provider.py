@@ -50,18 +50,14 @@ async def test_get_benchmark_not_found(provider: VstormSkillProvider):
 
 @pytest.mark.asyncio
 async def test_resolve_benchmark_vstorm(provider: VstormSkillProvider):
-    result = await provider.resolve_benchmark(
-        {"description": "vstorm vm boot test"}
-    )
+    result = await provider.resolve_benchmark({"description": "vstorm vm boot test"})
     assert result is not None
     assert result.startswith("vstorm-")
 
 
 @pytest.mark.asyncio
 async def test_resolve_benchmark_containerdisk(provider: VstormSkillProvider):
-    result = await provider.resolve_benchmark(
-        {"description": "containerdisk vm scale"}
-    )
+    result = await provider.resolve_benchmark({"description": "containerdisk vm scale"})
     assert result == "vstorm-containerdisk"
 
 
@@ -141,9 +137,7 @@ async def test_generate_runfile_custom_params(provider: VstormSkillProvider):
 
 @pytest.mark.asyncio
 async def test_generate_runfile_no_wait(provider: VstormSkillProvider):
-    result = await provider.generate_runfile(
-        "vstorm-containerdisk", {"wait": False}
-    )
+    result = await provider.generate_runfile("vstorm-containerdisk", {"wait": False})
     args = result.template["cli_args"]
     assert "--wait" not in args
 
@@ -209,18 +203,22 @@ async def test_validate_runfile_missing_cli_args(provider: VstormSkillProvider):
 
 @pytest.mark.asyncio
 async def test_validate_runfile_missing_vms(provider: VstormSkillProvider):
-    validation = await provider.validate_runfile({
-        "cli_args": ["--containerdisk", "--namespaces=1"],
-    })
+    validation = await provider.validate_runfile(
+        {
+            "cli_args": ["--containerdisk", "--namespaces=1"],
+        }
+    )
     assert validation["valid"] is False
     assert any("vms" in e.lower() for e in validation["errors"])
 
 
 @pytest.mark.asyncio
 async def test_validate_runfile_bad_vms(provider: VstormSkillProvider):
-    validation = await provider.validate_runfile({
-        "cli_args": ["--containerdisk", "--vms=0"],
-    })
+    validation = await provider.validate_runfile(
+        {
+            "cli_args": ["--containerdisk", "--vms=0"],
+        }
+    )
     assert validation["valid"] is False
 
 

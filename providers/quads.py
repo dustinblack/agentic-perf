@@ -45,7 +45,14 @@ class QuadsClient:
         if not raw:
             raise ValueError("QUADS config not found at secrets/quads/config.json")
         config = json.loads(raw)
-        required = ["api_host", "email", "password", "owner", "ssh_key_path", "default_root_password"]
+        required = [
+            "api_host",
+            "email",
+            "password",
+            "owner",
+            "ssh_key_path",
+            "default_root_password",
+        ]
         missing = [k for k in required if k not in config]
         if missing:
             raise ValueError(f"QUADS secrets missing required fields: {missing}")
@@ -101,6 +108,7 @@ class QuadsClient:
         duration_hours: int = 36,
     ) -> list[dict[str, Any]]:
         from datetime import datetime, timedelta, timezone
+
         end = datetime.now(timezone.utc) + timedelta(hours=duration_hours)
         r = await self._client.get(
             f"http://{self.api_host}/api/v3/available",
@@ -130,18 +138,18 @@ class QuadsClient:
             ifaces = details.get("interfaces", [])
             if vendor_filter:
                 ifaces = [
-                    i for i in ifaces
+                    i
+                    for i in ifaces
                     if vendor_filter.lower() in i.get("vendor", "").lower()
                 ]
             if speed_filter:
-                ifaces = [
-                    i for i in ifaces if i.get("speed") == speed_filter
-                ]
+                ifaces = [i for i in ifaces if i.get("speed") == speed_filter]
 
             disks = details.get("disks", [])
             if disk_type_filter:
                 matching_disks = [
-                    d for d in disks
+                    d
+                    for d in disks
                     if disk_type_filter.lower() in d.get("disk_type", "").lower()
                 ]
                 if not matching_disks:
@@ -154,32 +162,34 @@ class QuadsClient:
                     continue
 
             proc = (details.get("processors") or [{}])[0]
-            results.append({
-                "hostname": hostname,
-                "model": details.get("model", "unknown"),
-                "cpu": proc.get("product", "unknown"),
-                "cores": proc.get("cores", "unknown"),
-                "memory_gb": sum(
-                    m.get("size_gb", 0) for m in details.get("memory", [])
-                ),
-                "disks": [
-                    {
-                        "disk_type": d.get("disk_type"),
-                        "size_gb": d.get("size_gb"),
-                        "count": d.get("count"),
-                    }
-                    for d in disks
-                ],
-                "nics": [
-                    {
-                        "name": i.get("name"),
-                        "vendor": i.get("vendor"),
-                        "speed": i.get("speed"),
-                        "mac": i.get("mac_address"),
-                    }
-                    for i in details.get("interfaces", [])
-                ],
-            })
+            results.append(
+                {
+                    "hostname": hostname,
+                    "model": details.get("model", "unknown"),
+                    "cpu": proc.get("product", "unknown"),
+                    "cores": proc.get("cores", "unknown"),
+                    "memory_gb": sum(
+                        m.get("size_gb", 0) for m in details.get("memory", [])
+                    ),
+                    "disks": [
+                        {
+                            "disk_type": d.get("disk_type"),
+                            "size_gb": d.get("size_gb"),
+                            "count": d.get("count"),
+                        }
+                        for d in disks
+                    ],
+                    "nics": [
+                        {
+                            "name": i.get("name"),
+                            "vendor": i.get("vendor"),
+                            "speed": i.get("speed"),
+                            "mac": i.get("mac_address"),
+                        }
+                        for i in details.get("interfaces", [])
+                    ],
+                }
+            )
 
         return results
 
@@ -207,6 +217,7 @@ class QuadsClient:
         self, cloud_name: str, hostname: str, duration_hours: int = 36
     ) -> dict[str, Any]:
         from datetime import datetime, timedelta, timezone
+
         end = datetime.now(timezone.utc) + timedelta(hours=duration_hours)
         end_str = end.strftime("%Y-%m-%dT%H:%M")
 
@@ -222,9 +233,7 @@ class QuadsClient:
             "end": data.get("end", end_str),
         }
 
-    async def get_assignment_status(
-        self, assignment_id: int
-    ) -> dict[str, Any]:
+    async def get_assignment_status(self, assignment_id: int) -> dict[str, Any]:
         r = await self._client.get(
             f"http://{self.api_host}/api/v3/assignments/{assignment_id}"
         )
@@ -278,20 +287,32 @@ class QuadsClient:
         key_path = Path(self.ssh_key_path)
         if not key_path.exists():
             proc = await asyncio.create_subprocess_exec(
-                "ssh-keygen", "-t", "ed25519",
-                "-f", str(key_path), "-N", "", "-q",
-                "-C", "host-key-do-not-remove",
+                "ssh-keygen",
+                "-t",
+                "ed25519",
+                "-f",
+                str(key_path),
+                "-N",
+                "",
+                "-q",
+                "-C",
+                "host-key-do-not-remove",
             )
             await proc.wait()
 
         pubkey_path = Path(f"{self.ssh_key_path}.pub")
         if not pubkey_path.exists():
-            return {"status": "failed", "message": f"Public key not found: {pubkey_path}"}
+            return {
+                "status": "failed",
+                "message": f"Public key not found: {pubkey_path}",
+            }
         pubkey = pubkey_path.read_text().strip()
 
         for host in hosts:
             proc = await asyncio.create_subprocess_exec(
-                "ssh-keygen", "-R", host,
+                "ssh-keygen",
+                "-R",
+                host,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
             )
@@ -306,7 +327,9 @@ class QuadsClient:
                 results[host] = f"failed: {e}"
 
         return {
-            "status": "success" if all("ok" in v for v in results.values()) else "partial",
+            "status": "success"
+            if all("ok" in v for v in results.values())
+            else "partial",
             "ssh_key_path": self.ssh_key_path,
             "hosts": results,
         }
@@ -319,21 +342,32 @@ class QuadsClient:
         for host in hosts:
             try:
                 ssh_result = await asyncio.create_subprocess_exec(
-                    "ssh", "-o", "ConnectTimeout=10",
-                    "-o", "BatchMode=yes",
-                    "-o", "StrictHostKeyChecking=accept-new",
-                    "-i", self.ssh_key_path,
+                    "ssh",
+                    "-o",
+                    "ConnectTimeout=10",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    "StrictHostKeyChecking=accept-new",
+                    "-i",
+                    self.ssh_key_path,
                     f"root@{host}",
                     f"sed -i '/{self.PROVISIONING_KEY_COMMENT}/d' /root/.ssh/authorized_keys",
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
                 stdout, stderr = await ssh_result.communicate()
-                results[host] = "cleaned" if ssh_result.returncode == 0 else f"failed: {stderr.decode().strip()}"
+                results[host] = (
+                    "cleaned"
+                    if ssh_result.returncode == 0
+                    else f"failed: {stderr.decode().strip()}"
+                )
             except Exception as e:
                 results[host] = f"failed: {e}"
         return {
-            "status": "success" if all("cleaned" in v for v in results.values()) else "partial",
+            "status": "success"
+            if all("cleaned" in v for v in results.values())
+            else "partial",
             "hosts": results,
         }
 
@@ -346,11 +380,12 @@ class QuadsClient:
         ssh_cmd = (
             f"ssh -o StrictHostKeyChecking=no "
             f"-o PreferredAuthentications=password "
-            f"root@{host} \"{remote_cmd}\""
+            f'root@{host} "{remote_cmd}"'
         )
 
         proc = await asyncio.create_subprocess_exec(
-            "python3", "-c",
+            "python3",
+            "-c",
             (
                 "import pexpect, sys\n"
                 f"child = pexpect.spawn('/bin/bash', ['-c', {ssh_cmd!r}], timeout=30)\n"

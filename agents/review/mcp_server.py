@@ -147,7 +147,10 @@ def get_review_tools(
             input_schema={
                 "type": "object",
                 "properties": {
-                    "run_id": {"type": "string", "description": "Benchmark run ID (UUID)"},
+                    "run_id": {
+                        "type": "string",
+                        "description": "Benchmark run ID (UUID)",
+                    },
                     "controller": {"type": "string", "description": "Controller host"},
                     "ssh_key_path": {"type": "string", "description": "SSH key path"},
                 },
@@ -221,29 +224,58 @@ def get_review_tools(
             input_schema={
                 "type": "object",
                 "properties": {
-                    "review_summary": {"type": "string", "description": "1-2 sentence summary"},
+                    "review_summary": {
+                        "type": "string",
+                        "description": "1-2 sentence summary",
+                    },
                     "verdict": {
                         "type": "string",
-                        "enum": ["hypothesis_confirmed", "hypothesis_refuted", "inconclusive"],
+                        "enum": [
+                            "hypothesis_confirmed",
+                            "hypothesis_refuted",
+                            "inconclusive",
+                        ],
                     },
-                    "detailed_analysis": {"type": "string", "description": "Multi-paragraph markdown analysis"},
-                    "key_metrics": {"type": "object", "description": "Key metric values and assessments"},
+                    "detailed_analysis": {
+                        "type": "string",
+                        "description": "Multi-paragraph markdown analysis",
+                    },
+                    "key_metrics": {
+                        "type": "object",
+                        "description": "Key metric values and assessments",
+                    },
                     "recommendations": {"type": "array", "items": {"type": "string"}},
                     "follow_up_needed": {"type": "boolean"},
                     "chart_data": {
                         "type": "object",
                         "description": "Optional chart for the web dashboard. Visualize the single most informative finding from your analysis.",
                         "properties": {
-                            "title": {"type": "string", "description": "Chart title, e.g. 'Throughput by Thread Count'"},
-                            "type": {"type": "string", "enum": ["bar", "line", "doughnut"]},
-                            "labels": {"type": "array", "items": {"type": "string"}, "description": "X-axis labels or segment names"},
+                            "title": {
+                                "type": "string",
+                                "description": "Chart title, e.g. 'Throughput by Thread Count'",
+                            },
+                            "type": {
+                                "type": "string",
+                                "enum": ["bar", "line", "doughnut"],
+                            },
+                            "labels": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "X-axis labels or segment names",
+                            },
                             "datasets": {
                                 "type": "array",
                                 "items": {
                                     "type": "object",
                                     "properties": {
-                                        "label": {"type": "string", "description": "Dataset label, e.g. 'Gbps' or 'IOPS'"},
-                                        "values": {"type": "array", "items": {"type": "number"}},
+                                        "label": {
+                                            "type": "string",
+                                            "description": "Dataset label, e.g. 'Gbps' or 'IOPS'",
+                                        },
+                                        "values": {
+                                            "type": "array",
+                                            "items": {"type": "number"},
+                                        },
                                     },
                                     "required": ["label", "values"],
                                 },
@@ -323,7 +355,10 @@ def create_review_tool_handlers(
             )
 
         find_result = await ssh.run(
-            controller, find_cmd, timeout=15, key_path=ssh_key_path,
+            controller,
+            find_cmd,
+            timeout=15,
+            key_path=ssh_key_path,
         )
         if find_result.exit_code != 0 or not find_result.stdout.strip():
             ls_result = await ssh.run(
@@ -336,7 +371,9 @@ def create_review_tool_handlers(
                 "status": "no_files_found",
                 "results_dir": results_dir,
                 "pattern": file_pattern or "(default)",
-                "directory_listing": ls_result.stdout[:3000] if ls_result.stdout else "",
+                "directory_listing": ls_result.stdout[:3000]
+                if ls_result.stdout
+                else "",
                 "message": (
                     "No matching result files found. The directory listing is "
                     "included — use it to identify the correct file paths and "
@@ -363,7 +400,9 @@ def create_review_tool_handlers(
                 contents[fpath] = result.stdout
                 total_size += len(result.stdout)
             else:
-                contents[fpath] = f"(read error: {result.stderr[:200] if result.stderr else 'empty'})"
+                contents[fpath] = (
+                    f"(read error: {result.stderr[:200] if result.stderr else 'empty'})"
+                )
 
         return {
             "status": "ok",
@@ -405,7 +444,9 @@ def create_review_tool_handlers(
         return {"status": "ok", "path": path, "content": content[:15000]}
 
     async def get_run_summary(
-        run_id: str, controller: str, ssh_key_path: str | None = None,
+        run_id: str,
+        controller: str,
+        ssh_key_path: str | None = None,
     ) -> dict:
         find_result = await ssh.run(
             controller,
@@ -423,7 +464,10 @@ def create_review_tool_handlers(
 
         summary_path = f"{run_dir}/run/result-summary.json"
         result = await ssh.run(
-            controller, f"cat {summary_path}", timeout=30, key_path=ssh_key_path,
+            controller,
+            f"cat {summary_path}",
+            timeout=30,
+            key_path=ssh_key_path,
         )
         if result.exit_code != 0:
             return {
@@ -488,16 +532,22 @@ def create_review_tool_handlers(
             }
 
     async def compare_results(
-        run_id: str, baseline_id: str, controller: str,
+        run_id: str,
+        baseline_id: str,
+        controller: str,
         ssh_key_path: str | None = None,
     ) -> dict:
         current = await cdm_api_request(
-            controller, "POST", "/api/v1/iterations/metric-values",
+            controller,
+            "POST",
+            "/api/v1/iterations/metric-values",
             body={"runIds": [run_id]},
             ssh_key_path=ssh_key_path,
         )
         baseline = await cdm_api_request(
-            controller, "POST", "/api/v1/iterations/metric-values",
+            controller,
+            "POST",
+            "/api/v1/iterations/metric-values",
             body={"runIds": [baseline_id]},
             ssh_key_path=ssh_key_path,
         )

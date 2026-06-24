@@ -1,4 +1,5 @@
 """Integration tests for the infra MCP server and multi-server MCP client."""
+
 from __future__ import annotations
 
 import json
@@ -14,7 +15,8 @@ from agents.mcp_client import AgentMCPClient
 def mock_infra_server(tmp_path: Path) -> Path:
     """Minimal infra MCP server that doesn't require real SSH or secrets."""
     script = tmp_path / "mock_infra.py"
-    script.write_text(textwrap.dedent("""\
+    script.write_text(
+        textwrap.dedent("""\
         import json
         from fastmcp import FastMCP
 
@@ -99,7 +101,8 @@ def mock_infra_server(tmp_path: Path) -> Path:
 
         if __name__ == "__main__":
             mcp.run()
-    """))
+    """)
+    )
     return script
 
 
@@ -107,7 +110,8 @@ def mock_infra_server(tmp_path: Path) -> Path:
 def mock_triage_server(tmp_path: Path) -> Path:
     """Minimal triage server for multi-server testing."""
     script = tmp_path / "mock_triage.py"
-    script.write_text(textwrap.dedent("""\
+    script.write_text(
+        textwrap.dedent("""\
         import json
         from fastmcp import FastMCP
 
@@ -125,7 +129,8 @@ def mock_triage_server(tmp_path: Path) -> Path:
 
         if __name__ == "__main__":
             mcp.run()
-    """))
+    """)
+    )
     return script
 
 
@@ -179,9 +184,7 @@ async def test_infra_execute_command(mock_infra_server: Path):
     client = AgentMCPClient()
     await client.connect(str(mock_infra_server), name="infra")
     try:
-        await client.call_tool(
-            "set_ssh_context", {"ticket_id": "PERF-TEST"}
-        )
+        await client.call_tool("set_ssh_context", {"ticket_id": "PERF-TEST"})
         result = await client.call_tool(
             "execute_command",
             {"host": "10.0.0.1", "command": "hostname -f"},
@@ -241,9 +244,7 @@ async def test_infra_deploy_secret(mock_infra_server: Path):
 
 
 @pytest.mark.asyncio
-async def test_multi_server_routing(
-    mock_triage_server: Path, mock_infra_server: Path
-):
+async def test_multi_server_routing(mock_triage_server: Path, mock_infra_server: Path):
     """Verify multi-server client merges tools and routes calls correctly."""
     client = AgentMCPClient()
     await client.connect(str(mock_triage_server), name="triage")
@@ -261,9 +262,7 @@ async def test_multi_server_routing(
         benchmarks = json.loads(result)
         assert benchmarks[0]["name"] == "uperf"
 
-        result = await client.call_tool(
-            "set_ssh_context", {"ticket_id": "PERF-TEST"}
-        )
+        result = await client.call_tool("set_ssh_context", {"ticket_id": "PERF-TEST"})
         ctx = json.loads(result)
         assert ctx["status"] == "ok"
     finally:
@@ -277,7 +276,8 @@ async def test_multi_server_tool_conflict(tmp_path: Path):
     server_b = tmp_path / "server_b.py"
 
     for script in (server_a, server_b):
-        script.write_text(textwrap.dedent("""\
+        script.write_text(
+            textwrap.dedent("""\
             from fastmcp import FastMCP
             mcp = FastMCP("dup-test")
 
@@ -288,7 +288,8 @@ async def test_multi_server_tool_conflict(tmp_path: Path):
 
             if __name__ == "__main__":
                 mcp.run()
-        """))
+        """)
+        )
 
     client = AgentMCPClient()
     await client.connect(str(server_a), name="a")

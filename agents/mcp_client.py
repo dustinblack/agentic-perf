@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import json
 import logging
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
-from providers.llm.base import ToolDefinition, ToolResult
+from providers.llm.base import ToolDefinition
 
 logger = logging.getLogger(__name__)
 

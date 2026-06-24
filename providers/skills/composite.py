@@ -51,14 +51,12 @@ class CompositeSkillProvider(SkillProvider):
     async def get_example_runfile(
         self, benchmark: str, endpoint_type: str = "remotehosts"
     ) -> dict[str, Any] | None:
-        return await self._public.get_example_runfile(benchmark, endpoint_type=endpoint_type)
+        return await self._public.get_example_runfile(
+            benchmark, endpoint_type=endpoint_type
+        )
 
-    async def get_private_config(
-        self, suite_name: str, key: str
-    ) -> Any | None:
+    async def get_private_config(self, suite_name: str, key: str) -> Any | None:
         return await self._private.get_private_config(suite_name, key)
 
-    async def get_all_private_config(
-        self, suite_name: str
-    ) -> dict[str, Any]:
+    async def get_all_private_config(self, suite_name: str) -> dict[str, Any]:
         return await self._private.get_all_private_config(suite_name)

@@ -21,9 +21,7 @@ class ResourceProvider(ABC):
         ...
 
     @abstractmethod
-    async def check_available(
-        self, requirements: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def check_available(self, requirements: dict[str, Any]) -> dict[str, Any]:
         """Check what resources are available matching the requirements.
 
         Args:

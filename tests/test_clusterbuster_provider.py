@@ -71,9 +71,7 @@ async def test_resolve_benchmark_hammerdb(provider: ClusterbusterSkillProvider):
 
 @pytest.mark.asyncio
 async def test_resolve_benchmark_sysbench(provider: ClusterbusterSkillProvider):
-    result = await provider.resolve_benchmark(
-        {"description": "sysbench cpu test"}
-    )
+    result = await provider.resolve_benchmark({"description": "sysbench cpu test"})
     assert result == "cb-sysbench"
 
 
@@ -138,7 +136,12 @@ async def test_generate_runfile_hammerdb(provider: ClusterbusterSkillProvider):
 async def test_generate_runfile_custom_params(provider: ClusterbusterSkillProvider):
     result = await provider.generate_runfile(
         "cb-cpusoaker",
-        {"workloadruntime": 60, "namespaces": 2, "deps_per_namespace": 4, "processes": 5},
+        {
+            "workloadruntime": 60,
+            "namespaces": 2,
+            "deps_per_namespace": 4,
+            "processes": 5,
+        },
     )
     options = result.template["job_file"]["options"]
     assert options["workloadruntime"] == 60
@@ -208,27 +211,33 @@ async def test_validate_runfile_missing_job_file(provider: ClusterbusterSkillPro
 
 @pytest.mark.asyncio
 async def test_validate_runfile_missing_workload(provider: ClusterbusterSkillProvider):
-    validation = await provider.validate_runfile({
-        "job_file": {"options": {"workloadruntime": 10}},
-    })
+    validation = await provider.validate_runfile(
+        {
+            "job_file": {"options": {"workloadruntime": 10}},
+        }
+    )
     assert validation["valid"] is False
     assert any("workload" in e for e in validation["errors"])
 
 
 @pytest.mark.asyncio
 async def test_validate_runfile_invalid_workload(provider: ClusterbusterSkillProvider):
-    validation = await provider.validate_runfile({
-        "job_file": {"options": {"workload": "invalid_wl", "workloadruntime": 10}},
-    })
+    validation = await provider.validate_runfile(
+        {
+            "job_file": {"options": {"workload": "invalid_wl", "workloadruntime": 10}},
+        }
+    )
     assert validation["valid"] is False
     assert any("invalid_wl" in e for e in validation["errors"])
 
 
 @pytest.mark.asyncio
 async def test_validate_runfile_bad_runtime(provider: ClusterbusterSkillProvider):
-    validation = await provider.validate_runfile({
-        "job_file": {"options": {"workload": "cpusoaker", "workloadruntime": 0}},
-    })
+    validation = await provider.validate_runfile(
+        {
+            "job_file": {"options": {"workload": "cpusoaker", "workloadruntime": 0}},
+        }
+    )
     assert validation["valid"] is False
     assert any("workloadruntime" in e for e in validation["errors"])
 
@@ -236,8 +245,14 @@ async def test_validate_runfile_bad_runtime(provider: ClusterbusterSkillProvider
 @pytest.mark.asyncio
 async def test_validate_generated_runfile_passes(provider: ClusterbusterSkillProvider):
     for benchmark in (
-        "cb-cpusoaker", "cb-fio", "cb-uperf", "cb-sysbench",
-        "cb-memory", "cb-files", "cb-hammerdb", "cb-server",
+        "cb-cpusoaker",
+        "cb-fio",
+        "cb-uperf",
+        "cb-sysbench",
+        "cb-memory",
+        "cb-files",
+        "cb-hammerdb",
+        "cb-server",
     ):
         result = await provider.generate_runfile(benchmark, {})
         validation = await provider.validate_runfile(result.template)

@@ -40,16 +40,12 @@ class PSAPControlCenterClient:
     async def from_secrets(cls, secrets_provider) -> PSAPControlCenterClient:
         raw = await secrets_provider.get_secret("psap-cc/config.json")
         if not raw:
-            raise ValueError(
-                "PSAP CC config not found at secrets/psap-cc/config.json"
-            )
+            raise ValueError("PSAP CC config not found at secrets/psap-cc/config.json")
         config = json.loads(raw)
         required = ["base_url", "username", "password"]
         missing = [k for k in required if k not in config]
         if missing:
-            raise ValueError(
-                f"PSAP CC config missing required fields: {missing}"
-            )
+            raise ValueError(f"PSAP CC config missing required fields: {missing}")
         return cls(
             base_url=config["base_url"],
             username=config["username"],
@@ -60,9 +56,7 @@ class PSAPControlCenterClient:
     async def close(self) -> None:
         await self._client.aclose()
 
-    async def _request(
-        self, method: str, path: str, **kwargs: Any
-    ) -> httpx.Response:
+    async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         url = f"{self.base_url}/api/v1{path}"
         r = await self._client.request(method, url, **kwargs)
         if r.status_code >= 400:
@@ -78,12 +72,8 @@ class PSAPControlCenterClient:
     # Clusters (read-only)
     # ------------------------------------------------------------------
 
-    async def list_clusters(
-        self, active_only: bool = True
-    ) -> list[dict[str, Any]]:
-        r = await self._request(
-            "GET", "/clusters", params={"active_only": active_only}
-        )
+    async def list_clusters(self, active_only: bool = True) -> list[dict[str, Any]]:
+        r = await self._request("GET", "/clusters", params={"active_only": active_only})
         data = r.json()
         return data.get("clusters", data if isinstance(data, list) else [])
 
@@ -118,9 +108,7 @@ class PSAPControlCenterClient:
         r = await self._request("GET", f"/reservations/{reservation_id}")
         return r.json()
 
-    async def get_current_reservation(
-        self, cluster_id: str
-    ) -> dict[str, Any] | None:
+    async def get_current_reservation(self, cluster_id: str) -> dict[str, Any] | None:
         try:
             r = await self._request(
                 "GET", f"/reservations/cluster/{cluster_id}/current"
@@ -135,14 +123,10 @@ class PSAPControlCenterClient:
     # Reservations (mutating)
     # ------------------------------------------------------------------
 
-    async def create_reservation(
-        self, data: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def create_reservation(self, data: dict[str, Any]) -> dict[str, Any]:
         r = await self._request("POST", "/reservations", json=data)
         return r.json()
 
     async def cancel_reservation(self, reservation_id: str) -> dict[str, Any]:
-        r = await self._request(
-            "POST", f"/reservations/{reservation_id}/cancel"
-        )
+        r = await self._request("POST", f"/reservations/{reservation_id}/cancel")
         return r.json()

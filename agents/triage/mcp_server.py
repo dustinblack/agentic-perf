@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from providers.llm.base import ToolDefinition
@@ -157,7 +156,14 @@ def get_triage_tools() -> list[ToolDefinition]:
                         "description": "Additional notes about the triage",
                     },
                 },
-                "required": ["parsed_specs", "hypothesis", "benchmark_suite", "absent_suite", "min_hosts", "roles"],
+                "required": [
+                    "parsed_specs",
+                    "hypothesis",
+                    "benchmark_suite",
+                    "absent_suite",
+                    "min_hosts",
+                    "roles",
+                ],
             },
         ),
     ]
@@ -196,7 +202,10 @@ def create_triage_tool_handlers(
     async def resolve_benchmark(
         description: str, workload_type: str = "", harness: str = ""
     ) -> dict:
-        reqs: dict[str, Any] = {"description": description, "workload_type": workload_type}
+        reqs: dict[str, Any] = {
+            "description": description,
+            "workload_type": workload_type,
+        }
         if harness:
             reqs["harness"] = harness
         result = await skill_provider.resolve_benchmark(reqs)
@@ -209,9 +218,13 @@ def create_triage_tool_handlers(
         response: dict[str, Any] = {"matched_suite": result, "harnesses": harnesses}
         if len(harnesses) == 1:
             response["harness"] = harnesses[0]
-            response["note"] = f"Only '{harnesses[0]}' provides this benchmark — set harness directive to '{harnesses[0]}'"
+            response["note"] = (
+                f"Only '{harnesses[0]}' provides this benchmark — set harness directive to '{harnesses[0]}'"
+            )
         elif len(harnesses) > 1:
-            response["note"] = f"Multiple harnesses offer this benchmark: {harnesses}. Set harness directive if the user specified one, otherwise the default harness will be used."
+            response["note"] = (
+                f"Multiple harnesses offer this benchmark: {harnesses}. Set harness directive if the user specified one, otherwise the default harness will be used."
+            )
         return response
 
     async def request_clarification(question: str) -> str:

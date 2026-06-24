@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from providers.skills.base import RunfileTemplate
 from agents.provisioning.mcp_server import (
+    _parse_os_release,
     create_provisioning_tool_handlers,
     validate_platform_contract,
-    _parse_os_release,
 )
-
-from tests.conftest import MockSecretsProvider, MockSkillProvider, MockSSHExecutor, SSHResult
-
+from tests.conftest import (
+    MockSecretsProvider,
+    MockSkillProvider,
+    MockSSHExecutor,
+    SSHResult,
+)
 
 ZATHRAS_PRIVATE_CONFIG = {
     "constraints": {
@@ -107,10 +109,12 @@ def mock_ssh() -> MockSSHExecutor:
 
 @pytest.fixture
 def mock_secrets() -> MockSecretsProvider:
-    return MockSecretsProvider(files={
-        "crucible/crucible-client-server-token.json": "/fake/secrets/crucible-client-server-token.json",
-        "crucible/crucible-production-quay-oauth.token": "/fake/secrets/crucible-production-quay-oauth.token",
-    })
+    return MockSecretsProvider(
+        files={
+            "crucible/crucible-client-server-token.json": "/fake/secrets/crucible-client-server-token.json",
+            "crucible/crucible-production-quay-oauth.token": "/fake/secrets/crucible-production-quay-oauth.token",
+        }
+    )
 
 
 @pytest.fixture
@@ -120,7 +124,9 @@ def mock_secrets_missing() -> MockSecretsProvider:
 
 @pytest.fixture
 def handlers(mock_provider, mock_ssh, mock_secrets):
-    async def noop_clarification(q): pass
+    async def noop_clarification(q):
+        pass
+
     h = create_provisioning_tool_handlers(
         skill_provider=mock_provider,
         secrets_provider=mock_secrets,
@@ -177,11 +183,17 @@ async def test_install_harness_public_install_config(mock_provider):
 async def test_check_existing_reads_from_config(mock_provider):
     """Verify that harness config provides the paths needed for check_existing_install."""
     zathras_config = await mock_provider.get_all_private_config("zathras")
-    assert zathras_config["provisioning"]["verify_command"] == "/opt/zathras/bin/burden --usage"
+    assert (
+        zathras_config["provisioning"]["verify_command"]
+        == "/opt/zathras/bin/burden --usage"
+    )
     assert zathras_config["provisioning"]["install_target_path"] == "/opt/zathras"
 
     crucible_config = await mock_provider.get_all_private_config("crucible")
-    assert crucible_config["provisioning"]["verify_command"] == "/opt/crucible/bin/crucible help"
+    assert (
+        crucible_config["provisioning"]["verify_command"]
+        == "/opt/crucible/bin/crucible help"
+    )
     assert crucible_config["provisioning"]["install_target_path"] == "/opt/crucible"
 
 
@@ -195,7 +207,10 @@ async def test_update_install_reads_from_config(mock_provider):
 @pytest.mark.asyncio
 async def test_contract_validation_passes(mock_provider, mock_secrets):
     """Contract validation succeeds when all required secrets are present."""
-    async def noop(q): pass
+
+    async def noop(q):
+        pass
+
     handlers, ssh = create_provisioning_tool_handlers(
         skill_provider=mock_provider,
         secrets_provider=mock_secrets,
@@ -211,9 +226,14 @@ async def test_contract_validation_passes(mock_provider, mock_secrets):
 
 
 @pytest.mark.asyncio
-async def test_contract_validation_fails_missing_secret(mock_provider, mock_secrets_missing):
+async def test_contract_validation_fails_missing_secret(
+    mock_provider, mock_secrets_missing
+):
     """Contract validation fails when required secrets are missing."""
-    async def noop(q): pass
+
+    async def noop(q):
+        pass
+
     handlers, ssh = create_provisioning_tool_handlers(
         skill_provider=mock_provider,
         secrets_provider=mock_secrets_missing,
@@ -273,16 +293,22 @@ def test_parse_os_release_rocky_normalizes_to_rhel():
 @pytest.mark.asyncio
 async def test_platform_contract_os_match():
     """Platform validation passes when OS matches supported list."""
-    ssh = MockSSHExecutor(results={
-        "os-release": SSHResult(stdout=RHEL9_OS_RELEASE),
-        "repolist": SSHResult(stdout="repo id              repo name\nepel               Extra Packages"),
-        "which git": SSHResult(stdout="/usr/bin/git"),
-    })
-    config = {"platform_contract": {
-        "supported_os": ["rhel8", "rhel9"],
-        "required_repos": ["epel"],
-        "required_packages": ["git"],
-    }}
+    ssh = MockSSHExecutor(
+        results={
+            "os-release": SSHResult(stdout=RHEL9_OS_RELEASE),
+            "repolist": SSHResult(
+                stdout="repo id              repo name\nepel               Extra Packages"
+            ),
+            "which git": SSHResult(stdout="/usr/bin/git"),
+        }
+    )
+    config = {
+        "platform_contract": {
+            "supported_os": ["rhel8", "rhel9"],
+            "required_repos": ["epel"],
+            "required_packages": ["git"],
+        }
+    }
     result = await validate_platform_contract(ssh, "testhost", config)
     assert result["status"] == "ok"
     assert result["detected_os"] == "rhel9"
@@ -294,12 +320,16 @@ async def test_platform_contract_os_match():
 @pytest.mark.asyncio
 async def test_platform_contract_os_mismatch():
     """Platform validation fails when OS is not in supported list."""
-    ssh = MockSSHExecutor(results={
-        "os-release": SSHResult(stdout=UBUNTU_OS_RELEASE),
-    })
-    config = {"platform_contract": {
-        "supported_os": ["rhel8", "rhel9", "fedora"],
-    }}
+    ssh = MockSSHExecutor(
+        results={
+            "os-release": SSHResult(stdout=UBUNTU_OS_RELEASE),
+        }
+    )
+    config = {
+        "platform_contract": {
+            "supported_os": ["rhel8", "rhel9", "fedora"],
+        }
+    }
     result = await validate_platform_contract(ssh, "testhost", config)
     assert result["status"] == "failed"
     assert result["detected_os"] == "ubuntu22"
@@ -310,14 +340,20 @@ async def test_platform_contract_os_mismatch():
 @pytest.mark.asyncio
 async def test_platform_contract_missing_repo():
     """Platform validation fails when required repo is missing."""
-    ssh = MockSSHExecutor(results={
-        "os-release": SSHResult(stdout=RHEL9_OS_RELEASE),
-        "repolist": SSHResult(stdout="repo id              repo name\nbaseos             BaseOS"),
-    })
-    config = {"platform_contract": {
-        "supported_os": ["rhel9"],
-        "required_repos": ["epel"],
-    }}
+    ssh = MockSSHExecutor(
+        results={
+            "os-release": SSHResult(stdout=RHEL9_OS_RELEASE),
+            "repolist": SSHResult(
+                stdout="repo id              repo name\nbaseos             BaseOS"
+            ),
+        }
+    )
+    config = {
+        "platform_contract": {
+            "supported_os": ["rhel9"],
+            "required_repos": ["epel"],
+        }
+    }
     result = await validate_platform_contract(ssh, "testhost", config)
     assert result["status"] == "failed"
     assert "epel" in result["missing_repos"]
@@ -326,15 +362,19 @@ async def test_platform_contract_missing_repo():
 @pytest.mark.asyncio
 async def test_platform_contract_missing_package_is_warning():
     """Missing packages produce a warning (ok status), not a failure."""
-    ssh = MockSSHExecutor(results={
-        "os-release": SSHResult(stdout=RHEL9_OS_RELEASE),
-        "which podman": SSHResult(exit_code=1, stdout=""),
-        "rpm -q podman": SSHResult(exit_code=1, stdout=""),
-    })
-    config = {"platform_contract": {
-        "supported_os": ["rhel9"],
-        "required_packages": ["podman"],
-    }}
+    ssh = MockSSHExecutor(
+        results={
+            "os-release": SSHResult(stdout=RHEL9_OS_RELEASE),
+            "which podman": SSHResult(exit_code=1, stdout=""),
+            "rpm -q podman": SSHResult(exit_code=1, stdout=""),
+        }
+    )
+    config = {
+        "platform_contract": {
+            "supported_os": ["rhel9"],
+            "required_packages": ["podman"],
+        }
+    }
     result = await validate_platform_contract(ssh, "testhost", config)
     assert result["status"] == "ok"
     assert "podman" in result["missing_packages"]

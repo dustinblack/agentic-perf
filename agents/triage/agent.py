@@ -31,9 +31,7 @@ class TriageAgent(AgentBase):
         self._hitl_triggered = False
         self._hitl_ticket_id: str | None = None
 
-        local_tools = [
-            t for t in get_triage_tools() if t.name not in _MCP_TOOL_NAMES
-        ]
+        local_tools = [t for t in get_triage_tools() if t.name not in _MCP_TOOL_NAMES]
 
         async def _request_clarification(question: str) -> str:
             await self._do_request_clarification(question)
@@ -62,9 +60,7 @@ class TriageAgent(AgentBase):
         self._hitl_triggered = False
 
         triage_server = str(Path(__file__).with_name("server.py"))
-        infra_server = str(
-            Path(__file__).parent.parent / "infra" / "server.py"
-        )
+        infra_server = str(Path(__file__).parent.parent / "infra" / "server.py")
 
         mcp = AgentMCPClient()
         await mcp.connect(triage_server, name="triage")
@@ -97,9 +93,7 @@ class TriageAgent(AgentBase):
 
         return [{"role": "user", "content": content}]
 
-    async def _handle_completion(
-        self, ticket_id: str, response: LLMResponse
-    ) -> None:
+    async def _handle_completion(self, ticket_id: str, response: LLMResponse) -> None:
         if self._hitl_triggered:
             logger.info(f"[triage-agent] HITL triggered for {ticket_id}, pausing")
             return
@@ -108,7 +102,9 @@ class TriageAgent(AgentBase):
         if not result:
             result = self._parse_json_response(response.text)
         if not result:
-            await self._add_comment(ticket_id, "Triage agent could not produce structured output.")
+            await self._add_comment(
+                ticket_id, "Triage agent could not produce structured output."
+            )
             return
 
         roles = result.get("roles", [])

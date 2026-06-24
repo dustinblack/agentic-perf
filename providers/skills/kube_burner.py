@@ -65,11 +65,11 @@ _BENCHMARKS: dict[str, dict[str, Any]] = {
                 "metadata:\n"
                 '  name: "pause-{{ .Iteration }}-{{ .Replica }}"\n'
                 "  labels:\n"
-                '    app: node-density\n'
+                "    app: node-density\n"
                 "spec:\n"
                 "  containers:\n"
-                '  - name: pause\n'
-                '    image: registry.k8s.io/pause:3.9\n'
+                "  - name: pause\n"
+                "    image: registry.k8s.io/pause:3.9\n"
                 "    resources:\n"
                 "      requests:\n"
                 '        cpu: "10m"\n'
@@ -119,7 +119,7 @@ _BENCHMARKS: dict[str, dict[str, Any]] = {
                 "metadata:\n"
                 '  name: "cluster-density-{{ .Iteration }}-{{ .Replica }}"\n'
                 "  labels:\n"
-                '    app: cluster-density\n'
+                "    app: cluster-density\n"
                 "spec:\n"
                 "  replicas: 1\n"
                 "  selector:\n"
@@ -131,8 +131,8 @@ _BENCHMARKS: dict[str, dict[str, Any]] = {
                 '        app: "cluster-density-{{ .Iteration }}-{{ .Replica }}"\n'
                 "    spec:\n"
                 "      containers:\n"
-                '      - name: pause\n'
-                '        image: registry.k8s.io/pause:3.9\n'
+                "      - name: pause\n"
+                "        image: registry.k8s.io/pause:3.9\n"
                 "        resources:\n"
                 "          requests:\n"
                 '            cpu: "10m"\n'
