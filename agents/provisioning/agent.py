@@ -16,7 +16,8 @@ from .prompts import PROVISIONING_SYSTEM_PROMPT
 logger = logging.getLogger(__name__)
 
 _MCP_TOOL_NAMES = frozenset(
-    t.name for t in get_provisioning_tools()
+    t.name
+    for t in get_provisioning_tools()
     if t.name not in ("request_clarification", "submit_provisioning_result")
 )
 
@@ -36,8 +37,7 @@ class ProvisioningAgent(AgentBase):
         self._hitl_ticket_id: str | None = None
 
         local_tools = [
-            t for t in get_provisioning_tools()
-            if t.name not in _MCP_TOOL_NAMES
+            t for t in get_provisioning_tools() if t.name not in _MCP_TOOL_NAMES
         ]
 
         async def _request_clarification(question: str) -> str:
@@ -70,7 +70,8 @@ class ProvisioningAgent(AgentBase):
 
         mcp = AgentMCPClient()
         await mcp.connect(
-            prov_server, name="provisioning",
+            prov_server,
+            name="provisioning",
             env={"TICKET_ID": ticket_id, "STATE_STORE_URL": self.store_url},
         )
         self._mcp = mcp

@@ -21,8 +21,7 @@ from .prompts import RESOURCE_SYSTEM_PROMPT
 logger = logging.getLogger(__name__)
 
 _MCP_TOOL_NAMES = frozenset(
-    t.name for t in get_resource_tools()
-    if t.name != "submit_resource_result"
+    t.name for t in get_resource_tools() if t.name != "submit_resource_result"
 )
 
 
@@ -69,10 +68,11 @@ class ResourceAgent(AgentBase):
 
         # Only keep local tools (submit_resource_result) -- MCP tools
         # are added dynamically in run() for create mode.
-        local_tools = [
-            t for t in get_resource_tools()
-            if t.name not in _MCP_TOOL_NAMES
-        ] if mode == "create" else []
+        local_tools = (
+            [t for t in get_resource_tools() if t.name not in _MCP_TOOL_NAMES]
+            if mode == "create"
+            else []
+        )
 
         super().__init__(
             agent_name="resource-agent",
@@ -99,7 +99,8 @@ class ResourceAgent(AgentBase):
 
         mcp = AgentMCPClient()
         await mcp.connect(
-            resource_server, name="resource",
+            resource_server,
+            name="resource",
             env={"TICKET_ID": ticket_id, "STATE_STORE_URL": self.store_url},
         )
         self._mcp = mcp
