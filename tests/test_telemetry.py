@@ -276,3 +276,34 @@ def test_span_processor_captures_agent(
     agents = event_bus.get_agent_usage("PERF-AGENT1")
     assert "review-agent" in agents
     assert agents["review-agent"]["input_tokens"] == 100
+
+
+# --- Global usage ---
+
+
+def test_eventbus_global_usage(event_bus: EventBus):
+    """Global usage sums across all tickets."""
+    event_bus.record_llm_usage(
+        "PERF-A",
+        100,
+        50,
+        500,
+        model="claude-sonnet-4-6",
+        agent_name="triage-agent",
+    )
+    event_bus.record_llm_usage(
+        "PERF-B",
+        200,
+        80,
+        700,
+        model="gpt-4o",
+    )
+
+    g = event_bus.get_global_usage()
+    assert g["input_tokens"] == 300
+    assert g["output_tokens"] == 130
+    assert g["llm_calls"] == 2
+    assert set(g["models_used"]) == {
+        "claude-sonnet-4-6",
+        "gpt-4o",
+    }

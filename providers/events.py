@@ -190,6 +190,25 @@ class EventBus:
                 result[agent_name] = usage.to_dict()
         return result
 
+    def get_global_usage(self) -> dict[str, Any]:
+        """Get accumulated LLM usage across all tickets.
+
+        Useful for system-wide budget enforcement (see #127).
+        Only includes ticket-level entries, not per-agent
+        sub-entries.
+        """
+        total = CumulativeUsage()
+        for key, usage in self._cumulative.items():
+            # Skip per-agent entries (contain ':')
+            if ":" in key:
+                continue
+            total.input_tokens += usage.input_tokens
+            total.output_tokens += usage.output_tokens
+            total.llm_calls += usage.llm_calls
+            total.total_duration_ms += usage.total_duration_ms
+            total.models_used.update(usage.models_used)
+        return total.to_dict()
+
     def get_events(
         self,
         ticket_id: str,
