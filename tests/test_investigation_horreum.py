@@ -13,7 +13,6 @@ import pytest
 
 from providers.investigation.horreum import (
     _SCHEMA_URI,
-    _TEST_NAME,
     HorreumRecordProvider,
 )
 from providers.investigation.models import (
@@ -54,7 +53,13 @@ def _mock_response(json_data=None, status_code=200):
 def test_requires_url():
     """Provider requires a URL."""
     with pytest.raises(ValueError, match="url"):
-        HorreumRecordProvider()
+        HorreumRecordProvider(test_id=1)
+
+
+def test_requires_test_id():
+    """Provider requires a test_id."""
+    with pytest.raises(ValueError, match="test_id"):
+        HorreumRecordProvider(url="https://horreum.example.com")
 
 
 def test_accepts_url():
@@ -62,59 +67,13 @@ def test_accepts_url():
     p = HorreumRecordProvider(
         url="https://horreum.example.com",
         token="test-token",
+        test_id=42,
     )
     assert p.provider_name == "horreum"
     assert p._url == "https://horreum.example.com"
 
 
 # --- Test auto-creation ---
-
-
-@pytest.mark.asyncio
-async def test_ensure_test_finds_existing():
-    """Finds an existing test by name."""
-    p = HorreumRecordProvider(
-        url="https://horreum.example.com",
-    )
-
-    async def mock_get(*args, **kwargs):
-        return _mock_response(
-            json_data={
-                "tests": [
-                    {"id": 42, "name": _TEST_NAME},
-                    {"id": 99, "name": "other-test"},
-                ]
-            }
-        )
-
-    p._client.get = mock_get
-    test_id = await p._ensure_test()
-    assert test_id == 42
-
-
-@pytest.mark.asyncio
-async def test_ensure_test_creates_missing():
-    """Creates a test when none exists."""
-    p = HorreumRecordProvider(
-        url="https://horreum.example.com",
-    )
-
-    call_count = 0
-
-    async def mock_get(*args, **kwargs):
-        return _mock_response(json_data={"tests": []})
-
-    async def mock_post(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        return _mock_response(json_data={"id": 77})
-
-    p._client.get = mock_get
-    p._client.post = mock_post
-
-    test_id = await p._ensure_test()
-    assert test_id == 77
-    assert call_count == 1
 
 
 # --- Create ---
@@ -125,6 +84,7 @@ async def test_create_uploads_run():
     """Create uploads the record as a Horreum run."""
     p = HorreumRecordProvider(
         url="https://horreum.example.com",
+        test_id=42,
     )
     p._test_id = 42
 
@@ -153,6 +113,7 @@ async def test_get_finds_record():
     """Get retrieves a record by investigation ID."""
     p = HorreumRecordProvider(
         url="https://horreum.example.com",
+        test_id=42,
     )
     p._test_id = 42
 
@@ -195,6 +156,7 @@ async def test_get_returns_none_when_missing():
     """Get returns None when the record doesn't exist."""
     p = HorreumRecordProvider(
         url="https://horreum.example.com",
+        test_id=42,
     )
     p._test_id = 42
 
@@ -229,5 +191,6 @@ def test_create_horreum_provider():
         backend="horreum",
         url="https://horreum.example.com",
         token="test-token",
+        test_id=42,
     )
     assert isinstance(provider, HorreumRecordProvider)

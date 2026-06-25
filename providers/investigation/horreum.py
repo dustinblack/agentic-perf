@@ -33,6 +33,7 @@ import httpx
 
 from .base import InvestigationRecordProvider
 from .models import (
+    SCHEMA_URI,
     BuildHistoryEntry,
     InvestigationRecord,
     InvestigationState,
@@ -40,13 +41,7 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-# Horreum test name for investigation records. All records
-# are stored under this test type.
-_TEST_NAME = "investigation_records"
-
-# Schema URI used to tag investigation record payloads.
-# This is a logical identifier, not a fetchable URL.
-_SCHEMA_URI = "urn:agentic-perf:investigation-record:v1"
+_SCHEMA_URI = SCHEMA_URI
 
 
 class HorreumRecordProvider(InvestigationRecordProvider):
@@ -73,6 +68,14 @@ class HorreumRecordProvider(InvestigationRecordProvider):
     ) -> None:
         if not url:
             raise ValueError("Horreum provider requires 'url' config")
+        if test_id is None:
+            raise ValueError(
+                "Horreum provider requires 'test_id' "
+                "config — the Horreum test must be "
+                "created by a team admin with the "
+                "appropriate ownership, folder, and "
+                "permissions"
+            )
         self._url = url.rstrip("/")
         self._token = token
         self._client = httpx.AsyncClient(
@@ -96,47 +99,6 @@ class HorreumRecordProvider(InvestigationRecordProvider):
             return {"X-Horreum-API-Key": self._token}
         return {"Authorization": f"Bearer {self._token}"}
 
-    async def _ensure_test(self) -> int:
-        """Get or create the investigation-records test.
-
-        Returns the Horreum test ID.
-        """
-        if self._test_id is not None:
-            return self._test_id
-
-        # Search for existing test
-        r = await self._client.get(
-            "/api/test",
-            params={"limit": 100},
-        )
-        r.raise_for_status()
-        data = r.json()
-        tests = data.get("tests", data)
-        if isinstance(tests, list):
-            for t in tests:
-                if t.get("name") == _TEST_NAME:
-                    self._test_id = t["id"]
-                    logger.info(
-                        f"[horreum] Found test '{_TEST_NAME}' (id={self._test_id})"
-                    )
-                    return self._test_id
-
-        # Create the test
-        r = await self._client.post(
-            "/api/test",
-            json={
-                "name": _TEST_NAME,
-                "description": (
-                    "Investigation Records for agentic-perf cross-investigation memory"
-                ),
-                "owner": "",
-            },
-        )
-        r.raise_for_status()
-        self._test_id = r.json().get("id", r.json().get("testId"))
-        logger.info(f"[horreum] Created test '{_TEST_NAME}' (id={self._test_id})")
-        return self._test_id
-
     def _record_to_payload(self, record: InvestigationRecord) -> dict[str, Any]:
         """Convert a record to a Horreum run payload.
 
@@ -150,7 +112,6 @@ class HorreumRecordProvider(InvestigationRecordProvider):
 
     async def create(self, record: InvestigationRecord) -> str:
         """Upload a new record as a Horreum test run."""
-        await self._ensure_test()
         record.created_at = datetime.now(timezone.utc)
 
         payload = self._record_to_payload(record)
@@ -159,7 +120,7 @@ class HorreumRecordProvider(InvestigationRecordProvider):
         r = await self._client.post(
             "/api/run/data",
             params={
-                "test": _TEST_NAME,
+                "test": str(self._test_id),
                 "start": now,
                 "stop": now,
                 "owner": "",
@@ -185,9 +146,8 @@ class HorreumRecordProvider(InvestigationRecordProvider):
 
         Searches runs for the test by description prefix.
         """
-        test_id = await self._ensure_test()
         r = await self._client.get(
-            f"/api/run/list/{test_id}",
+            f"/api/run/list/{self._test_id}",
             params={"limit": 200},
         )
         r.raise_for_status()
@@ -253,9 +213,8 @@ class HorreumRecordProvider(InvestigationRecordProvider):
         would be more efficient but requires label extractors
         to be configured on the Horreum instance.
         """
-        test_id = await self._ensure_test()
         r = await self._client.get(
-            f"/api/run/list/{test_id}",
+            f"/api/run/list/{self._test_id}",
             params={"limit": limit * 2},
         )
         r.raise_for_status()
@@ -325,7 +284,7 @@ class HorreumRecordProvider(InvestigationRecordProvider):
         await self._client.post(
             "/api/run/data",
             params={
-                "test": _TEST_NAME,
+                "test": str(self._test_id),
                 "start": now,
                 "stop": now,
                 "owner": "",

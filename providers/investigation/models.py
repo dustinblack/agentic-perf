@@ -15,6 +15,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+# Schema URI identifies the record format and version.
+# Backends use this to tag payloads for schema matching
+# and to handle version evolution.
+SCHEMA_URI = "urn:agentic-perf:investigation-record:v1"
+SCHEMA_VERSION = "v1"
+
 
 class InvestigationState(str, Enum):
     """Lifecycle state of an investigation."""
@@ -103,6 +109,7 @@ class InvestigationRecord(BaseModel):
     and which builds have shown the regression.
     """
 
+    schema_version: str = SCHEMA_VERSION
     investigation_id: str = Field(
         default_factory=lambda: f"RCA-{uuid.uuid4().hex[:8].upper()}",
     )
