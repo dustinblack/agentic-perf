@@ -44,6 +44,13 @@ to construct a correct run file — getting the format right is critical.
    - Call `get_example_runfile(benchmark, endpoint_type=...)` for a structural reference
    - Read the harness's run-file documentation for format details
    - Use endpoint IPs from assigned_hardware_ips (always use IPs, never hostnames)
+   - **Check directives for `test_interfaces`** — if the user requested specific
+     NICs or a non-management network, you MUST discover the actual interface
+     names and IPs on the hosts before constructing the run-file. Read the
+     benchmark's skill doc for guidance on network discovery and how to use
+     the discovered interfaces in the run-file parameters. Do not assume the
+     management IPs are correct for benchmark traffic when the user specified
+     different interfaces.
 
    **For kube endpoints** (endpoint_type: "kube"):
    - Read the harness's kube endpoint skill doc (e.g., `kube-endpoints.md`)
