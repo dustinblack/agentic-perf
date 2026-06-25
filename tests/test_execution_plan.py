@@ -94,6 +94,44 @@ async def test_advance_plan_skips_non_plan_agent():
 
 
 @pytest.mark.asyncio
+async def test_advance_plan_skips_when_hitl_paused():
+    """_advance_plan does nothing when the agent paused for human input."""
+    from orchestrator.main import _advance_plan
+
+    plan = {
+        "current_step": 0,
+        "run_ids": [],
+        "steps": [
+            {
+                "id": 0,
+                "agent_type": "benchmark",
+                "status": "in_progress",
+                "params": {},
+                "results": {},
+            },
+        ],
+    }
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "status": "awaiting_customer_guidance",
+        "custom_fields": {"execution_plan": plan},
+    }
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        client = AsyncMock()
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        client.get.return_value = mock_response
+
+        await _advance_plan("http://localhost:8090", "PERF-TEST", "executing_benchmark")
+
+        client.patch.assert_not_called()
+        client.post.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_advance_plan_completes_step_and_advances():
     """After benchmark step, plan marks it completed and transitions."""
     from orchestrator.main import _advance_plan

@@ -97,6 +97,10 @@ async def _advance_plan(store_url: str, ticket_id: str, completed_status: str) -
         if expected_status != completed_status:
             return
 
+        ticket_status = ticket.get("status", "")
+        if ticket_status == "awaiting_customer_guidance":
+            return
+
         step["status"] = "completed"
         step["results"] = {
             "run_id": cf.get("run_id", ""),
