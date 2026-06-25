@@ -566,6 +566,34 @@ Events are stored in two places:
 The web dashboard polls the event API for live updates. The CLI `transcript`
 command reads from the JSONL files.
 
+### LLM Usage Tracking
+
+Token usage and timing are captured via OpenTelemetry instrumentation
+of the LLM SDKs (Anthropic, OpenAI). The `opentelemetry-instrumentation-
+anthropic` and `opentelemetry-instrumentation-openai` packages
+automatically produce spans for every LLM call with token counts,
+model info, and duration.
+
+A custom `EventBusSpanProcessor` (`providers/telemetry.py`) bridges
+OTLP spans into the EventBus for per-ticket accumulation:
+
+1. The agent loop sets a ticket ID on the OpenTelemetry context before
+   each LLM call
+2. The LLM SDK instrumentation produces a span with token usage
+3. The span processor extracts usage from the span attributes and
+   calls `EventBus.record_llm_usage()`
+4. `EventBus.get_cumulative_usage(ticket_id)` returns accumulated
+   totals: `input_tokens`, `output_tokens`, `total_tokens`,
+   `llm_calls`, `total_duration_ms`, `models_used`
+
+Optionally, spans can also be exported to an external OTLP collector
+(Jaeger, Grafana Tempo, etc.) by configuring `telemetry.otlp_endpoint`
+in `~/.agentic-perf/config.json`.
+
+Telemetry dependencies are optional — install with
+`pip install -e ".[telemetry]"`. Without them, the system works
+normally but token tracking is disabled.
+
 ## Orchestrator
 
 The orchestrator (`orchestrator/`) is the control loop that drives the
