@@ -580,15 +580,27 @@ OTLP spans into the EventBus for per-ticket accumulation:
 1. The agent loop sets a ticket ID on the OpenTelemetry context before
    each LLM call
 2. The LLM SDK instrumentation produces a span with token usage
-3. The span processor extracts usage from the span attributes and
-   calls `EventBus.record_llm_usage()`
-4. `EventBus.get_cumulative_usage(ticket_id)` returns accumulated
-   totals: `input_tokens`, `output_tokens`, `total_tokens`,
-   `llm_calls`, `total_duration_ms`, `models_used`
+3. The span processor extracts usage from the span attributes,
+   calls `EventBus.record_llm_usage()` for in-memory accumulation,
+   and emits a `llm_usage` event to the JSONL log
+4. The usage API (`/api/v1/tickets/{id}/usage`) computes totals from
+   the persisted `llm_usage` events, which works across process
+   boundaries (the state store and orchestrator are separate processes)
+
+The OTLP span processor is the sole source of token accounting —
+LLM providers do not extract usage from API responses. This keeps
+the data path simple: SDK → instrumentor → span → span processor →
+EventBus.
 
 Optionally, spans can also be exported to an external OTLP collector
 (Jaeger, Grafana Tempo, etc.) by configuring `telemetry.otlp_endpoint`
 in `~/.agentic-perf/config.json`.
+
+Cost estimation uses pricing from `providers/cost/pricing.yaml`, with
+user overrides at `~/.agentic-perf/pricing.yaml`. The `estimate_cost()`
+function matches model names by prefix (e.g., `claude-sonnet-4-6`
+matches `claude-sonnet-4`) and falls back to default pricing for
+unknown models.
 
 Telemetry dependencies are optional — install with
 `pip install -e ".[telemetry]"`. Without them, the system works
