@@ -49,6 +49,7 @@ def get_retrospective_tools() -> list[ToolDefinition]:
                                         "prompt_gap",
                                         "convergence_failure",
                                         "deviation",
+                                        "misuse",
                                     ],
                                 },
                                 "severity": {
