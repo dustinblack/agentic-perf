@@ -165,7 +165,10 @@ async def run_agent_task(dispatcher: Dispatcher, status: str, ticket_id: str):
     except Exception:
         logger.exception(f"Agent failed on ticket {ticket_id} (status={status})")
     finally:
-        await _advance_plan(dispatcher.store_url, ticket_id, status)
+        try:
+            await _advance_plan(dispatcher.store_url, ticket_id, status)
+        except Exception:
+            logger.exception(f"_advance_plan failed for {ticket_id}")
         dispatcher.mark_done(ticket_id)
         try:
             await agent.close()
