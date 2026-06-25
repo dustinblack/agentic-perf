@@ -231,7 +231,7 @@ agentic-perf/
   providers/
     llm/                   #   Claude (direct + Vertex) and mock providers
     resource/              #   QUADS, AWS EC2, PSAP Control Center, provider registry
-    investigation/         #   Investigation Record storage (file, Horreum, composite)
+    investigation/         #   Investigation Record storage (pluggable backends)
     secrets/               #   File-based local secrets
     skills/                #   10 harness skill providers + multi-provider aggregator
     events.py              #   Event bus for audit trail (JSONL per ticket)
