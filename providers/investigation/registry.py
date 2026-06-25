@@ -3,7 +3,7 @@
 Lazy-loads the configured backend from ~/.agentic-perf/config.json.
 Defaults to the file-based provider if no backend is configured.
 
-Configuration example in config.json:
+Single-backend configuration:
     {
         "investigation_records": {
             "backend": "file",
@@ -11,8 +11,20 @@ Configuration example in config.json:
         }
     }
 
-Future backends (horreum, opensearch, etc.) register in
-BACKEND_REGISTRY with their module path and class name.
+Multi-read (composite) configuration — one writer, multiple readers:
+    {
+        "investigation_records": {
+            "backend": "composite",
+            "writer": {"backend": "horreum", "url": "..."},
+            "readers": [
+                {"backend": "horreum", "url": "..."},
+                {"backend": "file", "persist_dir": "/old/records"}
+            ]
+        }
+    }
+
+New backends register in BACKEND_REGISTRY with their module path
+and class name.
 """
 
 from __future__ import annotations
@@ -64,23 +76,16 @@ def _load_config() -> dict[str, Any]:
         return {}
 
 
-def create_record_provider(
-    backend: str | None = None,
-    **kwargs: Any,
+def _create_single_provider(
+    config: dict[str, Any],
 ) -> InvestigationRecordProvider:
-    """Create a record provider from config or explicit args.
+    """Create a single backend provider from a config dict.
 
     Args:
-        backend: Backend name (file, horreum, opensearch, etc.).
-            If None, reads from config.json. Defaults to "file".
-        **kwargs: Passed to the backend constructor (e.g.,
-            persist_dir for file, url for horreum).
-
-    Returns:
-        A configured InvestigationRecordProvider instance.
+        config: Must contain "backend" key. Other keys are
+            passed to the backend constructor.
     """
-    config = _load_config()
-    backend_name = backend or config.get("backend", "file")
+    backend_name = config.get("backend", "file")
 
     entry = BACKEND_REGISTRY.get(backend_name)
     if entry is None:
@@ -91,15 +96,89 @@ def create_record_provider(
             f"Available: {available}"
         )
 
-    # Merge config values with explicit kwargs
-    # (explicit kwargs take precedence)
-    merged = {**config, **kwargs}
-    merged.pop("backend", None)
+    # Pass all config except "backend" to the constructor
+    kwargs = {k: v for k, v in config.items() if k != "backend"}
 
     module_path, cls_name = entry["class"].rsplit(".", 1)
     module = importlib.import_module(module_path)
     cls = getattr(module, cls_name)
 
-    provider = cls(**merged)
-    logger.info(f"[investigation] Using {backend_name} backend ({cls_name})")
+    provider = cls(**kwargs)
+    logger.info(f"[investigation] Created {backend_name} backend ({cls_name})")
     return provider
+
+
+def create_record_provider(
+    backend: str | None = None,
+    **kwargs: Any,
+) -> InvestigationRecordProvider:
+    """Create a record provider from config or explicit args.
+
+    Supports two modes:
+
+    Single backend (default):
+        create_record_provider(backend="file", persist_dir="...")
+
+    Composite (one writer, multiple readers):
+        Configured via config.json with backend="composite",
+        a "writer" dict, and a "readers" list.
+
+    Args:
+        backend: Backend name. If None, reads from config.json.
+            Defaults to "file". Use "composite" for multi-read.
+        **kwargs: Passed to the backend constructor for single-
+            backend mode. Ignored for composite mode (reads
+            writer/readers from config).
+
+    Returns:
+        A configured InvestigationRecordProvider instance.
+    """
+    config = _load_config()
+    backend_name = backend or config.get("backend", "file")
+
+    if backend_name == "composite":
+        return _create_composite(config)
+
+    # Single backend — merge config with explicit kwargs
+    merged = {**config, **kwargs}
+    merged["backend"] = backend_name
+    return _create_single_provider(merged)
+
+
+def _create_composite(
+    config: dict[str, Any],
+) -> InvestigationRecordProvider:
+    """Create a composite provider from config.
+
+    Expects config to have:
+        "writer": {"backend": "...", ...}
+        "readers": [{"backend": "...", ...}, ...]
+    """
+    from .composite import CompositeRecordProvider
+
+    writer_config = config.get("writer")
+    if not writer_config:
+        raise ValueError("Composite backend requires a 'writer' config")
+
+    readers_config = config.get("readers", [])
+    if not readers_config:
+        raise ValueError("Composite backend requires a 'readers' list")
+
+    writer = _create_single_provider(writer_config)
+
+    readers = []
+    for reader_config in readers_config:
+        readers.append(_create_single_provider(reader_config))
+
+    # If the writer isn't in the readers list, prepend it
+    # so its authoritative copies take precedence in queries
+    writer_in_readers = any(r is writer for r in readers)
+    if not writer_in_readers:
+        readers.insert(0, writer)
+
+    logger.info(
+        f"[investigation] Composite backend: "
+        f"writer={writer.provider_name}, "
+        f"{len(readers)} readers"
+    )
+    return CompositeRecordProvider(writer=writer, readers=readers)

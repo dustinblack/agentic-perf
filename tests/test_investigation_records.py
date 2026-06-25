@@ -434,3 +434,39 @@ def test_unknown_backend_raises():
     """Unknown backend name raises ValueError."""
     with pytest.raises(ValueError, match="Unknown"):
         create_record_provider(backend="nonexistent")
+
+
+def test_create_composite_provider(tmp_path: Path):
+    """Registry creates a composite provider from config."""
+    from unittest.mock import patch
+
+    config = {
+        "backend": "composite",
+        "writer": {
+            "backend": "file",
+            "persist_dir": str(tmp_path / "writer"),
+        },
+        "readers": [
+            {
+                "backend": "file",
+                "persist_dir": str(tmp_path / "writer"),
+            },
+            {
+                "backend": "file",
+                "persist_dir": str(tmp_path / "reader"),
+            },
+        ],
+    }
+
+    with patch(
+        "providers.investigation.registry._load_config",
+        return_value=config,
+    ):
+        provider = create_record_provider()
+
+    from providers.investigation.composite import (
+        CompositeRecordProvider,
+    )
+
+    assert isinstance(provider, CompositeRecordProvider)
+    assert isinstance(provider, InvestigationRecordProvider)
