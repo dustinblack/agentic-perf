@@ -321,6 +321,120 @@ Interface: `SecretsProvider` (`providers/secrets/base.py`)
 `quads/config.json`, `aws/config.json`) and injected only into the
 agents that need them.
 
+### Investigation Record Provider
+
+Interface: `InvestigationRecordProvider` (`providers/investigation/base.py`)
+
+Provides cross-investigation memory — agents can check whether a
+regression has already been investigated before starting a new
+investigation, and persist outcomes for future reference.
+
+Records are **write-once**: all investigation data (root cause,
+confidence, operational metrics, change attribution) is set at
+creation time and never modified. The only allowed mutations are:
+- Appending build history entries (tracking regression across builds)
+- Linking a Jira ticket (one-time, only if not already set)
+- Closing the record (OPEN → RESOLVED lifecycle transition)
+
+| Provider | Backend | Use Case |
+|---|---|---|
+| `FileRecordProvider` | JSON files on disk | Default. No external deps. Development and testing. |
+| `HorreumRecordProvider` | Horreum REST API | Production use with Horreum as the data store. |
+| `CompositeRecordProvider` | One writer + N readers | Migration, federated dedup, local caching. |
+
+#### File backend (default)
+
+Stores each record as a JSON file in a configurable directory
+(default: `~/.agentic-perf/investigation-records/`). No external
+services required. Queries scan all files and filter in memory —
+suitable for small-to-medium record counts.
+
+```json
+{
+    "investigation_records": {
+        "backend": "file",
+        "persist_dir": "/path/to/records"
+    }
+}
+```
+
+#### Horreum backend
+
+Stores records as Horreum test runs under a dedicated test type
+(`investigation_records`). The test is auto-created on first use
+if it doesn't exist. Records are uploaded as schemaless JSON
+payloads.
+
+Supports Horreum API keys (`HUSR_*` tokens via `X-Horreum-API-Key`
+header) and standard Bearer tokens. TLS verification can be
+disabled for instances with internal CA certificates.
+
+```json
+{
+    "investigation_records": {
+        "backend": "horreum",
+        "url": "https://horreum.example.com",
+        "token": "HUSR_...",
+        "tls_verify": false,
+        "test_id": 426
+    }
+}
+```
+
+The `test_id` is optional — if omitted, the provider searches for
+the test by name and creates it if missing.
+
+#### Composite backend (multi-read)
+
+Routes writes to a single authoritative backend and fans out reads
+across multiple backends concurrently. Results are deduplicated by
+`investigation_id` — the writer's copy takes precedence.
+
+Use cases:
+- **Migration**: old records in files, new records in the primary store
+- **Federated dedup**: check multiple teams' record stores before
+  starting an investigation
+- **Local cache**: write to primary, read from local mirror too
+
+```json
+{
+    "investigation_records": {
+        "backend": "composite",
+        "writer": {"backend": "horreum", "url": "..."},
+        "readers": [
+            {"backend": "horreum", "url": "..."},
+            {"backend": "file", "persist_dir": "/old/records"}
+        ]
+    }
+}
+```
+
+#### Record Schema Reference
+
+Investigation Records use schema URI
+`urn:agentic-perf:investigation-record:v1`. The full JSON Schema
+is at
+[`providers/investigation/schemas/investigation-record-v1.json`](../providers/investigation/schemas/investigation-record-v1.json),
+generated from the Pydantic models in
+`providers/investigation/models.py`.
+
+Queryable fields that backends must support filtering on:
+`state`, `anomaly_context.subsystem`, `anomaly_context.platform`,
+`anomaly_context.metric`.
+
+#### Adding new backends
+
+New backends implement the `InvestigationRecordProvider` interface and
+register in `providers/investigation/registry.py`. The interface
+enforces write-once semantics — backends must not allow modification
+of investigation data after creation.
+
+Agent tools are exposed via an MCP server
+(`agents/investigation/server.py`) with six tools: query, get, create,
+append build history, link Jira, and close. Agents use
+`AgentMCPClient.list_tools(include=...)` to expose only the tools
+relevant to their role.
+
 ### SSH Executor
 
 `SSHExecutor` (`providers/ssh.py`) provides async SSH command execution
