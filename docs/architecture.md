@@ -42,47 +42,60 @@ ticket document.
 ## State Machine
 
 Tickets progress through a defined set of statuses. Each status maps to an
-agent that processes the ticket at that stage.
+agent that processes the ticket at that stage. Two paths are supported:
+ad-hoc test execution (original linear pipeline) and recursive investigation
+(iterative loop with convergence).
 
+### Ad-hoc test execution
+
+```mermaid
+graph TD
+    new --> triage_pending
+    triage_pending --> awaiting_hardware
+    awaiting_hardware --> awaiting_provision
+    awaiting_provision --> executing_benchmark
+    executing_benchmark --> awaiting_review
+    awaiting_review --> awaiting_teardown
+    awaiting_review -.-> triage_pending
+    awaiting_teardown --> closed
+
+    triage_pending --> HITL[awaiting_customer_guidance]
+    awaiting_hardware --> HITL
+    awaiting_provision --> HITL
+    executing_benchmark --> HITL
+    awaiting_review --> HITL
+    awaiting_teardown --> HITL
+
+    style HITL fill:#3a1a1a,color:#f66
+    style closed fill:#1a2a1a,color:#6f6
 ```
-                          ┌──────────────────┐
-                          │       new        │
-                          └────────┬─────────┘
-                                   │
-                          ┌────────▼─────────┐
-                    ┌─────│  triage_pending   │─────┐
-                    │     └────────┬──────────┘     │
-                    │              │                 │
-                    │     ┌────────▼─────────┐      │
-                    │  ┌──│awaiting_hardware  │──┐   │
-                    │  │  └────────┬──────────┘  │   │
-                    │  │           │              │   │
-                    │  │  ┌────────▼─────────┐   │   │
-                    │  │  │awaiting_provision │─┐ │   │
-                    │  │  └────────┬──────────┘ │ │   │
-                    │  │           │             │ │   │
-                    │  │  ┌────────▼──────────┐  │ │   │
-                    │  │  │executing_benchmark│──┤ │   │  All stages can
-                    │  │  └────────┬──────────┘  │ │   │  pause at
-                    │  │           │              │ │   │  awaiting_customer_
-                    │  │  ┌────────▼─────────┐   │ │   │  guidance for
-              rerun─┼──┼──│ awaiting_review  │───┤ │   │  human input
-                    │  │  └────────┬──────────┘  │ │   │
-                    │  │           │              │ │   │
-                    │  │  ┌────────▼──────────┐   │ │   │
-                    │  │  │awaiting_teardown  │───┘ │   │
-                    │  │  └────────┬──────────┘     │   │
-                    │  │           │                 │   │
-                    │  │  ┌────────▼─────────┐      │   │
-                    │  │  │     closed       │      │   │
-                    │  │  └──────────────────┘      │   │
-                    │  │                            │   │
-                    │  └────────────┬───────────────┘   │
-                    │              │                     │
-                    │     ┌────────▼───────────────┐     │
-                    └─────│awaiting_customer_      │─────┘
-                          │guidance                │
-                          └────────────────────────┘
+
+### Recursive investigation
+
+```mermaid
+graph TD
+    new --> triage_pending
+    triage_pending --> gathering_context
+    gathering_context --> planning_investigation
+    gathering_context -.-> closed
+    planning_investigation --> awaiting_provision
+    planning_investigation --> awaiting_hardware
+    awaiting_hardware --> awaiting_provision
+    awaiting_provision --> executing_benchmark
+    executing_benchmark --> evaluating_convergence
+    evaluating_convergence --> planning_investigation
+    evaluating_convergence --> awaiting_provision
+    evaluating_convergence --> synthesizing_results
+    synthesizing_results --> awaiting_teardown
+    awaiting_teardown --> closed
+
+    gathering_context --> HITL[awaiting_customer_guidance]
+    planning_investigation --> HITL
+    evaluating_convergence --> HITL
+    synthesizing_results --> HITL
+
+    style HITL fill:#3a1a1a,color:#f66
+    style closed fill:#1a2a1a,color:#6f6
 ```
 
 ### Status-to-Agent Mapping
@@ -95,15 +108,25 @@ agent that processes the ticket at that stage.
 | `executing_benchmark` | BenchmarkAgent | — |
 | `awaiting_review` | ReviewAgent | — |
 | `awaiting_teardown` | ResourceAgent | teardown |
+| `gathering_context` | *(stub)* | — |
+| `planning_investigation` | *(stub)* | — |
+| `evaluating_convergence` | *(stub)* | — |
+| `synthesizing_results` | *(stub)* | — |
 
 Terminal statuses (`closed`, `awaiting_customer_guidance`) do not dispatch
 agents. `awaiting_customer_guidance` resumes to the previous status when the
-user replies.
+user replies. Investigation loop agents are currently stubs that auto-advance
+the state machine; full implementations are planned.
 
 ### Special Transitions
 
 - **Rerun loop:** `awaiting_review` can transition back to `triage_pending`
   for iterative testing.
+- **Investigation loop-back:** `evaluating_convergence` can loop back to
+  `planning_investigation` (refine parameters) or `awaiting_provision`
+  (re-flash tainted hardware).
+- **Grounding dedup:** `gathering_context` can close the ticket directly
+  if a matching Investigation Record is found.
 - **Abort:** From `awaiting_customer_guidance`, the user can jump directly to
   `awaiting_teardown` to skip remaining work.
 
