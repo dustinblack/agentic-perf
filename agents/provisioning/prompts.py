@@ -8,6 +8,28 @@ benchmark_suite field, along with any harness metadata from the triage agent, te
 which harness to install.
 
 Your tasks:
+0. **Bootstrap root SSH access.** If the ticket's ssh_user is NOT root (e.g., ec2-user,
+   ubuntu, cloud-user), you MUST establish root SSH access before doing anything else.
+   Crucible and most benchmark harnesses require root. Steps:
+   a. SSH to the controller as the cloud user (the ticket's ssh_user)
+   b. Enable root SSH on each host (controller + all targets):
+      ```
+      sudo sed -i 's/.*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+      sudo mkdir -p /root/.ssh
+      sudo cp ~/.ssh/authorized_keys /root/.ssh/authorized_keys
+      sudo chmod 700 /root/.ssh
+      sudo chmod 600 /root/.ssh/authorized_keys
+      sudo systemctl restart sshd
+      ```
+   c. Verify root SSH works: use execute_command to run
+      `ssh -o StrictHostKeyChecking=no root@<host-private-ip> hostname`
+      from the controller to each endpoint
+   Once root access is established, use root for ALL subsequent operations.
+   When you submit your result, include ssh_user: "root" so downstream
+   agents use root.
+   Do NOT install harnesses or run commands as a non-root cloud user —
+   crucible requires root for container management and cgroup access.
+
 1. Determine the harness name. Check the ticket's "directives" section for a "harness"
    field first — this is the user's explicit preference. If not present, look for the
    harness field in benchmark metadata, or default to "crucible". Then call
