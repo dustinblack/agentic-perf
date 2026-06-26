@@ -327,6 +327,167 @@ class TestHandleCompletion:
         assert dedup["match_confidence"] == 0.92
 
 
+# --- Triage routing ---
+
+
+class TestTriageRouting:
+    """Verify triage routes based on anomaly_context presence."""
+
+    @pytest.mark.asyncio
+    async def test_anomaly_context_routes_to_gathering(self):
+        """Triage routes to gathering_context when anomaly_context
+        is present on the ticket."""
+        from unittest.mock import AsyncMock
+
+        from agents.triage.agent import TriageAgent
+        from providers.llm.base import LLMResponse, ToolCall
+        from providers.llm.mock import MockLLMProvider
+        from tests.conftest import MockSkillProvider
+
+        agent = TriageAgent(
+            llm_provider=MockLLMProvider(),
+            state_store_url="http://localhost:8090",
+            skill_provider=MockSkillProvider(),
+        )
+        agent._client = AsyncMock()
+
+        # Mock: _update_fields and _add_comment succeed
+        agent._client.patch = AsyncMock(
+            return_value=AsyncMock(
+                status_code=200,
+                json=lambda: {},
+                raise_for_status=lambda: None,
+            ),
+        )
+        agent._client.post = AsyncMock(
+            return_value=AsyncMock(
+                status_code=200,
+                json=lambda: {},
+                raise_for_status=lambda: None,
+            ),
+        )
+        # Mock: _get_ticket returns ticket WITH anomaly_context
+        agent._client.get = AsyncMock(
+            return_value=AsyncMock(
+                status_code=200,
+                json=lambda: {
+                    "id": "PERF-TEST",
+                    "custom_fields": {
+                        "anomaly_context": {
+                            "subsystem": "storage_io",
+                            "metric": "iops_4k_randread",
+                        },
+                    },
+                },
+                raise_for_status=lambda: None,
+            ),
+        )
+
+        response = LLMResponse(
+            text=None,
+            tool_calls=[
+                ToolCall(
+                    id="tc_1",
+                    name="submit_triage_result",
+                    input={
+                        "hypothesis": "storage regression",
+                        "benchmark_suite": "fio",
+                        "parsed_specs": {},
+                        "roles": ["client"],
+                        "min_hosts": 1,
+                    },
+                ),
+            ],
+            stop_reason="tool_use",
+        )
+
+        await agent._handle_completion("PERF-TEST", response)
+
+        # Find the transition call
+        transition_calls = [
+            c for c in agent._client.post.call_args_list if "transition" in str(c)
+        ]
+        assert len(transition_calls) == 1
+        body = transition_calls[0].kwargs.get(
+            "json",
+            transition_calls[0][1].get("json", {}),
+        )
+        assert body["status"] == "gathering_context"
+
+    @pytest.mark.asyncio
+    async def test_no_anomaly_context_routes_to_hardware(self):
+        """Triage routes to awaiting_hardware when no
+        anomaly_context is present (ad-hoc ticket)."""
+        from unittest.mock import AsyncMock
+
+        from agents.triage.agent import TriageAgent
+        from providers.llm.base import LLMResponse, ToolCall
+        from providers.llm.mock import MockLLMProvider
+        from tests.conftest import MockSkillProvider
+
+        agent = TriageAgent(
+            llm_provider=MockLLMProvider(),
+            state_store_url="http://localhost:8090",
+            skill_provider=MockSkillProvider(),
+        )
+        agent._client = AsyncMock()
+        agent._client.patch = AsyncMock(
+            return_value=AsyncMock(
+                status_code=200,
+                json=lambda: {},
+                raise_for_status=lambda: None,
+            ),
+        )
+        agent._client.post = AsyncMock(
+            return_value=AsyncMock(
+                status_code=200,
+                json=lambda: {},
+                raise_for_status=lambda: None,
+            ),
+        )
+        # Mock: _get_ticket returns ticket WITHOUT anomaly_context
+        agent._client.get = AsyncMock(
+            return_value=AsyncMock(
+                status_code=200,
+                json=lambda: {
+                    "id": "PERF-TEST",
+                    "custom_fields": {},
+                },
+                raise_for_status=lambda: None,
+            ),
+        )
+
+        response = LLMResponse(
+            text=None,
+            tool_calls=[
+                ToolCall(
+                    id="tc_1",
+                    name="submit_triage_result",
+                    input={
+                        "hypothesis": "baseline network",
+                        "benchmark_suite": "uperf",
+                        "parsed_specs": {},
+                        "roles": ["client", "server"],
+                        "min_hosts": 2,
+                    },
+                ),
+            ],
+            stop_reason="tool_use",
+        )
+
+        await agent._handle_completion("PERF-TEST", response)
+
+        transition_calls = [
+            c for c in agent._client.post.call_args_list if "transition" in str(c)
+        ]
+        assert len(transition_calls) == 1
+        body = transition_calls[0].kwargs.get(
+            "json",
+            transition_calls[0][1].get("json", {}),
+        )
+        assert body["status"] == "awaiting_hardware"
+
+
 # --- Dispatcher integration ---
 
 
