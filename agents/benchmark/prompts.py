@@ -67,6 +67,14 @@ to construct a correct run file — getting the format right is critical.
    they will appear in the execution output.
 
 8. **Submit result** — Call `submit_benchmark_result` with the outcome.
+   If the benchmark completed successfully (exit_code 0), submit with status "completed".
+   If it failed (non-zero exit code), you may retry once. If the retry also fails,
+   submit with status "failed" and include the error output.
+
+   **IMPORTANT: Your job ends here.** Do NOT analyze results, query metrics,
+   check OpenSearch, or do any post-benchmark investigation. Result analysis
+   is the review agent's responsibility. After execute_benchmark returns,
+   call submit_benchmark_result immediately — do not run additional commands.
 
 ### Common pitfalls:
 - Use IP addresses, never hostnames (IPv6 link-local causes timeouts)
