@@ -568,19 +568,34 @@ def create_benchmark_tool_handlers(
             logger.info(f"[benchmark] Executing kube-burner: {cmd}")
             result = await ssh.run(controller, cmd, timeout=0, allocate_pty=True)
 
-            return {
+            response = {
                 "status": "completed" if result.exit_code == 0 else "failed",
                 "exit_code": result.exit_code,
                 "run_id": f"kube-burner-{run_uuid}",
                 "harness": "kube-burner",
-                "output": result.stdout or "" if result.stdout else "",
-                "error": result.stderr or "" if result.stderr else "",
                 "message": (
                     "Benchmark completed"
                     if result.exit_code == 0
                     else f"Benchmark failed (exit {result.exit_code})"
                 ),
             }
+            if result.exit_code == 0:
+                metrics_result = await ssh.run(
+                    controller,
+                    f"cat {template_dir}/collected-metrics/*.json 2>/dev/null | head -c 3000",
+                    timeout=30,
+                )
+                if metrics_result.exit_code == 0 and metrics_result.stdout:
+                    try:
+                        response["result_summary"] = json.loads(
+                            metrics_result.stdout
+                        )
+                    except json.JSONDecodeError:
+                        response["result_summary"] = metrics_result.stdout[:3000]
+            if result.exit_code != 0:
+                response["output"] = result.stdout[-3000:] if result.stdout else ""
+                response["error"] = result.stderr[-1000:] if result.stderr else ""
+            return response
 
         if harness_name == "benchmark-runner":
             env_vars = dict(run_file.get("env_vars", {}))
@@ -623,20 +638,31 @@ def create_benchmark_tool_handlers(
                 else ""
             )
 
-            return {
+            response = {
                 "status": "completed" if result.exit_code == 0 else "failed",
                 "exit_code": result.exit_code,
                 "run_id": f"benchmark-runner-{run_uuid}",
                 "run_dir": f"{artifacts_dir}/{run_dir}" if run_dir else "",
                 "harness": "benchmark-runner",
-                "output": result.stdout[-3000:] if result.stdout else "",
-                "error": result.stderr[-1000:] if result.stderr else "",
                 "message": (
                     "Benchmark completed"
                     if result.exit_code == 0
                     else f"Benchmark failed (exit {result.exit_code})"
                 ),
             }
+            if result.exit_code == 0 and run_dir:
+                full_dir = f"{artifacts_dir}/{run_dir}"
+                ls_result = await ssh.run(
+                    controller,
+                    f"ls -la {full_dir}/ 2>/dev/null | head -30",
+                    timeout=30,
+                )
+                if ls_result.exit_code == 0 and ls_result.stdout:
+                    response["result_summary"] = ls_result.stdout.strip()
+            if result.exit_code != 0:
+                response["output"] = result.stdout[-3000:] if result.stdout else ""
+                response["error"] = result.stderr[-1000:] if result.stderr else ""
+            return response
 
         if harness_name == "zathras":
             scenario = run_file.get("scenario", {})
@@ -746,7 +772,7 @@ def create_benchmark_tool_handlers(
                     run_dir = m.group(1)
                     break
 
-            return {
+            response = {
                 "status": "completed" if result.exit_code == 0 else "failed",
                 "exit_code": result.exit_code,
                 "run_dir": run_dir,
@@ -754,12 +780,22 @@ def create_benchmark_tool_handlers(
                 if run_dir
                 else f"zathras-{run_uuid}",
                 "harness": "zathras",
-                "output": result.stdout or "" if result.stdout else "",
-                "error": result.stderr or "" if result.stderr else "",
                 "message": "Benchmark completed"
                 if result.exit_code == 0
                 else f"Benchmark failed (exit {result.exit_code})",
             }
+            if result.exit_code == 0 and run_dir:
+                ls_result = await ssh.run(
+                    controller,
+                    f"ls -la {run_dir}/ 2>/dev/null | head -30",
+                    timeout=30,
+                )
+                if ls_result.exit_code == 0 and ls_result.stdout:
+                    response["result_summary"] = ls_result.stdout.strip()
+            if result.exit_code != 0:
+                response["output"] = result.stdout[-3000:] if result.stdout else ""
+                response["error"] = result.stderr[-1000:] if result.stderr else ""
+            return response
 
         if harness_name == "ioscale":
             try:
@@ -941,21 +977,28 @@ def create_benchmark_tool_handlers(
             logger.info(f"[benchmark] Executing ioscale {test_type}: {cmd}")
             result = await ssh.run(controller, cmd, timeout=0, allocate_pty=True)
 
-            return {
+            response = {
                 "status": "completed" if result.exit_code == 0 else "failed",
                 "exit_code": result.exit_code,
                 "run_id": f"ioscale-{run_uuid}",
                 "harness": "ioscale",
                 "vm_name": vm_name,
                 "vm_ip": vm_ip,
-                "output": result.stdout[-3000:] if result.stdout else "",
-                "error": result.stderr[-1000:] if result.stderr else "",
                 "message": (
                     "Benchmark completed"
                     if result.exit_code == 0
                     else f"Benchmark failed (exit {result.exit_code})"
                 ),
             }
+            if result.exit_code == 0 and result.stdout:
+                try:
+                    response["result_summary"] = json.loads(result.stdout)
+                except json.JSONDecodeError:
+                    response["result_summary"] = result.stdout[:3000]
+            if result.exit_code != 0:
+                response["output"] = result.stdout[-3000:] if result.stdout else ""
+                response["error"] = result.stderr[-1000:] if result.stderr else ""
+            return response
 
         if harness_name == "vstorm":
             cli_args = run_file.get("cli_args", [])
@@ -977,20 +1020,27 @@ def create_benchmark_tool_handlers(
                         batch_id = m.group(0)
                         break
 
-            return {
+            response = {
                 "status": "completed" if result.exit_code == 0 else "failed",
                 "exit_code": result.exit_code,
                 "run_id": f"vstorm-{batch_id or run_uuid}",
                 "harness": "vstorm",
                 "batch_id": batch_id,
-                "output": result.stdout[-3000:] if result.stdout else "",
-                "error": result.stderr[-1000:] if result.stderr else "",
                 "message": (
                     "Benchmark completed"
                     if result.exit_code == 0
                     else f"Benchmark failed (exit {result.exit_code})"
                 ),
             }
+            if result.exit_code == 0 and result.stdout:
+                try:
+                    response["result_summary"] = json.loads(result.stdout)
+                except json.JSONDecodeError:
+                    response["result_summary"] = result.stdout[:3000]
+            if result.exit_code != 0:
+                response["output"] = result.stdout[-3000:] if result.stdout else ""
+                response["error"] = result.stderr[-1000:] if result.stderr else ""
+            return response
 
         if harness_name == "forge":
             project = run_file.get("project", "rhaiis")
@@ -1045,7 +1095,7 @@ def create_benchmark_tool_handlers(
             if eval_result.exit_code == 0 and eval_result.stdout.strip():
                 ai_eval = eval_result.stdout.strip()
 
-            return {
+            response = {
                 "status": "completed" if result.exit_code == 0 else "failed",
                 "exit_code": result.exit_code,
                 "run_id": f"forge-{run_uuid}",
@@ -1053,14 +1103,16 @@ def create_benchmark_tool_handlers(
                 "project": project,
                 "artifacts_dir": artifacts_dir,
                 "ai_eval_payload": ai_eval,
-                "output": result.stdout[-3000:] if result.stdout else "",
-                "error": result.stderr[-1000:] if result.stderr else "",
                 "message": (
                     "Benchmark completed"
                     if result.exit_code == 0
                     else f"Benchmark failed (exit {result.exit_code})"
                 ),
             }
+            if result.exit_code != 0:
+                response["output"] = result.stdout[-3000:] if result.stdout else ""
+                response["error"] = result.stderr[-1000:] if result.stderr else ""
+            return response
 
         if harness_name == "clusterbuster":
             try:
@@ -1092,19 +1144,26 @@ def create_benchmark_tool_handlers(
             logger.info(f"[benchmark] Executing clusterbuster: {cmd}")
             result = await ssh.run(controller, cmd, timeout=0, allocate_pty=True)
 
-            return {
+            response = {
                 "status": "completed" if result.exit_code == 0 else "failed",
                 "exit_code": result.exit_code,
                 "run_id": f"clusterbuster-{run_uuid}",
                 "harness": "clusterbuster",
-                "output": result.stdout[-3000:] if result.stdout else "",
-                "error": result.stderr[-1000:] if result.stderr else "",
                 "message": (
                     "Benchmark completed"
                     if result.exit_code == 0
                     else f"Benchmark failed (exit {result.exit_code})"
                 ),
             }
+            if result.exit_code == 0 and result.stdout:
+                try:
+                    response["result_summary"] = json.loads(result.stdout)
+                except json.JSONDecodeError:
+                    response["result_summary"] = result.stdout[:3000]
+            if result.exit_code != 0:
+                response["output"] = result.stdout[-3000:] if result.stdout else ""
+                response["error"] = result.stderr[-1000:] if result.stderr else ""
+            return response
 
         if harness_name == "k8s-netperf":
             config = run_file.get("config", {})
@@ -1157,19 +1216,26 @@ def create_benchmark_tool_handlers(
             logger.info(f"[benchmark] Executing k8s-netperf: {cmd}")
             result = await ssh.run(controller, cmd, timeout=0, allocate_pty=True)
 
-            return {
+            response = {
                 "status": "completed" if result.exit_code == 0 else "failed",
                 "exit_code": result.exit_code,
                 "run_id": f"k8s-netperf-{run_uuid}",
                 "harness": "k8s-netperf",
-                "output": result.stdout[-3000:] if result.stdout else "",
-                "error": result.stderr[-1000:] if result.stderr else "",
                 "message": (
                     "Benchmark completed"
                     if result.exit_code == 0
                     else f"Benchmark failed (exit {result.exit_code})"
                 ),
             }
+            if result.exit_code == 0 and result.stdout:
+                try:
+                    response["result_summary"] = json.loads(result.stdout)
+                except json.JSONDecodeError:
+                    response["result_summary"] = result.stdout[:3000]
+            if result.exit_code != 0:
+                response["output"] = result.stdout[-3000:] if result.stdout else ""
+                response["error"] = result.stderr[-1000:] if result.stderr else ""
+            return response
 
         if harness_name == "arcaflow-plugins":
             import asyncio as _asyncio
@@ -1292,21 +1358,33 @@ def create_benchmark_tool_handlers(
                     timeout=10,
                 )
 
-            return {
+            response = {
                 "status": ("completed" if exit_code == 0 else "failed"),
                 "exit_code": exit_code,
                 "run_id": f"arcaflow-{run_uuid}",
                 "harness": "arcaflow-plugins",
                 "plugin_image": plugin_image,
                 "execution_mode": ("local" if is_local else "ssh"),
-                "output": (stdout_str[-3000:] if stdout_str else ""),
-                "error": (stderr_str[-1000:] if stderr_str else ""),
                 "message": (
                     "Arcaflow plugin completed"
                     if exit_code == 0
                     else (f"Arcaflow plugin failed (exit {exit_code})")
                 ),
             }
+            if exit_code == 0 and stdout_str:
+                try:
+                    response["result_summary"] = json.loads(stdout_str)
+                except json.JSONDecodeError:
+                    try:
+                        import yaml
+
+                        response["result_summary"] = yaml.safe_load(stdout_str)
+                    except Exception:
+                        response["result_summary"] = stdout_str[:3000]
+            if exit_code != 0:
+                response["output"] = stdout_str[-3000:] if stdout_str else ""
+                response["error"] = stderr_str[-1000:] if stderr_str else ""
+            return response
 
         remote_path = f"/tmp/run-file-{run_uuid}.json"
 
@@ -1354,18 +1432,31 @@ def create_benchmark_tool_handlers(
             uuid_match = re.search(r"--([0-9a-f-]{36})$", dirname)
             run_id = uuid_match.group(1) if uuid_match else dirname
 
-        return {
+        response = {
             "status": "completed" if result.exit_code == 0 else "failed",
             "exit_code": result.exit_code,
             "run_dir": run_dir,
             "run_id": run_id or f"unknown-{run_uuid}",
             "harness": "crucible",
-            "output": result.stdout or "" if result.stdout else "",
-            "error": result.stderr or "" if result.stderr else "",
             "message": "Benchmark completed"
             if result.exit_code == 0
             else f"Benchmark failed (exit {result.exit_code})",
         }
+        if result.exit_code == 0 and run_dir:
+            summary_result = await ssh.run(
+                controller,
+                f"cat {run_dir}/run/result-summary.json",
+                timeout=30,
+            )
+            if summary_result.exit_code == 0 and summary_result.stdout:
+                try:
+                    response["result_summary"] = json.loads(summary_result.stdout)
+                except json.JSONDecodeError:
+                    pass
+        if result.exit_code != 0:
+            response["output"] = result.stdout[-3000:] if result.stdout else ""
+            response["error"] = result.stderr[-1000:] if result.stderr else ""
+        return response
 
     async def get_run_logs(
         controller: str,
