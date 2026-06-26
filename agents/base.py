@@ -423,4 +423,12 @@ class AgentBase(ABC):
                 return reply
 
         logger.warning(f"[{self.agent_name}] HITL timeout on {ticket_id}")
+        ticket = await self._get_ticket(ticket_id)
+        prev = ticket.get("previous_status")
+        if prev:
+            await self._transition_ticket(
+                ticket_id,
+                prev,
+                comment=f"HITL timeout — resuming from {prev}",
+            )
         return "No response received within timeout. Proceed with best judgment."
