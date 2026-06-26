@@ -72,7 +72,7 @@ to construct a correct run file — getting the format right is critical.
 - Use IP addresses, never hostnames (IPv6 link-local causes timeouts)
 - `tags` must be an object `{"key": "val"}`, NOT an array
 - `ids` values must be strings: `"1"` not `1`
-- Set `controller-ip-address` in the remote's settings when controller is also an endpoint
+- Do NOT set `controller-ip-address` unless you have a specific reason — crucible determines it automatically. Setting the wrong IP breaks the run.
 - `userenv` should be `alma8` for trafficgen (not `default`)
 - `osruntime: podman` needs `host-mounts` for DPDK workloads (e.g., /dev/hugepages)
 - Every benchmark object MUST include `mv-params` — it is required by the schema.
