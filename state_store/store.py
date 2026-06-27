@@ -84,11 +84,22 @@ class TicketStore:
                         "Cannot resume from AWAITING_CUSTOMER_GUIDANCE: no previous status"
                     )
                 else:
-                    allowed = VALID_TRANSITIONS.get(ticket.previous_status, [])
-                    allowed = list(allowed) + [
-                        TicketStatus.AWAITING_CUSTOMER_GUIDANCE,
-                        ticket.previous_status,
-                    ]
+                    # Allow resuming to previous status, its forward
+                    # transitions, and any earlier pipeline status
+                    # so the user can re-route (e.g., back to
+                    # awaiting_hardware after a handoff failure).
+                    allowed = list(VALID_TRANSITIONS.get(ticket.previous_status, []))
+                    allowed.append(TicketStatus.AWAITING_CUSTOMER_GUIDANCE)
+                    allowed.append(ticket.previous_status)
+                    for s in [
+                        TicketStatus.TRIAGE_PENDING,
+                        TicketStatus.AWAITING_HARDWARE,
+                        TicketStatus.AWAITING_PROVISION,
+                        TicketStatus.EXECUTING_BENCHMARK,
+                        TicketStatus.AWAITING_REVIEW,
+                    ]:
+                        if s not in allowed:
+                            allowed.append(s)
             else:
                 allowed = VALID_TRANSITIONS.get(current, [])
 

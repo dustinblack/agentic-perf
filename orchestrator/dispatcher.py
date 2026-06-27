@@ -59,6 +59,7 @@ class Dispatcher:
         self._llm_factory = llm_factory
         self._tasks: dict[str, asyncio.Task] = {}
         self._dispatched: set[tuple[str, str]] = set()
+        self._handoff_blocked: set[tuple[str, str]] = set()
 
     def is_active(self, ticket_id: str) -> bool:
         task = self._tasks.get(ticket_id)
@@ -78,9 +79,24 @@ class Dispatcher:
     def mark_dispatched(self, ticket_id: str, status: str) -> None:
         self._dispatched.add((ticket_id, status))
 
+    def clear_dispatched(self, ticket_id: str) -> None:
+        self._dispatched = {(t, s) for t, s in self._dispatched if t != ticket_id}
+
+    def is_handoff_blocked(self, ticket_id: str, status: str) -> bool:
+        return (ticket_id, status) in self._handoff_blocked
+
+    def mark_handoff_blocked(self, ticket_id: str, status: str) -> None:
+        self._handoff_blocked.add((ticket_id, status))
+
+    def clear_handoff_blocked(self, ticket_id: str) -> None:
+        self._handoff_blocked = {
+            (t, s) for t, s in self._handoff_blocked if t != ticket_id
+        }
+
     def mark_done(self, ticket_id: str) -> None:
         self._tasks.pop(ticket_id, None)
         self._dispatched = {(t, s) for t, s in self._dispatched if t != ticket_id}
+        self.clear_handoff_blocked(ticket_id)
 
     def _get_llm(self, agent_type: str) -> LLMProvider:
         if self._llm_factory:

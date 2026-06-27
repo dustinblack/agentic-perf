@@ -333,9 +333,14 @@ async def poll_loop(config: OrchestratorConfig) -> None:
 
                 ok, reason = check_handoff(status, ticket)
                 if not ok:
-                    logger.warning(f"Handoff blocked for {tid} at {status}: {reason}")
-                    dispatcher.mark_dispatched(tid, status)
-                    await _block_handoff_failed(config.state_store_url, tid, reason)
+                    if not dispatcher.is_handoff_blocked(tid, status):
+                        logger.warning(
+                            f"Handoff blocked for {tid} at {status}: {reason}"
+                        )
+                        dispatcher.mark_handoff_blocked(tid, status)
+                        await _block_handoff_failed(
+                            config.state_store_url, tid, reason
+                        )
                     continue
 
                 dispatcher.mark_dispatched(tid, status)
