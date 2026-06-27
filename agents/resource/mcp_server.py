@@ -167,6 +167,18 @@ def get_resource_tools() -> list[ToolDefinition]:
             },
         ),
         ToolDefinition(
+            name="get_accumulated_metadata",
+            description=(
+                "Return accumulated provider metadata from prior "
+                "reserve_resources calls. Includes public_ips, private_ips, "
+                "and ip_mapping needed for splitting SSH vs benchmark IPs."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        ToolDefinition(
             name="submit_resource_result",
             description="Submit the resource allocation result when host validation is complete.",
             input_schema={
@@ -393,6 +405,13 @@ def create_resource_tool_handlers(
         prov = await reg.get_provider(provider)
         return await prov.get_reservation_status(reservation_id)
 
+    async def get_accumulated_metadata() -> dict:
+        result = dict(last_reservation.get("provider_metadata", {}))
+        for key in ("ssh_user", "ssh_key_path"):
+            if key in last_reservation:
+                result[key] = last_reservation[key]
+        return result
+
     handlers = {
         "parse_host_config": parse_host_config,
         "validate_host": validate_host,
@@ -400,5 +419,6 @@ def create_resource_tool_handlers(
         "check_available_resources": check_available_resources,
         "reserve_resources": reserve_resources,
         "get_reservation_status": get_reservation_status,
+        "get_accumulated_metadata": get_accumulated_metadata,
     }
     return handlers, last_reservation, ssh
