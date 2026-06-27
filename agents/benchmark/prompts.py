@@ -43,7 +43,16 @@ to construct a correct run file — getting the format right is critical.
    - Call `get_benchmark_params(benchmark)` to see valid parameters and presets
    - Call `get_example_runfile(benchmark, endpoint_type=...)` for a structural reference
    - Read the harness's run-file documentation for format details
-   - Use endpoint IPs from assigned_hardware_ips (always use IPs, never hostnames)
+   - **Choosing IPs for the run-file:** The ticket may have two IP fields:
+     `ssh_hardware_ips` (for SSH access — may be public/NAT'd) and
+     `assigned_hardware_ips` (for benchmark traffic — typically private/direct).
+     Always use `assigned_hardware_ips` for run-file host entries and benchmark
+     parameters like `remotehost`. These are the IPs where benchmark traffic
+     flows — they need direct connectivity without firewalls blocking benchmark
+     ports. Public/cloud IPs often have security groups or firewalls that only
+     allow SSH (port 22), which will cause benchmark connection failures.
+     If only one IP field is populated, use it but be aware that if it contains
+     public IPs, benchmark traffic may be blocked. Use IPs, never hostnames
    - **Check directives for `test_interfaces`** — if the user requested specific
      NICs or a non-management network, you MUST discover the actual interface
      names and IPs on the hosts before constructing the run-file. Read the
