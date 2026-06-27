@@ -64,6 +64,7 @@ class ProvisioningAgent(AgentBase):
         self._ticket_id = ticket_id
 
         prov_server = str(Path(__file__).with_name("server.py"))
+        infra_server = str(Path(__file__).parent.parent / "infra" / "server.py")
 
         mcp = AgentMCPClient()
         await mcp.connect(
@@ -71,6 +72,7 @@ class ProvisioningAgent(AgentBase):
             name="provisioning",
             env={"TICKET_ID": ticket_id, "STATE_STORE_URL": self.store_url},
         )
+        await mcp.connect(infra_server, name="infra")
         self._mcp = mcp
 
         mcp_tools = await mcp.list_tools()

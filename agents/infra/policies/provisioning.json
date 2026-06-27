@@ -9,6 +9,7 @@
         "curl", "wget",
         "git",
         "podman", "docker",
+        "sudo",
         "systemctl", "setenforce", "getenforce",
         "ssh-keygen", "ssh", "scp",
         "k3s", "kubectl", "oc",
