@@ -197,6 +197,16 @@ class EvaluateAgent(AgentBase):
         return ""
 
     async def run(self, ticket_id: str) -> None:
+        # NOTE on tool count: This agent connects to 3 MCP
+        # servers (evaluate, investigation-records, infra),
+        # exposing up to ~14 tools to the LLM. The RHIVOS
+        # architecture warns about tool proliferation
+        # degrading LLM performance. The investigation
+        # records tools should eventually be absorbed into
+        # the Domain MCP per the architecture's "Tool Count
+        # Discipline" guidance. For now, graceful degradation
+        # (try/except on connect) keeps the agent functional
+        # with fewer servers when not all are available.
         eval_server = str(Path(__file__).with_name("server.py"))
         ir_server = str(Path(__file__).parent.parent / "investigation" / "server.py")
         infra_server = str(Path(__file__).parent.parent / "infra" / "server.py")
@@ -375,7 +385,20 @@ class EvaluateAgent(AgentBase):
 
             await self._add_comment(ticket_id, summary)
 
-            # Append a new plan step for the next iteration
+            # Append a new plan step for the next iteration.
+            # NOTE: This writes directly to execution_plan
+            # rather than going through _advance_plan() in the
+            # orchestrator. This is safe because:
+            # - _advance_plan() only fires after an agent
+            #   completes for plan-relevant statuses
+            # - The evaluate agent is transitioning AWAY from
+            #   evaluating_convergence, so _advance_plan()
+            #   won't run for this status
+            # - The new step is appended as "pending" — it
+            #   won't be advanced until the ticket re-enters
+            #   executing_benchmark
+            # If _advance_plan() gains the ability to modify
+            # pending steps, this coordination must be revisited.
             if next_params:
                 try:
                     params = json.loads(next_params)
