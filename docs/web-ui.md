@@ -22,20 +22,34 @@ The agentic-perf web dashboard provides a browser-based interface for monitoring
 
 ### Ticket Detail (`#/ticket/{id}`)
 
-Two-column layout: main content area on the left, sticky sidebar on the right.
+Split-panel layout: a fixed **context header** at the top with ticket
+metadata that stays visible, and a scrollable **event stream** below
+that auto-follows live agent activity. The sidebar sits alongside the
+event stream.
 
-**Main content:**
+**Context header (fixed, never scrolls off):**
 - Breadcrumb navigation back to dashboard
 - Ticket header with ID, summary, and status badge
-- Collapsible description and custom fields sections
-- Transaction log — full event stream rendered as it arrives
+- Hypothesis card — extracted from `custom_fields.hypothesis`, always
+  visible when present (styled as a prominent card, not buried in the
+  generic fields grid)
+- Collapsible description and custom fields sections (closed by default
+  to keep the context area compact)
 
-**Sidebar (sticky, stays visible while scrolling):**
+**Event stream (scrollable, fills remaining viewport):**
+- Full transaction log rendered as events arrive
+- Only this area scrolls — context header and sidebar stay in place
+
+**Sidebar (alongside event stream):**
 - Current ticket status (updates live on transitions)
 - Controls: Live/Pause polling, Auto-scroll toggle
-- Navigation: Jump to top/bottom, Collapse/Expand all agent sections
-- Agent navigator: lists each agent phase with status dot (pulsing blue = active, green = done, red = error); click to scroll to that agent's section
+- Navigation: Jump to top/bottom of event stream, Collapse/Expand all
+  agent sections
+- Agent navigator: lists each agent phase with status dot (pulsing
+  blue = active, green = done, red = error); click to scroll to that
+  agent's section in the event stream
 - Event counter
+- LLM usage summary with per-agent cost breakdown
 
 **Transaction log event types:**
 - `agent_started` — collapsible section header with agent name; contains collapsible system prompt and initial messages
@@ -45,7 +59,7 @@ Two-column layout: main content area on the left, sticky sidebar on the right.
 - `comment` — comment body with author
 - `agent_finished` / `agent_error` — completion or error markers
 
-**Live polling:** fetches `/api/v1/tickets/{id}/events?since={lastSeq}` every 2 seconds. New events are appended to the DOM. Auto-scroll keeps the view at the bottom unless the user disables it.
+**Live polling:** fetches `/api/v1/tickets/{id}/events?since={lastSeq}` every 2 seconds. New events are appended to the event stream container. Auto-scroll keeps the event stream at the bottom unless the user disables it. The context header remains fixed regardless of scroll position.
 
 ## API Endpoints Used
 
@@ -82,4 +96,5 @@ Port 8090 must be open in the firewall (`firewall-cmd --add-port=8090/tcp --perm
 - **Polling over SSE/WebSockets** — simpler, works with existing API, adequate refresh rate for a dashboard.
 - **Served from FastAPI** — single port, no CORS issues, no extra process. CORS middleware added anyway for future flexibility.
 - **Collapsible everything** — `<details>` elements let users minimize system prompts, tool I/O, and agent sections to control information density.
+- **Fixed context, scrollable events** — the ticket detail view pins metadata (ID, hypothesis, description, custom fields) at the top so investigation context stays visible while the event stream scrolls independently below. Uses `body:has(.detail-view)` to disable page scroll in detail mode; only the event stream container scrolls.
 - **Dark theme** — CSS variables make re-theming easy.
