@@ -46,6 +46,8 @@ class EvaluateAgent(AgentBase):
             # budget guardrails, not iteration count.
             max_iterations=0,
         )
+        # Set by _build_messages, read by _handle_completion
+        self._deterministic_outcome: str = ""
 
     def _system_prompt(self) -> str:
         return EVALUATE_SYSTEM_PROMPT
@@ -78,15 +80,16 @@ class EvaluateAgent(AgentBase):
         content += f"**Working Hypothesis:** {hypothesis}\n\n"
 
         # Deterministic convergence check — run before
-        # the LLM to potentially short-circuit.
-        det_outcome = self._check_deterministic(cf)
-        if det_outcome:
+        # the LLM. If a hard gate fires, the outcome is
+        # included as context but also enforced in code
+        # in _handle_completion via _deterministic_outcome.
+        self._deterministic_outcome = self._check_deterministic(cf)
+        if self._deterministic_outcome:
             content += (
                 f"**⚠️ Deterministic convergence check: "
-                f"{det_outcome}**\n"
-                f"A deterministic gate has fired. Unless you "
-                f"have strong reason to override, submit a "
-                f"convergence decision matching this outcome.\n\n"
+                f"{self._deterministic_outcome}**\n"
+                f"This gate has been enforced by the system. "
+                f"Your response should reflect this outcome.\n\n"
             )
 
         if criteria:
@@ -249,6 +252,33 @@ class EvaluateAgent(AgentBase):
         next_params = result.get("next_params", "")
         root_cause = result.get("root_cause_summary", "")
         notes = result.get("notes", "")
+
+        # Enforce deterministic convergence — code overrides
+        # the LLM if a hard gate fired. The LLM's analysis
+        # is still captured in the ledger but the transition
+        # decision is code-enforced.
+        det = getattr(self, "_deterministic_outcome", "")
+        if det and decision in ("loop_plan", "loop_provision"):
+            logger.info(
+                f"[{self.agent_name}] Overriding LLM decision "
+                f"'{decision}' with deterministic outcome: {det}"
+            )
+            if "MAX_ITERATIONS" in det:
+                decision = "stalled"
+                gate = "max_iterations"
+                notes = (
+                    f"Deterministic override: {det}. "
+                    f"LLM wanted to {result.get('decision')}: "
+                    f"{notes}"
+                )
+            else:
+                decision = "converged"
+                gate = "deterministic_threshold"
+                notes = (
+                    f"Deterministic override: {det}. "
+                    f"LLM wanted to {result.get('decision')}: "
+                    f"{notes}"
+                )
 
         # Determine which plan steps this evaluation covers
         ticket = await self._get_ticket(ticket_id)

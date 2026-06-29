@@ -495,6 +495,87 @@ class TestHandleCompletion:
         )
         assert body["status"] == "synthesizing_results"
 
+    @pytest.mark.asyncio
+    async def test_deterministic_overrides_llm_loop(
+        self,
+    ):
+        """When a deterministic gate fires, code overrides
+        the LLM's decision to loop back."""
+        from agents.evaluate.agent import EvaluateAgent
+        from providers.llm.base import LLMResponse, ToolCall
+        from providers.llm.mock import MockLLMProvider
+
+        agent = EvaluateAgent(
+            llm_provider=MockLLMProvider(),
+            state_store_url="http://localhost:8090",
+        )
+        # Simulate deterministic MAX_ITERATIONS having fired
+        agent._deterministic_outcome = "MAX_ITERATIONS \u2014 reached 5 iterations"
+        agent._client = AsyncMock()
+        agent._client.get = AsyncMock(
+            return_value=AsyncMock(
+                status_code=200,
+                json=lambda: {
+                    "id": "PERF-TEST",
+                    "custom_fields": {
+                        "execution_plan": {
+                            "steps": [
+                                {
+                                    "id": 0,
+                                    "status": "completed",
+                                },
+                            ],
+                        },
+                        "investigation_ledger": [],
+                    },
+                },
+                raise_for_status=lambda: None,
+            ),
+        )
+        agent._client.patch = AsyncMock(
+            return_value=AsyncMock(
+                status_code=200,
+                json=lambda: {},
+                raise_for_status=lambda: None,
+            ),
+        )
+        agent._client.post = AsyncMock(
+            return_value=AsyncMock(
+                status_code=200,
+                json=lambda: {},
+                raise_for_status=lambda: None,
+            ),
+        )
+
+        # LLM wants to loop, but deterministic says stop
+        response = LLMResponse(
+            text=None,
+            tool_calls=[
+                ToolCall(
+                    id="tc_1",
+                    name="submit_evaluation_result",
+                    input={
+                        "decision": "loop_plan",
+                        "updated_hypothesis": "try more",
+                        "info_gain": 0.1,
+                    },
+                ),
+            ],
+            stop_reason="tool_use",
+        )
+
+        await agent._handle_completion("PERF-TEST", response)
+
+        # Should transition to synthesis, not planning
+        transition_calls = [
+            c for c in agent._client.post.call_args_list if "transition" in str(c)
+        ]
+        body = transition_calls[0].kwargs.get(
+            "json",
+            transition_calls[0][1].get("json", {}),
+        )
+        assert body["status"] == "synthesizing_results"
+
 
 # --- Benchmark routing ---
 
