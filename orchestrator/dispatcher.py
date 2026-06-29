@@ -185,7 +185,7 @@ class Dispatcher:
         # Remaining investigation loop agents (stubs until
         # full implementations land in later issues)
         stub_targets = {
-            "planning_investigation": "awaiting_provision",
+            "planning_investigation": "awaiting_hardware",
             "synthesizing_results": "awaiting_teardown",
         }
         if agent_type in stub_targets:
