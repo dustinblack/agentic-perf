@@ -543,37 +543,31 @@ details > .content { padding: 12px 16px; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.result-banner {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 8px;
-  background: var(--bg-surface);
-}
-
-.result-banner .result-verdict {
+.result-verdict {
   font-weight: 700;
   font-size: 15px;
   margin-bottom: 8px;
   text-transform: uppercase;
 }
 
-.result-banner .result-verdict.pass { color: var(--green); }
-.result-banner .result-verdict.fail { color: var(--red); }
-.result-banner .result-verdict.inconclusive { color: var(--yellow, #e2b340); }
+.result-verdict.pass { color: var(--green); }
+.result-verdict.fail { color: var(--red); }
+.result-verdict.inconclusive { color: var(--yellow, #e2b340); }
 
-.result-banner .result-summary {
+.result-summary {
   font-size: 14px;
   color: var(--text-bright);
   margin-bottom: 12px;
   line-height: 1.5;
 }
 
-.result-banner .result-detail {
+.result-detail {
+  font-family: var(--font-mono);
   font-size: 13px;
   color: var(--text);
   line-height: 1.6;
   white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .result-chart {
