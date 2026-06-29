@@ -570,13 +570,71 @@ details > .content { padding: 12px 16px; }
 }
 
 .result-detail {
-  font-family: var(--font-mono);
   font-size: 13px;
   color: var(--text);
   line-height: 1.6;
-  white-space: pre-wrap;
   word-break: break-word;
 }
+
+.result-detail h1,
+.result-detail h2,
+.result-detail h3,
+.result-detail h4 {
+  color: var(--text-bright);
+  margin: 12px 0 6px;
+  font-size: 14px;
+}
+
+.result-detail h1 { font-size: 16px; }
+.result-detail h2 { font-size: 15px; }
+
+.result-detail p { margin: 6px 0; }
+
+.result-detail ul,
+.result-detail ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.result-detail code {
+  font-family: var(--font-mono);
+  background: var(--bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.result-detail pre {
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 6px 0;
+  overflow-x: auto;
+}
+
+.result-detail pre code {
+  background: none;
+  padding: 0;
+}
+
+.result-detail table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 12px;
+}
+
+.result-detail th,
+.result-detail td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+}
+
+.result-detail th {
+  background: var(--bg-surface);
+  color: var(--text-bright);
+}
+
+.result-detail strong { color: var(--text-bright); }
 
 .result-chart {
   margin-top: 16px;
@@ -696,6 +754,7 @@ th.col-right { text-align: right; }
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
 </head>
 <body>
 
@@ -779,6 +838,13 @@ function statusBadge(status) {
 function escHtml(s) {
   if (typeof s !== 'string') s = String(s);
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderMarkdown(s) {
+  if (typeof marked !== 'undefined' && marked.parse) {
+    try { return marked.parse(s); } catch (e) { /* fall through */ }
+  }
+  return '<pre>' + escHtml(s) + '</pre>';
 }
 
 function truncate(s, n) {
@@ -1077,7 +1143,7 @@ function renderHypothesisCard(ticket) {
         '<summary style="font-size:12px; color:var(--text-muted); background:none; padding:4px 0;">' +
           'Detailed Analysis (' + detail.length.toLocaleString() + ' chars)</summary>' +
         '<div class="content"><div class="result-detail">' +
-          escHtml(String(detail)) + '</div></div>' +
+          renderMarkdown(String(detail)) + '</div></div>' +
       '</details>';
     }
   }
