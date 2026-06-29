@@ -998,11 +998,6 @@ async function renderDetail(ticketId) {
 function renderSidebar(ticket) {
   return '' +
     '<div class="sidebar-section">' +
-      '<h4>Status</h4>' +
-      '<div style="text-align:center">' + statusBadge(ticket.status) + '</div>' +
-    '</div>' +
-
-    '<div class="sidebar-section">' +
       '<h4>Controls</h4>' +
       '<div class="sidebar-btn-row">' +
         '<button class="sidebar-btn active" id="btn-poll-toggle">' +
@@ -1278,8 +1273,7 @@ function trackAgentPhase(evt) {
     var statusEl = document.getElementById('detail-status-badge');
     if (statusEl && evt.data && evt.data.to) {
       statusEl.innerHTML = statusBadge(evt.data.to);
-      var sidebarStatus = document.querySelector('.detail-sidebar .sidebar-section:first-child div');
-      if (sidebarStatus) sidebarStatus.innerHTML = statusBadge(evt.data.to);
+
       refreshResultSection(evt.data.ticket_id || currentTicketId);
     }
   }
