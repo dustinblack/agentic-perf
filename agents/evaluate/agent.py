@@ -64,7 +64,12 @@ class EvaluateAgent(AgentBase):
         anomaly = cf.get("anomaly_context", {})
 
         content = (
-            f"## Investigation Ticket\n\n**Summary:** {ticket.get('summary', '')}\n\n"
+            f"## Investigation Ticket\n\n"
+            f"**Ticket ID:** {ticket.get('id', '')}\n"
+            f"**Summary:** {ticket.get('summary', '')}\n\n"
+            f"When using infra tools (set_ssh_context, check_host, "
+            f"execute_command), use the ticket ID above — not a "
+            f"run ID.\n\n"
         )
 
         if anomaly:
