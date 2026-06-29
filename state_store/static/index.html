@@ -239,6 +239,14 @@ body:has(.detail-view) { overflow: hidden; }
   border-bottom: 1px solid var(--border);
 }
 
+/* Cap expanded card content so the context area never pushes
+   the event stream out of the viewport.  Only takes effect
+   when the user deliberately opens a <details> card. */
+.detail-main-context details > .content {
+  max-height: 30vh;
+  overflow-y: auto;
+}
+
 .detail-main {
   flex: 1;
   min-height: 0;
