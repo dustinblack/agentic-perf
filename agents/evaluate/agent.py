@@ -311,8 +311,25 @@ class EvaluateAgent(AgentBase):
             info_gain=info_gain,
         )
 
-        # Persist evaluation result
+        # Populate iteration_results for deterministic
+        # convergence checks on subsequent iterations.
+        # Maps ledger entries to the IterationResult format
+        # that evaluate_deterministic() consumes.
+        ticket = await self._get_ticket(ticket_id)
+        cf = ticket.get("custom_fields", {})
+        updated_ledger = cf.get("investigation_ledger", [])
+        iteration_results = [
+            {
+                "iteration": entry.get("iteration", i),
+                "info_gain": entry.get("info_gain", 0.0),
+                "summary": entry.get("conclusion", ""),
+            }
+            for i, entry in enumerate(updated_ledger)
+        ]
+
+        # Persist evaluation result and iteration_results
         eval_fields: dict[str, Any] = {
+            "iteration_results": iteration_results,
             "evaluation_result": {
                 "decision": decision,
                 "convergence_gate": gate,

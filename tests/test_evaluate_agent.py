@@ -496,6 +496,97 @@ class TestHandleCompletion:
         assert body["status"] == "synthesizing_results"
 
     @pytest.mark.asyncio
+    async def test_populates_iteration_results(self):
+        """Evaluate agent writes iteration_results for
+        deterministic convergence checks."""
+        from agents.evaluate.agent import EvaluateAgent
+        from providers.llm.base import LLMResponse, ToolCall
+        from providers.llm.mock import MockLLMProvider
+
+        agent = EvaluateAgent(
+            llm_provider=MockLLMProvider(),
+            state_store_url="http://localhost:8090",
+        )
+        agent._client = AsyncMock()
+        # Return ticket with an existing ledger entry
+        # (simulating post-append state)
+        agent._client.get = AsyncMock(
+            return_value=AsyncMock(
+                status_code=200,
+                json=lambda: {
+                    "id": "PERF-TEST",
+                    "custom_fields": {
+                        "execution_plan": {
+                            "steps": [
+                                {
+                                    "id": 0,
+                                    "status": "completed",
+                                },
+                            ],
+                        },
+                        "investigation_ledger": [
+                            {
+                                "iteration": 1,
+                                "info_gain": 0.5,
+                                "conclusion": "narrowed to X",
+                            },
+                        ],
+                    },
+                },
+                raise_for_status=lambda: None,
+            ),
+        )
+        agent._client.patch = AsyncMock(
+            return_value=AsyncMock(
+                status_code=200,
+                json=lambda: {},
+                raise_for_status=lambda: None,
+            ),
+        )
+        agent._client.post = AsyncMock(
+            return_value=AsyncMock(
+                status_code=200,
+                json=lambda: {},
+                raise_for_status=lambda: None,
+            ),
+        )
+
+        response = LLMResponse(
+            text=None,
+            tool_calls=[
+                ToolCall(
+                    id="tc_1",
+                    name="submit_evaluation_result",
+                    input={
+                        "decision": "converged",
+                        "convergence_gate": "isolation",
+                        "confidence": 0.95,
+                        "info_gain": 0.5,
+                    },
+                ),
+            ],
+            stop_reason="tool_use",
+        )
+
+        await agent._handle_completion("PERF-TEST", response)
+
+        # Find the patch call with iteration_results
+        patch_calls = [
+            c
+            for c in agent._client.patch.call_args_list
+            if "iteration_results" in str(c)
+        ]
+        assert len(patch_calls) >= 1
+        body = patch_calls[0].kwargs.get(
+            "json",
+            patch_calls[0][1].get("json", {}),
+        )
+        ir = body["fields"]["iteration_results"]
+        assert len(ir) == 1
+        assert ir[0]["iteration"] == 1
+        assert ir[0]["info_gain"] == 0.5
+
+    @pytest.mark.asyncio
     async def test_deterministic_overrides_llm_loop(
         self,
     ):
