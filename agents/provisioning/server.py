@@ -567,7 +567,6 @@ async def _install_harness_one(
             "install_path": target_path,
             "constraints": constraints,
             "contract": contract_result.get("deployed_files", []),
-            "output": result.stdout or "",
             "message": f"{harness_name} installed via public installer",
         }
 
@@ -613,20 +612,23 @@ async def _install_harness_one(
         logger.info(f"[provision] Running install on {host}: {cmd}")
         result = await _ssh.run(host, cmd, timeout=900)
 
-        return {
+        response = {
             "host": host,
             "harness": harness_name,
             "status": "success" if result.exit_code == 0 else "failed",
             "exit_code": result.exit_code,
             "install_path": target_path,
-            "constraints": constraints,
-            "contract": contract_result.get("deployed_files", []),
-            "output": result.stdout or "",
-            "error": result.stderr or "",
             "message": f"{harness_name} installed"
             if result.exit_code == 0
             else f"Install failed (exit {result.exit_code})",
         }
+        if result.exit_code == 0:
+            response["constraints"] = constraints
+            response["contract"] = contract_result.get("deployed_files", [])
+        else:
+            response["output"] = result.stdout or ""
+            response["error"] = result.stderr or ""
+        return response
 
     if install_method == "binary_download":
         install_cmd = provisioning.get("install_command")
@@ -639,20 +641,22 @@ async def _install_harness_one(
 
         logger.info(f"[provision] Installing {harness_name} binary on {host}")
         result = await _ssh.run(host, install_cmd, timeout=120)
-        return {
+        response = {
             "host": host,
             "harness": harness_name,
             "status": "success" if result.exit_code == 0 else "failed",
             "exit_code": result.exit_code,
             "install_path": target_path,
-            "output": result.stdout or "",
-            "error": result.stderr or "",
             "message": (
                 f"{harness_name} binary installed"
                 if result.exit_code == 0
                 else f"Binary install failed (exit {result.exit_code})"
             ),
         }
+        if result.exit_code != 0:
+            response["output"] = result.stdout or ""
+            response["error"] = result.stderr or ""
+        return response
 
     if install_method == "container_image":
         image = provisioning.get("container_image")
@@ -665,20 +669,22 @@ async def _install_harness_one(
 
         logger.info(f"[provision] Pulling container image {image} on {host}")
         result = await _ssh.run(host, f"podman pull {image}", timeout=300)
-        return {
+        response = {
             "host": host,
             "harness": harness_name,
             "status": "success" if result.exit_code == 0 else "failed",
             "exit_code": result.exit_code,
             "install_path": image,
-            "output": result.stdout[-1000:] if result.stdout else "",
-            "error": result.stderr[-1000:] if result.stderr else "",
             "message": (
                 f"{harness_name} container image pulled"
                 if result.exit_code == 0
                 else f"Image pull failed (exit {result.exit_code})"
             ),
         }
+        if result.exit_code != 0:
+            response["output"] = result.stdout[-1000:] if result.stdout else ""
+            response["error"] = result.stderr[-1000:] if result.stderr else ""
+        return response
 
     return {
         "host": host,
