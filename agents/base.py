@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable
@@ -29,6 +30,12 @@ class AgentBase(ABC):
     # arbitrary count.
     DEFAULT_MAX_ITERATIONS = 20
 
+    # Minimum seconds between tool calls. Prevents agents
+    # from overwhelming hosts with rapid-fire SSH commands
+    # or API calls. Configurable via config.json:
+    #   { "tool_rate_limit": { "min_interval_sec": 2.0 } }
+    DEFAULT_TOOL_MIN_INTERVAL = 1.0
+
     def __init__(
         self,
         agent_name: str,
@@ -47,6 +54,8 @@ class AgentBase(ABC):
         self._mcp = None
         self._client = httpx.AsyncClient(timeout=30.0)
         self._events = event_bus
+        self._last_tool_call_time: float = 0.0
+        self._tool_min_interval = self._load_tool_rate_limit()
         self.max_iterations = (
             max_iterations
             if max_iterations is not None
@@ -446,7 +455,31 @@ class AgentBase(ABC):
 
         return "\n\n".join(parts)
 
+    def _load_tool_rate_limit(self) -> float:
+        """Load tool rate limit from config."""
+        try:
+            from orchestrator.config import _load_config_file
+
+            cfg = _load_config_file()
+            return cfg.get("tool_rate_limit", {}).get(
+                "min_interval_sec",
+                self.DEFAULT_TOOL_MIN_INTERVAL,
+            )
+        except Exception:
+            return self.DEFAULT_TOOL_MIN_INTERVAL
+
+    async def _throttle_tool_call(self) -> None:
+        """Enforce minimum interval between tool calls."""
+        if self._tool_min_interval <= 0:
+            return
+        now = time.monotonic()
+        elapsed = now - self._last_tool_call_time
+        if elapsed < self._tool_min_interval:
+            await asyncio.sleep(self._tool_min_interval - elapsed)
+        self._last_tool_call_time = time.monotonic()
+
     async def _execute_tool(self, tool_call: ToolCall) -> ToolResult:
+        await self._throttle_tool_call()
         handler = self._tool_handlers.get(tool_call.name)
         if handler is not None:
             try:
