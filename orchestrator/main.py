@@ -489,7 +489,128 @@ async def poll_loop(config: OrchestratorConfig) -> None:
                 task = asyncio.create_task(run_agent_task(dispatcher, status, tid))
                 dispatcher.set_task(tid, task)
 
+        # Check async_wait tickets for completion or timeout
+        await _check_async_wait_tickets(
+            config.state_store_url,
+            event_bus=events,
+        )
+
         await asyncio.sleep(config.poll_interval)
+
+
+async def _check_async_wait_tickets(
+    store_url: str,
+    event_bus: EventBus | None = None,
+) -> None:
+    """Monitor async_wait tickets for timeout.
+
+    Checks each async_wait ticket's elapsed time against its
+    timeout limit (2x expected_duration_mins).  If exceeded,
+    transitions to awaiting_customer_guidance.
+
+    Completion detection is handled by the CloudEvents signal
+    endpoint (POST /api/v1/tickets/{id}/signal).  External
+    systems (benchmark harnesses, Jumpstarter, Horreum, CI
+    pipelines) send CloudEvents to resume tickets.  The
+    orchestrator does not poll infrastructure directly —
+    that would violate the trust boundary between the
+    control plane and agent execution.
+    """
+    import httpx
+
+    try:
+        tickets = await fetch_tickets_by_status(
+            store_url,
+            "async_wait",
+        )
+    except Exception:
+        return
+
+    if not tickets:
+        return
+
+    from datetime import datetime, timezone
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for ticket in tickets:
+            tid = ticket["id"]
+            cf = ticket.get("custom_fields", {})
+            ctx = cf.get("async_context", {})
+            if not ctx:
+                continue
+
+            started_at = ctx.get("started_at", "")
+            expected_mins = ctx.get(
+                "expected_duration_mins",
+                60,
+            )
+            timeout_mins = expected_mins * 2
+            if not started_at:
+                continue
+
+            try:
+                start = datetime.fromisoformat(started_at)
+                elapsed = datetime.now(timezone.utc) - start
+                elapsed_mins = elapsed.total_seconds() / 60
+            except (ValueError, TypeError):
+                continue
+
+            if elapsed_mins <= timeout_mins:
+                continue
+
+            logger.warning(
+                f"[async_wait] Ticket {tid} timed "
+                f"out after {elapsed_mins:.0f}m "
+                f"(limit {timeout_mins:.0f}m)"
+            )
+            ctx["timed_out"] = True
+            ctx["elapsed_mins"] = round(
+                elapsed_mins,
+                1,
+            )
+            await client.patch(
+                f"{store_url}/api/v1/tickets/{tid}/fields",
+                json={
+                    "fields": {
+                        "async_context": ctx,
+                    },
+                },
+            )
+            await client.post(
+                f"{store_url}/api/v1/tickets/{tid}/comments",
+                json={
+                    "author": "orchestrator",
+                    "body": (
+                        f"**Async timeout:** Operation "
+                        f"exceeded {timeout_mins:.0f}m "
+                        f"limit ({elapsed_mins:.0f}m "
+                        f"elapsed). Pausing for "
+                        f"guidance."
+                    ),
+                },
+            )
+            await client.post(
+                f"{store_url}/api/v1/tickets/{tid}/transition",
+                json={
+                    "status": ("awaiting_customer_guidance"),
+                    "comment": (f"Async operation timed out after {elapsed_mins:.0f}m"),
+                },
+            )
+            if event_bus:
+                event_bus.emit(
+                    tid,
+                    "orchestrator",
+                    "async_timeout",
+                    {
+                        "wait_type": ctx.get(
+                            "wait_type",
+                        ),
+                        "elapsed_mins": round(
+                            elapsed_mins,
+                            1,
+                        ),
+                    },
+                )
 
 
 LOCK_FILE = Path.home() / ".agentic-perf" / "orchestrator.pid"
