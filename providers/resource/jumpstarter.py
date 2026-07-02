@@ -250,18 +250,34 @@ class JumpstarterResourceProvider(ResourceProvider):
 
         try:
             lease = await self._service.GetLease(name=reservation_id)
+            # Check lease conditions for actual state
+            status = "active"
+            if hasattr(lease, "conditions"):
+                for cond in lease.conditions:
+                    ctype = getattr(cond, "type", "")
+                    cstatus = getattr(cond, "status", "")
+                    if ctype == "Ready" and cstatus != "True":
+                        status = "pending"
             return {
                 "provider": "jumpstarter",
                 "lease_id": reservation_id,
-                "status": "active",
+                "status": status,
                 "lease": str(lease),
             }
         except Exception as e:
+            err = str(e)
+            # The controller returns FAILED_PRECONDITION
+            # for released leases.
+            status = (
+                "released"
+                if "already been released" in err
+                else "unknown"
+            )
             return {
                 "provider": "jumpstarter",
                 "lease_id": reservation_id,
-                "status": "unknown",
-                "error": str(e),
+                "status": status,
+                "error": err,
             }
 
     async def terminate(
