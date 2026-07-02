@@ -1500,7 +1500,7 @@ async def execute_boot_time_test(
         str(samples),
         f"--username={ssh_user}",
         f"--password={ssh_password}",
-        f"--folder-prefix={output_dir / 'results'}",
+        "--folder-prefix=results",
     ]
     if clean_journal:
         cmd.append("--clean-journal=true")
@@ -1516,11 +1516,14 @@ async def execute_boot_time_test(
     logger.info(f"[boot-time] Executing: {' '.join(cmd[:6])}... ({samples} samples)")
 
     # ── Execute ───────────────────────────────────────────
+    # Run from output_dir so boot-timings-test.sh creates
+    # its results folder (and SCPs files) here, not relative
+    # to the scripts repo.
     proc = await _asyncio.create_subprocess_exec(
         *cmd,
         stdout=_asyncio.subprocess.PIPE,
         stderr=_asyncio.subprocess.PIPE,
-        cwd=str(scripts_dir),
+        cwd=str(output_dir),
     )
     stdout_bytes, stderr_bytes = await proc.communicate()
     exit_code = proc.returncode or 0
