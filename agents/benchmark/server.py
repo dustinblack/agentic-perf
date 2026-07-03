@@ -65,6 +65,7 @@ SKILLS_DIR = Path(__file__).resolve().parent.parent.parent / "skills"
 
 # Module-level globals — lazily initialized by _ensure_init()
 _initialized = False
+_boot_time_executed = False
 _ssh = None
 _skill_provider = None
 _repo_cache = None
@@ -1411,6 +1412,23 @@ async def execute_boot_time_test(
         description: Human-readable test description.
     """
     await _ensure_init()
+
+    # ── Guardrail: one execution per agent session ───────
+    global _boot_time_executed
+    if _boot_time_executed:
+        return json.dumps(
+            {
+                "status": "rejected",
+                "error": (
+                    "Boot-time test already executed in "
+                    "this session. Submit your result "
+                    "and exit. The system handles fleet "
+                    "iteration via loop-back — do not "
+                    "call this tool again."
+                ),
+            }
+        )
+    _boot_time_executed = True
 
     # ── Guardrail: never reboot the orchestrator ──────────────
     if _is_self_host(sut_host):

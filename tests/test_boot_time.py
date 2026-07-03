@@ -5,6 +5,18 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _reset_boot_time_guard():
+    """Reset the one-execution-per-session guard between tests."""
+    import agents.benchmark.server as srv
+
+    srv._boot_time_executed = False
+    yield
+    srv._boot_time_executed = False
+
 
 class TestSelfHostGuard:
     """The _is_self_host guardrail must reject localhost variants."""
