@@ -1541,15 +1541,70 @@ async def execute_boot_time_test(
     for folder in result_folders:
         boot_time_logs.extend(sorted(folder.glob("*boot_time_logs.json")))
 
-    # Merge results if we have data and the merge script
-    merged_results = None
+    # ── Collect system metadata ───────────────────────
+    metadata_file = output_dir / "metadata.json"
+    collect_metadata = scripts_dir / "collect-system-metadata.sh"
+    if collect_metadata.exists():
+        logger.info(f"[boot-time] Collecting system metadata from {sut_host}")
+        meta_proc = await _asyncio.create_subprocess_exec(
+            str(collect_metadata),
+            sut_host,
+            stdout=_asyncio.subprocess.PIPE,
+            stderr=_asyncio.subprocess.PIPE,
+            cwd=str(scripts_dir),
+        )
+        meta_out, _ = await meta_proc.communicate()
+        if meta_proc.returncode == 0 and meta_out:
+            metadata_file.write_bytes(meta_out)
+            logger.info("[boot-time] Metadata collected")
+        else:
+            # Create minimal stub so merge can proceed
+            metadata_file.write_text("{}")
+            logger.info("[boot-time] Metadata collection failed — using empty stub")
+    else:
+        metadata_file.write_text("{}")
+
+    # ── Merge into Horreum-compatible JSON ─────────────
+    merged_file = output_dir / "merged-results.json"
     if boot_time_logs and merge_script.exists():
         merge_cmd = [
             sys.executable,
             str(merge_script),
+            "-m",
+            str(metadata_file),
+            "--schema",
+            "urn:boot-time-verbose:07",
+            "--run-source",
+            "agentic-perf",
         ]
         if description:
             merge_cmd.extend(["--description", description])
+        # Pass partial-run info if available
+        for folder in result_folders:
+            status_file = folder / "collection_status.json"
+            if status_file.exists():
+                try:
+                    cs = json.loads(status_file.read_text())
+                    merge_cmd.extend(
+                        [
+                            "--requested-samples",
+                            str(cs.get("requested_samples", samples)),
+                        ]
+                    )
+                    if cs.get("partial"):
+                        merge_cmd.extend(
+                            [
+                                "--partial-run",
+                                "--partial-failure-reason",
+                                cs.get(
+                                    "failure_reason",
+                                    "unknown",
+                                ),
+                            ]
+                        )
+                except (json.JSONDecodeError, OSError):
+                    pass
+                break
         merge_cmd.extend(str(f) for f in boot_time_logs)
 
         merge_proc = await _asyncio.create_subprocess_exec(
@@ -1560,22 +1615,29 @@ async def execute_boot_time_test(
         )
         merge_out, merge_err = await merge_proc.communicate()
         if merge_proc.returncode == 0 and merge_out:
-            try:
-                merged_results = json.loads(merge_out.decode(errors="replace"))
-            except json.JSONDecodeError:
-                logger.warning("[boot-time] Failed to parse merged results JSON")
+            merged_file.write_bytes(merge_out)
+            logger.info(f"[boot-time] Merged results saved to {merged_file}")
+        else:
+            logger.warning(
+                "[boot-time] Merge failed: " + merge_err.decode(errors="replace")[:200]
+            )
 
-    # ── Extract KPIs from merged results ──────────────────────
+    # ── Extract KPIs from per-sample summary files ───────
     kpis: dict[str, Any] = {}
-    if merged_results and "boot_time" in merged_results:
-        samples_data = merged_results["boot_time"]
-        if samples_data:
-            sa_totals: list[float] = []
-            sa_kernels: list[float] = []
-            sa_initrds: list[float] = []
-            sa_userspaces: list[float] = []
-            for s in samples_data:
-                sa = s.get("satime", {})
+    summary_files: list[Path] = []
+    for folder in result_folders:
+        summary_files.extend(sorted(folder.glob("*_summary.json")))
+    # Exclude all_summary.json (combined file)
+    summary_files = [f for f in summary_files if f.name != "all_summary.json"]
+    if summary_files:
+        sa_totals: list[float] = []
+        sa_kernels: list[float] = []
+        sa_initrds: list[float] = []
+        sa_userspaces: list[float] = []
+        for sf in summary_files:
+            try:
+                sd = json.loads(sf.read_text())
+                sa = sd.get("satime", {})
                 if "total" in sa:
                     sa_totals.append(sa["total"])
                 if "kernel" in sa:
@@ -1584,17 +1646,19 @@ async def execute_boot_time_test(
                     sa_initrds.append(sa["initrd"])
                 if "userspace" in sa:
                     sa_userspaces.append(sa["userspace"])
+            except (json.JSONDecodeError, OSError):
+                continue
 
-            def _avg(vals: list[float]) -> float | None:
-                return round(sum(vals) / len(vals), 3) if vals else None
+        def _avg(vals: list[float]) -> float | None:
+            return round(sum(vals) / len(vals), 3) if vals else None
 
-            kpis = {
-                "sample_count": len(samples_data),
-                "avg_total_boot_s": _avg(sa_totals),
-                "avg_kernel_s": _avg(sa_kernels),
-                "avg_initrd_s": _avg(sa_initrds),
-                "avg_userspace_s": _avg(sa_userspaces),
-            }
+        kpis = {
+            "sample_count": len(summary_files),
+            "avg_total_boot_s": _avg(sa_totals),
+            "avg_kernel_s": _avg(sa_kernels),
+            "avg_initrd_s": _avg(sa_initrds),
+            "avg_userspace_s": _avg(sa_userspaces),
+        }
 
     response: dict[str, Any] = {
         "status": "completed" if exit_code == 0 else "failed",
@@ -1612,17 +1676,23 @@ async def execute_boot_time_test(
     }
     if kpis:
         response["kpis"] = kpis
-    if merged_results:
-        if "rhivos_config" in merged_results:
-            response["system_config"] = {
-                k: merged_results["rhivos_config"].get(k)
-                for k in (
-                    "kernel",
-                    "os_name",
-                    "architecture",
-                )
-                if merged_results["rhivos_config"].get(k)
-            }
+    if merged_file.exists():
+        response["merged_results_file"] = str(merged_file)
+        try:
+            merged = json.loads(merged_file.read_text())
+            cfg = merged.get("rhivos_config", {})
+            if cfg:
+                response["system_config"] = {
+                    k: cfg[k]
+                    for k in (
+                        "kernel",
+                        "os_name",
+                        "architecture",
+                    )
+                    if cfg.get(k)
+                }
+        except (json.JSONDecodeError, OSError):
+            pass
     if exit_code not in (0, 2):
         response["output"] = stdout_str[-3000:]
         response["error"] = stderr_str[-1000:]

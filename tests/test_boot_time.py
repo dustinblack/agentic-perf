@@ -155,7 +155,7 @@ class TestBootTimeRepoLookup:
 class TestBootTimeKPIExtraction:
     """KPI extraction from merged boot-time results."""
 
-    async def test_extracts_kpis_from_merged_json(self, tmp_path):
+    async def test_extracts_kpis_from_summary_files(self, tmp_path):
         """Simulate a successful run with mock output files."""
         from agents.benchmark import server
 
@@ -163,34 +163,38 @@ class TestBootTimeKPIExtraction:
         results_dir = tmp_path / "results-2025-01-01-00-00-00"
         results_dir.mkdir()
 
-        # Create mock boot_time_logs files
+        # Create mock boot_time_logs files (needed for
+        # samples_collected count)
         for i in range(3):
             log_file = results_dir / f"host_{i}_boot_time_logs.json"
-            log_file.write_text(
+            log_file.write_text(json.dumps({"metadata": {}, "boot_logs": []}))
+
+        # Create mock summary files (KPI source)
+        for i, (k, ini, us, tot) in enumerate(
+            [
+                (0.2, 2.0, 8.0, 10.2),
+                (0.21, 2.1, 8.2, 10.51),
+                (0.22, 2.2, 8.4, 10.82),
+            ]
+        ):
+            sf = results_dir / f"host_{i}_summary.json"
+            sf.write_text(
                 json.dumps(
                     {
                         "satime": {
-                            "kernel": 0.2 + i * 0.01,
-                            "initrd": 2.0 + i * 0.1,
-                            "userspace": 8.0 + i * 0.2,
-                            "total": 10.2 + i * 0.31,
+                            "kernel": k,
+                            "initrd": ini,
+                            "userspace": us,
+                            "total": tot,
                         },
-                        "date": "2025-01-01T00:00:00",
                     }
                 )
             )
 
-        # Mock merged results
+        # Mock merged results (not used for KPIs anymore
+        # but merge script is still called)
         merged_data = {
             "boot_time": [
-                {
-                    "satime": {
-                        "kernel": 0.2,
-                        "initrd": 2.0,
-                        "userspace": 8.0,
-                        "total": 10.2,
-                    },
-                },
                 {
                     "satime": {
                         "kernel": 0.21,
