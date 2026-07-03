@@ -70,6 +70,11 @@ boot-time packages.
   replicate the tool's behavior with execute_command. The tool
   handles all reboot orchestration, timing collection, and result
   merging — manual alternatives will produce incompatible output.
+- **One host per execution** — run `execute_boot_time_test` once
+  against the assigned SUT, then submit your result. If the
+  investigation requires testing multiple hosts, the system
+  handles iteration automatically via loop-back — do NOT call
+  the tool multiple times for different hosts in a single run.
 
 ## Common KPI Patterns
 
