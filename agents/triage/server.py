@@ -35,8 +35,12 @@ def _get_provider():
     return _skill_provider
 
 
-# Non-arcaflow benchmarks that are available as standalone
-# tools on the benchmark agent's MCP server.
+# Non-arcaflow benchmarks available as standalone tools
+# on the benchmark agent's MCP server. This list enables
+# triage to discover benchmarks outside the arcaflow
+# plugin ecosystem. Each entry is surfaced in
+# list_benchmarks, resolve_benchmark, and
+# get_benchmark_details alongside arcaflow plugins.
 _STANDALONE_BENCHMARKS = [
     {
         "name": "boot-time",
