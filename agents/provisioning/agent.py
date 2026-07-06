@@ -300,6 +300,26 @@ class ProvisioningAgent(AgentBase):
             summary += f"- **Notes:** {result['notes']}\n"
 
         await self._add_comment(ticket_id, summary)
+
+        # Fleet investigation: if provisioning failed
+        # (no hosts provisioned), record the failure and
+        # loop back for the next host.
+        if not fields["provisioning_complete"]:
+            from providers.fleet import is_fleet_investigation
+
+            ticket = await self._get_ticket(ticket_id)
+            cf = ticket.get("custom_fields", {})
+            if is_fleet_investigation(cf):
+                # Record as provision_failed and loop back
+                await self._handle_fleet_provision_failure(
+                    ticket_id,
+                    result.get(
+                        "notes",
+                        "Provisioning submitted incomplete",
+                    ),
+                )
+                return
+
         await self._transition_ticket(
             ticket_id,
             "executing_benchmark",
