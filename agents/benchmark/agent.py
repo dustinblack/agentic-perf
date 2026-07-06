@@ -232,8 +232,17 @@ class BenchmarkAgent(AgentBase):
 
         if cf.get("parsed_specs"):
             content += f"\n## Parsed Specifications\n```json\n{json.dumps(cf['parsed_specs'], indent=2)}\n```\n"
-        if cf.get("benchmark_suite"):
-            content += f"\n**Benchmark Suite:** {cf['benchmark_suite']}\n"
+        suite = cf.get("benchmark_suite", "")
+        harness = cf.get("directives", {}).get("harness", "")
+        if suite:
+            content += (
+                f"\n**Benchmark Suite:** {suite}\n"
+                f"Use this exact name in get_benchmark_params, "
+                f"get_example_runfile, and generate_runfile "
+                f"calls."
+            )
+            if harness:
+                content += f" Use harness='{harness}' in those calls.\n"
         if cf.get("absent_suite"):
             content += f"\n**Absent Suite:** {cf['absent_suite']} (no standard automation available)\n"
         if cf.get("hypothesis"):
@@ -465,13 +474,15 @@ class BenchmarkAgent(AgentBase):
                 "notes": "Could not produce structured output",
             }
 
-        fields = {
+        fields: dict[str, Any] = {
             "run_id": result.get("run_id", "UNKNOWN"),
             "benchmark_status": result.get("benchmark_status", "unknown"),
             "run_file_used": result.get("run_file_used", {}),
             "benchmark_duration": result.get("benchmark_duration"),
             "output_dir": result.get("output_dir", ""),
         }
+        if result.get("benchmark_results"):
+            fields["benchmark_results"] = result["benchmark_results"]
         await self._update_fields(ticket_id, fields)
 
         status = fields["benchmark_status"]
