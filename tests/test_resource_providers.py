@@ -315,11 +315,23 @@ class TestAWSResourceProvider:
             provider._match_instance_type({"network_interface": "25Gb"})
             == "m5n.4xlarge"
         )
-        assert provider._match_instance_type({"network_speed": 25}) == "m5n.4xlarge"
-        assert provider._match_instance_type({"nic_speed_gbps": "25"}) == "m5n.4xlarge"
-        assert provider._match_instance_type({"controller_ram_gb": 32}) == "m5.4xlarge"
-        assert provider._match_instance_type({"ram_gb": 32}) == "m5.4xlarge"
-        assert provider._match_instance_type({"memory_gb": 32}) == "m5.4xlarge"
+        assert (
+            provider._match_instance_type({"network_speed": 25}) == "m5n.4xlarge"
+        )
+        assert (
+            provider._match_instance_type({"nic_speed_gbps": "25"})
+            == "m5n.4xlarge"
+        )
+        assert (
+            provider._match_instance_type({"controller_ram_gb": 32})
+            == "m5.4xlarge"
+        )
+        assert (
+            provider._match_instance_type({"ram_gb": 32}) == "m5.4xlarge"
+        )
+        assert (
+            provider._match_instance_type({"memory_gb": 32}) == "m5.4xlarge"
+        )
 
     @pytest.mark.asyncio
     async def test_terminate(self):
@@ -1067,12 +1079,13 @@ class TestHandleCompletionIPSplit:
         )
 
         agent._client = AsyncMock()
+        _ticket_resp = AsyncMock(
+            status_code=200,
+            json=lambda: {"custom_fields": {}},
+            raise_for_status=lambda: None,
+        )
         agent._client.get = AsyncMock(
-            return_value=AsyncMock(
-                status_code=200,
-                json=lambda: {"custom_fields": {}},
-                raise_for_status=lambda: None,
-            ),
+            return_value=_ticket_resp,
         )
         agent._client.patch = AsyncMock(
             return_value=AsyncMock(
@@ -1150,12 +1163,13 @@ class TestHandleCompletionIPSplit:
 
         agent._mcp = None
         agent._client = AsyncMock()
+        _ticket_resp2 = AsyncMock(
+            status_code=200,
+            json=lambda: {"custom_fields": {}},
+            raise_for_status=lambda: None,
+        )
         agent._client.get = AsyncMock(
-            return_value=AsyncMock(
-                status_code=200,
-                json=lambda: {"custom_fields": {}},
-                raise_for_status=lambda: None,
-            ),
+            return_value=_ticket_resp2,
         )
         agent._client.patch = AsyncMock(
             return_value=AsyncMock(
