@@ -77,6 +77,44 @@ class BenchmarkAgent(AgentBase):
 
     async def _do_request_clarification(self, question: str) -> str:
         if self._ticket_id:
+            # Fleet investigation: benchmark failure on
+            # one host should not stop the whole fleet.
+            from providers.fleet import (
+                build_tested_host_entry,
+                is_fleet_investigation,
+            )
+
+            ticket = await self._get_ticket(self._ticket_id)
+            cf = ticket.get("custom_fields", {})
+            if is_fleet_investigation(cf):
+                fleet = cf.get("fleet_investigation", {})
+                tested = fleet.get("tested_hosts", [])
+                metadata = cf.get("resource_provider_metadata", {})
+                host_id = (
+                    metadata.get("exporter_name")
+                    or metadata.get("exporter")
+                    or "unknown"
+                )
+                if not any(h["host_id"] == host_id for h in tested):
+                    entry = build_tested_host_entry(
+                        host_id=host_id,
+                        lease_id=metadata.get("lease_id", ""),
+                        status="benchmark_failed",
+                        failure_reason=question[:500],
+                    )
+                    tested.append(entry)
+                    fleet["tested_hosts"] = tested
+                    await self._update_fields(
+                        self._ticket_id,
+                        {"fleet_investigation": fleet},
+                    )
+                return (
+                    "Fleet investigation: this host has "
+                    "been recorded as a benchmark "
+                    "failure. Submit your result and "
+                    "the system will move to the next "
+                    "host automatically."
+                )
             return await self._request_human_input(self._ticket_id, question)
         return "No ticket context available."
 
@@ -291,11 +329,27 @@ class BenchmarkAgent(AgentBase):
         await self._add_comment(ticket_id, summary)
 
         if status == "failed":
-            await self._transition_ticket(
-                ticket_id,
-                "awaiting_customer_guidance",
-                comment="Benchmark failed — needs investigation",
-            )
+            # Fleet investigation: record failure and
+            # continue to evaluate (which will loop back
+            # for the next host). Don't stop the fleet.
+            ticket = await self._get_ticket(ticket_id)
+            cf = ticket.get("custom_fields", {})
+            from providers.fleet import is_fleet_investigation
+
+            if is_fleet_investigation(cf):
+                await self._transition_ticket(
+                    ticket_id,
+                    "evaluating_convergence",
+                    comment=(
+                        "Benchmark failed on this host, evaluating fleet progress"
+                    ),
+                )
+            else:
+                await self._transition_ticket(
+                    ticket_id,
+                    "awaiting_customer_guidance",
+                    comment=("Benchmark failed — needs investigation"),
+                )
         else:
             # Route based on whether this is an investigation
             # ticket. Same code-enforced pattern as triage.
@@ -359,6 +413,23 @@ class BenchmarkAgent(AgentBase):
             return
 
         bench_results = result.get("benchmark_results", {})
+        # KPIs may be at the top level of benchmark_results
+        # or nested under a 'kpis' key depending on how
+        # the LLM structured the submit.
+        kpis = bench_results.get("kpis")
+        if not kpis:
+            # Extract KPI fields directly from bench_results
+            kpi_keys = (
+                "avg_total_boot_s",
+                "avg_kernel_s",
+                "avg_initrd_s",
+                "avg_userspace_s",
+                "sample_count",
+            )
+            extracted = {k: bench_results[k] for k in kpi_keys if k in bench_results}
+            if extracted:
+                kpis = extracted
+
         entry = build_tested_host_entry(
             host_id=host_id,
             lease_id=metadata.get("lease_id", ""),
@@ -370,8 +441,12 @@ class BenchmarkAgent(AgentBase):
             ),
             samples_collected=bench_results.get("samples_collected", 0),
             samples_requested=bench_results.get("samples_requested", 0),
-            failure_reason=bench_results.get("failure_reason"),
-            kpis=bench_results.get("kpis"),
+            failure_reason=(
+                bench_results.get("failure_reason") or result.get("notes")
+                if result.get("benchmark_status") == "failed"
+                else None
+            ),
+            kpis=kpis,
         )
 
         tested.append(entry)
