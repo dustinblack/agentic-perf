@@ -16,14 +16,15 @@ Always call submit_resource_result with:
 
 ## Host Count
 
-The ticket's min_hosts field counts ENDPOINT hosts only.
+The ticket's required_hosts field lists every host needed with its role,
+e.g. [{"role": "controller"}, {"role": "client"}, {"role": "server"}].
+Allocate exactly this many hosts: 1 controller + the rest as targets.
 
 ## Validating your allocation
 
 Before submitting, verify you allocated enough hosts:
-- Count the targets in assigned_hardware_ips — there must be at least
-  min_hosts endpoints
-- The controller must be a separate host (not also a target)
+- 1 controller (dedicated — not also a target)
+- targets count must equal len(required_hosts) - 1
 - If you allocated fewer hosts than required, do NOT submit an incomplete
   result. Instead:
   1. Retry the allocation for the missing instances
@@ -31,8 +32,8 @@ Before submitting, verify you allocated enough hosts:
      happened and ask the user how to proceed (retry, use fewer hosts,
      abort, etc.)
 
-Never submit with targets=[] when min_hosts > 0. The handoff validation
-will reject it and the ticket will get stuck.
+Never submit with targets=[] when required_hosts has endpoint roles.
+The handoff validation will reject it and the ticket will get stuck.
 
 ## If something fails
 

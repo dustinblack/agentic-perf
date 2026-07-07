@@ -9,8 +9,11 @@ MOCK_TRIAGE_RESULT = {
     "hypothesis": "Verify network throughput scales linearly with thread count",
     "benchmark_suite": "uperf",
     "absent_suite": False,
-    "min_hosts": 2,
-    "roles": ["client", "server"],
+    "required_hosts": [
+        {"roles": ["controller"]},
+        {"roles": ["client"]},
+        {"roles": ["server"]},
+    ],
     "notes": "Standard uperf TCP stream test",
 }
 

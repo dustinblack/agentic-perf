@@ -11,8 +11,11 @@ class TestResourceToProvisioning:
     def test_sufficient_hosts(self):
         ticket = {
             "custom_fields": {
-                "min_hosts": 2,
-                "required_roles": ["client", "server"],
+                "required_hosts": [
+                    {"roles": ["controller"]},
+                    {"roles": ["client"]},
+                    {"roles": ["server"]},
+                ],
                 "assigned_hardware_ips": {
                     "controller": "10.0.0.1",
                     "targets": ["10.0.0.2", "10.0.0.3"],
@@ -25,8 +28,11 @@ class TestResourceToProvisioning:
     def test_insufficient_hosts(self):
         ticket = {
             "custom_fields": {
-                "min_hosts": 2,
-                "required_roles": ["client", "server"],
+                "required_hosts": [
+                    {"roles": ["controller"]},
+                    {"roles": ["client"]},
+                    {"roles": ["server"]},
+                ],
                 "assigned_hardware_ips": {
                     "controller": "10.0.0.1",
                     "targets": ["10.0.0.1"],
@@ -40,8 +46,11 @@ class TestResourceToProvisioning:
     def test_no_hosts_at_all(self):
         ticket = {
             "custom_fields": {
-                "min_hosts": 2,
-                "required_roles": ["client", "server"],
+                "required_hosts": [
+                    {"roles": ["controller"]},
+                    {"roles": ["client"]},
+                    {"roles": ["server"]},
+                ],
                 "assigned_hardware_ips": {},
             }
         }
@@ -52,8 +61,9 @@ class TestResourceToProvisioning:
     def test_single_host_single_role(self):
         ticket = {
             "custom_fields": {
-                "min_hosts": 1,
-                "required_roles": ["client"],
+                "required_hosts": [
+                    {"roles": ["controller", "client"]},
+                ],
                 "assigned_hardware_ips": {
                     "controller": "10.0.0.1",
                     "targets": ["10.0.0.1"],
@@ -67,8 +77,11 @@ class TestResourceToProvisioning:
         """Controller IP same as only target — only 1 unique host for 2 roles."""
         ticket = {
             "custom_fields": {
-                "min_hosts": 2,
-                "required_roles": ["client", "server"],
+                "required_hosts": [
+                    {"roles": ["controller"]},
+                    {"roles": ["client"]},
+                    {"roles": ["server"]},
+                ],
                 "assigned_hardware_ips": {
                     "controller": "10.0.0.1",
                     "targets": ["10.0.0.1"],
@@ -82,8 +95,11 @@ class TestResourceToProvisioning:
         """Controller exists but no separate targets for multi-role benchmark."""
         ticket = {
             "custom_fields": {
-                "min_hosts": 2,
-                "required_roles": ["client", "server"],
+                "required_hosts": [
+                    {"roles": ["controller"]},
+                    {"roles": ["client"]},
+                    {"roles": ["server"]},
+                ],
                 "assigned_hardware_ips": {
                     "controller": "10.0.0.1",
                     "targets": [],
@@ -97,8 +113,11 @@ class TestResourceToProvisioning:
         """Controller public IP and target private IP are the same machine."""
         ticket = {
             "custom_fields": {
-                "min_hosts": 2,
-                "required_roles": ["client", "server"],
+                "required_hosts": [
+                    {"roles": ["controller"]},
+                    {"roles": ["client"]},
+                    {"roles": ["server"]},
+                ],
                 "assigned_hardware_ips": {
                     "controller": "18.191.189.21",
                     "targets": ["172.31.6.108"],
@@ -116,16 +135,20 @@ class TestResourceToProvisioning:
         """Controller and target have different private IPs — actually 2 hosts."""
         ticket = {
             "custom_fields": {
-                "min_hosts": 2,
-                "required_roles": ["client", "server"],
+                "required_hosts": [
+                    {"roles": ["controller"]},
+                    {"roles": ["client"]},
+                    {"roles": ["server"]},
+                ],
                 "assigned_hardware_ips": {
                     "controller": "3.1.1.1",
-                    "targets": ["3.2.2.2"],
+                    "targets": ["3.2.2.2", "3.3.3.3"],
                 },
                 "resource_provider_metadata": {
                     "ip_mapping": {
                         "3.1.1.1": "172.31.1.1",
                         "3.2.2.2": "172.31.2.2",
+                        "3.3.3.3": "172.31.3.3",
                     },
                 },
             }
@@ -137,8 +160,11 @@ class TestResourceToProvisioning:
         """IP mapping nested under controller/endpoints sub-dicts."""
         ticket = {
             "custom_fields": {
-                "min_hosts": 2,
-                "required_roles": ["client", "server"],
+                "required_hosts": [
+                    {"roles": ["controller"]},
+                    {"roles": ["client"]},
+                    {"roles": ["server"]},
+                ],
                 "assigned_hardware_ips": {
                     "controller": "52.15.1.1",
                     "targets": ["172.31.6.108"],
