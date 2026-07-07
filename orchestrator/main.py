@@ -1088,7 +1088,10 @@ async def poll_loop(config: OrchestratorConfig) -> None:
                 # LLM decides intent; code enforces invariants.
                 if status == "awaiting_hardware":
                     cf = ticket.get("custom_fields", {})
-                    if cf.get("anomaly_context"):
+                    fleet = cf.get("fleet_investigation", {})
+                    if cf.get("anomaly_context") and not fleet.get(
+                        "enabled"
+                    ):
                         logger.info(
                             f"Redirecting {tid} to "
                             f"gathering_context "
