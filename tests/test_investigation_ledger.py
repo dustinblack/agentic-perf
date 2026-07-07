@@ -344,8 +344,9 @@ class TestUniversalPlan:
                         "hypothesis": "baseline CPU perf",
                         "benchmark_suite": "stress-ng",
                         "parsed_specs": {},
-                        "roles": ["client"],
-                        "min_hosts": 1,
+                        "required_hosts": [
+                            {"roles": ["controller", "client"]},
+                        ],
                     },
                 ),
             ],
@@ -420,8 +421,11 @@ class TestUniversalPlan:
                         "hypothesis": "compare thread counts",
                         "benchmark_suite": "uperf",
                         "parsed_specs": {},
-                        "roles": ["client", "server"],
-                        "min_hosts": 2,
+                        "required_hosts": [
+                            {"roles": ["controller"]},
+                            {"roles": ["client"]},
+                            {"roles": ["server"]},
+                        ],
                         "execution_plan": [
                             {
                                 "agent_type": "benchmark",

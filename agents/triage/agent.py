@@ -101,8 +101,7 @@ class TriageAgent(AgentBase):
             )
             return
 
-        roles = result.get("roles", [])
-        min_hosts = result.get("min_hosts", 1)
+        required_hosts = result.get("required_hosts", [])
         directives = result.get("directives", {})
         # Backward compat: top-level host_cleanup moves into directives
         if "host_cleanup" in result and "host_cleanup" not in directives:
@@ -112,8 +111,7 @@ class TriageAgent(AgentBase):
             "hypothesis": result.get("hypothesis", ""),
             "benchmark_suite": result.get("benchmark_suite", ""),
             "absent_suite": result.get("absent_suite", False),
-            "required_roles": roles,
-            "min_hosts": min_hosts,
+            "required_hosts": required_hosts,
             "directives": directives,
         }
 
@@ -162,7 +160,7 @@ class TriageAgent(AgentBase):
             f"**Triage Complete**\n\n"
             f"- **Hypothesis:** {fields['hypothesis']}\n"
             f"- **Benchmark Suite:** {fields['benchmark_suite']}\n"
-            f"- **Required Hosts:** {min_hosts} ({', '.join(roles) if roles else 'unknown'})\n"
+            f"- **Required Hosts:** {len(required_hosts)} ({', '.join('+'.join(h.get('roles', ['?'])) for h in required_hosts)})\n"
             f"- **Absent Suite:** {fields['absent_suite']}\n"
         )
         if directives:

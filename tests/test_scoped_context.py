@@ -202,8 +202,11 @@ class TestTriageHandleCompletionPersistsContext:
             "hypothesis": "test",
             "benchmark_suite": "uperf",
             "absent_suite": False,
-            "min_hosts": 2,
-            "roles": ["client", "server"],
+            "required_hosts": [
+                {"roles": ["controller"]},
+                {"roles": ["client"]},
+                {"roles": ["server"]},
+            ],
             "directives": {},
             "scoped_context": {
                 "shared": "AWS environment",

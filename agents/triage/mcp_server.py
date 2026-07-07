@@ -85,14 +85,33 @@ def get_triage_tools() -> list[ToolDefinition]:
                         "type": "boolean",
                         "description": "True if no automation suite covers this benchmark",
                     },
-                    "min_hosts": {
-                        "type": "integer",
-                        "description": "Minimum endpoint hosts required (from benchmark roles)",
-                    },
-                    "roles": {
+                    "required_hosts": {
                         "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Required host roles (e.g. ['client'] or ['client', 'server'])",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "roles": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": (
+                                        "Roles this host serves (e.g. "
+                                        '["controller"], ["client"], '
+                                        '["controller", "client"])'
+                                    ),
+                                },
+                            },
+                            "required": ["roles"],
+                        },
+                        "description": (
+                            "Every host needed for the test, each with its "
+                            "roles. Always include a controller. A host can "
+                            "serve multiple roles (e.g. controller + client). "
+                            "Use multiple entries for multiple clients/servers. "
+                            "Example for uperf: [{roles: [controller]}, "
+                            "{roles: [client]}, {roles: [server]}]. "
+                            "Example for single-host fio: "
+                            "[{roles: [controller, client]}]"
+                        ),
                     },
                     "directives": {
                         "type": "object",
@@ -245,8 +264,7 @@ def get_triage_tools() -> list[ToolDefinition]:
                     "hypothesis",
                     "benchmark_suite",
                     "absent_suite",
-                    "min_hosts",
-                    "roles",
+                    "required_hosts",
                 ],
             },
         ),

@@ -88,7 +88,11 @@ to construct a correct run file — getting the format right is critical.
 - Use IP addresses, never hostnames (IPv6 link-local causes timeouts)
 - `tags` must be an object `{"key": "val"}`, NOT an array
 - `ids` values must be strings: `"1"` not `1`
-- Do NOT set `controller-ip-address` unless you have a specific reason — crucible determines it automatically. Setting the wrong IP breaks the run.
+- Do NOT set `controller-ip-address` unless you think crucible cannot resolve
+  it by itself. Crucible auto-detects the controller IP in most cases. Only set
+  it when the controller has multiple network interfaces and you need to force
+  which IP the endpoints use to reach it (e.g., the controller is on a different
+  subnet than the endpoints). Setting the wrong IP breaks the run.
 - `userenv` must be a real userenv name — `"default"` is NOT valid.
   If the user explicitly requests a specific userenv in the ticket, use it.
   Otherwise, before constructing the run file, read the userenv-guide skill

@@ -50,8 +50,14 @@ def _resolve_unique_hosts(
 def _check_awaiting_provision(ticket: dict[str, Any]) -> tuple[bool, str]:
     """Validate resource allocation before provisioning."""
     cf = ticket.get("custom_fields", {})
-    min_hosts = cf.get("min_hosts", 1)
-    roles = cf.get("required_roles", [])
+    required_hosts = cf.get("required_hosts", [])
+    min_hosts = len(required_hosts) if required_hosts else cf.get("min_hosts", 1)
+    roles = []
+    if required_hosts:
+        for h in required_hosts:
+            roles.extend(h.get("roles", []))
+    else:
+        roles = cf.get("required_roles", [])
     ips = cf.get("assigned_hardware_ips", {})
     controller = ips.get("controller")
     targets = ips.get("targets", [])
@@ -89,12 +95,20 @@ def _check_awaiting_provision(ticket: dict[str, Any]) -> tuple[bool, str]:
     if controller_canonical:
         unique_targets.discard(controller_canonical)
 
-    if len(roles) > 1 and len(unique_targets) < 1:
+    endpoint_only_count = 0
+    if required_hosts:
+        endpoint_only_count = sum(
+            1 for h in required_hosts if "controller" not in h.get("roles", [])
+        )
+    elif len(roles) > 1:
+        endpoint_only_count = 1
+
+    if endpoint_only_count > 0 and len(unique_targets) < endpoint_only_count:
         return (
             False,
-            f"Need at least 1 target host separate from the controller "
-            f"for roles {roles}, but all targets resolve to the same "
-            f"host as the controller ({controller})",
+            f"Need {endpoint_only_count} target host(s) separate from the "
+            f"controller for roles {roles}, but only {len(unique_targets)} "
+            f"unique target(s) found (controller={controller})",
         )
 
     return True, ""

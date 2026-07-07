@@ -25,8 +25,20 @@ Your job is to analyze a performance test request ticket and:
    benchmark, only set the harness directive if the user specified a preference.
 
 4. From the benchmark details, note the RESOURCE REQUIREMENTS — specifically the roles
-   (e.g., ["client"] or ["client", "server"]) and min_hosts count. Include these in
-   your result so the resource agent knows what to provision.
+   (e.g., ["client"] or ["client", "server"]) and min_hosts count. Build the
+   `required_hosts` list for your result: take the benchmark's endpoint roles and
+   always add {"role": "controller"}. Every host needed for the test must appear
+   in this list with its role.
+
+   Example: uperf has roles ["client", "server"]. Your required_hosts should be:
+   [{"roles": ["controller"]}, {"roles": ["client"]}, {"roles": ["server"]}]
+
+   A single-host benchmark like fio has roles ["client"]. If the controller
+   also serves as the client host:
+   [{"roles": ["controller", "client"]}]
+
+   For multi-client setups (e.g., 2 clients, 1 server):
+   [{"roles": ["controller"]}, {"roles": ["client"]}, {"roles": ["client"]}, {"roles": ["server"]}]
 
 5. Only use request_clarification if the request is truly ambiguous — for example,
    the user asked to test "performance" with no indication of what kind. Do NOT ask
@@ -97,7 +109,7 @@ Your job is to analyze a performance test request ticket and:
    Omit any agent key whose section would be empty.
 
 When you have completed your analysis, call the submit_triage_result tool with your
-findings, including the min_hosts and roles from the benchmark details.
+findings, including the required_hosts list built from the benchmark roles.
 
 ## Multi-Step Execution Plans
 
