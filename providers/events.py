@@ -119,10 +119,37 @@ class EventBus:
         self._log_dir = Path(log_dir) if log_dir else DEFAULT_LOG_DIR
         self._log_dir.mkdir(parents=True, exist_ok=True)
         self._events: dict[str, list[Event]] = {}
-        self._seq = 0
+        self._seq: dict[str, int] = {}
         self._lock = threading.Lock()
         self._file_handles: dict[str, Any] = {}
         self._cumulative: dict[str, CumulativeUsage] = {}
+
+    def _next_seq(self, ticket_id: str) -> int:
+        """Return the next sequence number for a ticket.
+
+        On first call for a given ticket, reads the max seq from the
+        existing JSONL file so that sequence numbers survive restarts.
+        """
+        if ticket_id not in self._seq:
+            max_seq = 0
+            path = self._log_dir / f"{ticket_id}.jsonl"
+            if path.exists():
+                try:
+                    with open(path, encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                evt = json.loads(line)
+                                max_seq = max(max_seq, evt.get("seq", 0))
+                            except json.JSONDecodeError:
+                                continue
+                except Exception:
+                    logger.exception(f"Failed to read max seq from {path}")
+            self._seq[ticket_id] = max_seq
+        self._seq[ticket_id] += 1
+        return self._seq[ticket_id]
 
     def emit(
         self,
@@ -132,8 +159,8 @@ class EventBus:
         data: dict[str, Any] | None = None,
     ) -> Event:
         with self._lock:
-            self._seq += 1
-            event = Event(self._seq, ticket_id, agent, event_type, data)
+            seq = self._next_seq(ticket_id)
+            event = Event(seq, ticket_id, agent, event_type, data)
             self._events.setdefault(ticket_id, []).append(event)
 
         self._write_to_file(ticket_id, event)
