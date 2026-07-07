@@ -14,6 +14,7 @@ Usage in an agent's run() method:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -85,11 +86,26 @@ async def attach_jumpstarter_mcp(
         if cf.get("resource_provider") != "jumpstarter":
             return False
 
-        await mcp_client.connect_command(
-            command="jmp",
-            args=["mcp", "serve"],
-            name="jumpstarter",
-        )
+        # Timeout protects against hanging when all
+        # Jumpstarter exporters are leased — jmp mcp serve
+        # blocks waiting for exporter assignment with no
+        # built-in timeout.
+        try:
+            await asyncio.wait_for(
+                mcp_client.connect_command(
+                    command="jmp",
+                    args=["mcp", "serve"],
+                    name="jumpstarter",
+                ),
+                timeout=120,  # 2 min to connect
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"[jumpstarter-mcp] Connection timed "
+                f"out for {ticket_id} — all exporters "
+                f"may be leased"
+            )
+            return False
         logger.info(f"[jumpstarter-mcp] Attached to agent for ticket {ticket_id}")
         return True
 
