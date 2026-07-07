@@ -1540,6 +1540,17 @@ async def execute_boot_time_test(
     if clean_journal:
         cmd.append("--clean-journal=true")
 
+    # Auto-enable Jumpstarter serial capture when a
+    # Jumpstarter lease is active. Serial data is written
+    # to files — it does NOT flow into LLM context.
+    if _ticket:
+        fields = _ticket.get("custom_fields", {})
+        metadata = fields.get("resource_provider_metadata", {})
+        lease_id = metadata.get("lease_id", "")
+        if lease_id and fields.get("resource_provider") == "jumpstarter":
+            cmd.append("--jumpstarter-serial")
+            cmd.append(f"--jumpstarter-lease-name={lease_id}")
+
     # Separator for boot-time-analysis-tools arguments
     cmd.append("--")
     cmd.extend(["--max-time", "0"])
