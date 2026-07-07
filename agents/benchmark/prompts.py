@@ -89,7 +89,15 @@ to construct a correct run file — getting the format right is critical.
 - `tags` must be an object `{"key": "val"}`, NOT an array
 - `ids` values must be strings: `"1"` not `1`
 - Do NOT set `controller-ip-address` unless you have a specific reason — crucible determines it automatically. Setting the wrong IP breaks the run.
-- `userenv` should be `alma8` for trafficgen (not `default`)
+- `userenv` must be a real userenv name — `"default"` is NOT valid.
+  If the user explicitly requests a specific userenv in the ticket, use it.
+  Otherwise, before constructing the run file, read the userenv-guide skill
+  doc, then run `crucible userenvs` on the controller and read the benchmark's
+  workshop.json at `/opt/crucible/subprojects/benchmarks/<name>/workshop.json`
+  to determine which userenv to use. Prefer userenvs with explicit benchmark
+  support (high confidence), then CI-tested userenvs with a "default" fallback
+  (medium confidence). Do NOT use non-CI-tested userenvs that only match
+  "default" unless the user specifically requests that OS.
 - `osruntime: podman` needs `host-mounts` for DPDK workloads (e.g., /dev/hugepages)
 - Every benchmark object MUST include `mv-params` — it is required by the schema.
   Use `get_benchmark_params` to see available parameters and presets. Use
