@@ -308,6 +308,31 @@ class TestAWSResourceProvider:
             == "m5.xlarge"
         )
 
+    def test_match_instance_type_key_aliases(self):
+        """LLM may use alternate key names for NIC speed and RAM."""
+        provider = self._make_provider()
+        assert (
+            provider._match_instance_type({"network_interface": "25Gb"})
+            == "m5n.4xlarge"
+        )
+        assert (
+            provider._match_instance_type({"network_speed": 25}) == "m5n.4xlarge"
+        )
+        assert (
+            provider._match_instance_type({"nic_speed_gbps": "25"})
+            == "m5n.4xlarge"
+        )
+        assert (
+            provider._match_instance_type({"controller_ram_gb": 32})
+            == "m5.4xlarge"
+        )
+        assert (
+            provider._match_instance_type({"ram_gb": 32}) == "m5.4xlarge"
+        )
+        assert (
+            provider._match_instance_type({"memory_gb": 32}) == "m5.4xlarge"
+        )
+
     @pytest.mark.asyncio
     async def test_terminate(self):
         provider = self._make_provider()
@@ -782,6 +807,82 @@ class TestResourceToolHandlers:
         handlers, *_ = create_resource_tool_handlers(secrets_provider=no_secrets)
         result = await handlers["list_resource_providers"]()
         assert result["count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_check_available_with_required_hosts(self, no_secrets):
+        from agents.resource.mcp_server import create_resource_tool_handlers
+        from providers.resource.aws import AWSResourceProvider
+
+        provider = AWSResourceProvider(
+            region="us-east-1",
+            access_key_id="AKIATEST",
+            secret_access_key="secret",
+            ssh_key_name="test-key",
+            ssh_key_path="/tmp/test.pem",
+            ssh_user="ec2-user",
+            security_group_id="sg-123",
+            subnet_id="subnet-456",
+            default_ami="ami-abc",
+            default_instance_type="m5.xlarge",
+            instance_type_map={
+                "small": "m5.xlarge",
+                "medium": "m5.4xlarge",
+                "network_25g": "m5n.4xlarge",
+            },
+        )
+        mock_reg = MagicMock()
+        mock_reg.get_provider = AsyncMock(return_value=provider)
+        handlers, *_ = create_resource_tool_handlers(registry=mock_reg)
+
+        required_hosts = [
+            {"roles": ["controller"], "min_memory_gb": 16},
+            {"roles": ["client"], "nic_speed": 25, "os": "RHEL9"},
+            {"roles": ["server"], "nic_speed": 25, "os": "RHEL9"},
+        ]
+        result = await handlers["check_available_resources"](
+            provider="aws", required_hosts=required_hosts
+        )
+        assert result["provider"] == "aws"
+        recs = result["per_host_recommendations"]
+        assert len(recs) == 3
+        assert recs[0]["roles"] == ["controller"]
+        assert recs[0]["recommended"]["instance_type"] == "m5.xlarge"
+        assert recs[1]["roles"] == ["client"]
+        assert recs[1]["recommended"]["instance_type"] == "m5n.4xlarge"
+        assert recs[2]["roles"] == ["server"]
+        assert recs[2]["recommended"]["instance_type"] == "m5n.4xlarge"
+
+    @pytest.mark.asyncio
+    async def test_check_available_without_required_hosts(self, no_secrets):
+        """Flat requirements still work when required_hosts is not provided."""
+        from agents.resource.mcp_server import create_resource_tool_handlers
+        from providers.resource.aws import AWSResourceProvider
+
+        provider = AWSResourceProvider(
+            region="us-east-1",
+            access_key_id="AKIATEST",
+            secret_access_key="secret",
+            ssh_key_name="test-key",
+            ssh_key_path="/tmp/test.pem",
+            ssh_user="ec2-user",
+            security_group_id="sg-123",
+            subnet_id="subnet-456",
+            default_ami="ami-abc",
+            default_instance_type="m5.xlarge",
+            instance_type_map={
+                "small": "m5.xlarge",
+                "medium": "m5.4xlarge",
+                "network_25g": "m5n.4xlarge",
+            },
+        )
+        mock_reg = MagicMock()
+        mock_reg.get_provider = AsyncMock(return_value=provider)
+        handlers, *_ = create_resource_tool_handlers(registry=mock_reg)
+
+        result = await handlers["check_available_resources"](
+            provider="aws", requirements={"nic_speed": 25}
+        )
+        assert result["options"][0]["instance_type"] == "m5n.4xlarge"
 
 
 # ---------------------------------------------------------------------------

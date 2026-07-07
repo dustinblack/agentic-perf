@@ -132,11 +132,27 @@ async def list_resource_providers() -> str:
 
 @mcp.tool()
 async def check_available_resources(
-    provider: str, requirements: dict | None = None
+    provider: str,
+    requirements: dict | None = None,
+    required_hosts: list[dict] | None = None,
 ) -> str:
-    """Check what resources are available from a specific provider. For bare-metal providers (quads), returns available hosts with CPU, memory, disk, and NIC details. For cloud providers (aws), returns recommended instance types. For GPU cluster providers (psap-cc), returns available clusters with GPU type, count, and cluster details. Use filters to narrow results."""
+    """Check what resources are available from a specific provider. Use required_hosts (preferred) to get per-host recommendations based on the ticket's required_hosts entries with hardware specs, or requirements for a single uniform recommendation."""
     await _ensure_init()
     prov = await _registry.get_provider(provider)
+    if required_hosts:
+        recommendations = []
+        for host_req in required_hosts:
+            result = await prov.check_available(host_req)
+            rec = dict(host_req)
+            if result.get("options"):
+                rec["recommended"] = result["options"][0]
+            recommendations.append(rec)
+        return json.dumps(
+            {
+                "provider": prov.provider_name,
+                "per_host_recommendations": recommendations,
+            }
+        )
     result = await prov.check_available(requirements or {})
     return json.dumps(result)
 
@@ -190,7 +206,7 @@ async def get_reservation_status(provider: str, reservation_id: str) -> str:
 async def validate_host(
     host: str, ssh_key_path: str = "", ssh_user: str = "root"
 ) -> str:
-    """Validate that a host is reachable via SSH. Returns connectivity status, FQDN, and basic system info (OS, CPU count, RAM). Pass ssh_key_path from the reserve_resources result to use the correct key."""
+    """Validate that a host is reachable via SSH. Returns connectivity status, FQDN, basic system info (OS, CPU count, RAM), and NIC details (interface names and link speeds from ethtool). Pass ssh_key_path from the reserve_resources result to use the correct key."""
     await _ensure_init()
     from providers.ssh import SSHExecutor
 
@@ -229,6 +245,23 @@ async def validate_host(
     except ValueError:
         ram_gb = 0
 
+    nic_cmd = (
+        "for iface in $(ip -o link show "
+        "| awk -F'[ :]+' '/^[0-9]+: (eth|ens|eno|enp)/"
+        "{print $2}'); do "
+        "speed=$(ethtool \"$iface\" 2>/dev/null "
+        "| awk '/Speed:/{print $2}'); "
+        "echo \"${iface}:${speed:-unknown}\"; "
+        "done"
+    )
+    nic_result = await ssh.run(host, nic_cmd, timeout=15)
+    nic_info = []
+    if nic_result.exit_code == 0 and nic_result.stdout.strip():
+        for nic_line in nic_result.stdout.strip().splitlines():
+            parts = nic_line.split(":", 1)
+            if len(parts) == 2:
+                nic_info.append({"name": parts[0], "speed": parts[1]})
+
     return json.dumps(
         {
             "host": host,
@@ -237,6 +270,7 @@ async def validate_host(
             "os": os_info,
             "cpu_count": cpu_count,
             "ram_gb": ram_gb,
+            "nic_info": nic_info,
             "message": f"Host {host} validated via SSH",
         }
     )

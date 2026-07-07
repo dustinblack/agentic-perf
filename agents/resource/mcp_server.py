@@ -34,10 +34,12 @@ def get_resource_tools() -> list[ToolDefinition]:
             name="validate_host",
             description=(
                 "Validate that a host is reachable via SSH. "
-                "Returns connectivity status, FQDN, and basic system info "
-                "(OS, CPU count, RAM). This is for connectivity verification "
-                "only — for submit_resource_result, use the IPs from the "
-                "reserve_resources result, not the FQDN from this tool."
+                "Returns connectivity status, FQDN, basic system info "
+                "(OS, CPU count, RAM), and NIC details (interface names "
+                "and link speeds from ethtool). This is for connectivity "
+                "verification only — for submit_resource_result, use the "
+                "IPs from the reserve_resources result, not the FQDN "
+                "from this tool."
             ),
             input_schema={
                 "type": "object",
@@ -78,7 +80,9 @@ def get_resource_tools() -> list[ToolDefinition]:
                 "CPU, memory, disk, and NIC details. For cloud providers (aws), "
                 "returns recommended instance types. For GPU cluster providers "
                 "(psap-cc), returns available clusters with GPU type, count, "
-                "and cluster details. Use filters to narrow results."
+                "and cluster details. Use required_hosts (preferred) for "
+                "per-host recommendations, or requirements for a single "
+                "uniform recommendation."
             ),
             input_schema={
                 "type": "object",
@@ -87,10 +91,24 @@ def get_resource_tools() -> list[ToolDefinition]:
                         "type": "string",
                         "description": "Provider name (e.g., 'quads', 'aws')",
                     },
+                    "required_hosts": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": (
+                            "Per-host requirements from the ticket's "
+                            "required_hosts field. Each entry has roles "
+                            "plus optional hardware specs (nic_speed, "
+                            "min_cores, min_memory_gb, os). Returns a "
+                            "recommendation for each entry. Preferred "
+                            "over the flat 'requirements' parameter."
+                        ),
+                    },
                     "requirements": {
                         "type": "object",
                         "description": (
-                            "Resource requirements. Common keys: "
+                            "Uniform resource requirements (use "
+                            "required_hosts instead for per-host specs). "
+                            "Common keys: "
                             "min_cores (int), min_memory_gb (int), "
                             "nic_speed (int, Gbps), nic_vendor (str), "
                             "disk_type (str), count (int, hosts needed), "
@@ -343,6 +361,27 @@ def create_resource_tool_handlers(
         except ValueError:
             ram_gb = 0
 
+        nic_cmd = (
+            "for iface in $(ip -o link show "
+            "| awk -F'[ :]+' '/^[0-9]+: (eth|ens|eno|enp)/"
+            "{print $2}'); do "
+            "speed=$(ethtool \"$iface\" 2>/dev/null "
+            "| awk '/Speed:/{print $2}'); "
+            "echo \"${iface}:${speed:-unknown}\"; "
+            "done"
+        )
+        nic_result = await ssh.run(
+            host, nic_cmd, timeout=15, key_path=effective_key
+        )
+        nic_info = []
+        if nic_result.exit_code == 0 and nic_result.stdout.strip():
+            for nic_line in nic_result.stdout.strip().splitlines():
+                parts = nic_line.split(":", 1)
+                if len(parts) == 2:
+                    nic_info.append(
+                        {"name": parts[0], "speed": parts[1]}
+                    )
+
         return {
             "host": host,
             "fqdn": fqdn,
@@ -350,6 +389,7 @@ def create_resource_tool_handlers(
             "os": os_info,
             "cpu_count": cpu_count,
             "ram_gb": ram_gb,
+            "nic_info": nic_info,
             "message": f"Host {host} validated via SSH",
         }
 
@@ -362,10 +402,24 @@ def create_resource_tool_handlers(
         }
 
     async def check_available_resources(
-        provider: str, requirements: dict | None = None
+        provider: str,
+        requirements: dict | None = None,
+        required_hosts: list[dict] | None = None,
     ) -> dict:
         reg = _get_registry()
         prov = await reg.get_provider(provider)
+        if required_hosts:
+            recommendations = []
+            for host_req in required_hosts:
+                result = await prov.check_available(host_req)
+                rec = dict(host_req)
+                if result.get("options"):
+                    rec["recommended"] = result["options"][0]
+                recommendations.append(rec)
+            return {
+                "provider": prov.provider_name,
+                "per_host_recommendations": recommendations,
+            }
         return await prov.check_available(requirements or {})
 
     last_reservation: dict[str, Any] = {}
