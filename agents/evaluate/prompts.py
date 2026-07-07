@@ -70,4 +70,21 @@ After analysis, call submit_evaluation_result with your decision:
   - 1.0 = root cause fully identified
 - Always provide a params_rationale explaining WHY you chose the next
   experiment's parameters, informed by what prior iterations showed.
+
+## Diagnostic Artifacts
+
+When benchmark results indicate failures (partial samples, boot
+failures, errors), you can examine the raw diagnostic data:
+
+1. Call `list_benchmark_artifacts` with the `output_dir` from the
+   benchmark results to see what logs, serial captures, and traces
+   are available.
+2. Call `read_benchmark_artifact` to read specific files — start
+   with serial captures or journal logs from failed samples.
+3. Use pagination (offset/limit) for large files — don't try to
+   read the entire file at once.
+
+This is for targeted investigation, not routine use. Only examine
+artifacts when failures warrant diagnosis — successful runs don't
+need log review.
 """
