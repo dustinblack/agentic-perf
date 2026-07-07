@@ -172,11 +172,11 @@ run-file-pitfalls.md). For a single client-server pair:
 "remotes": [
   {
     "engines": [{"role": "client", "ids": ["1"]}],
-    "config": {"host": "<client-ip>", "settings": {"userenv": "fedora-latest", "osruntime": "podman"}}
+    "config": {"host": "<client-ip>", "settings": {"userenv": "<see userenv-guide>", "osruntime": "podman"}}
   },
   {
     "engines": [{"role": "server", "ids": ["1"]}],
-    "config": {"host": "<server-ip>", "settings": {"userenv": "fedora-latest", "osruntime": "podman"}}
+    "config": {"host": "<server-ip>", "settings": {"userenv": "<see userenv-guide>", "osruntime": "podman"}}
   }
 ]
 ```

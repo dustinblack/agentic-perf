@@ -9,7 +9,7 @@
         "run_command": "crucible run",
         "endpoint_type": "remotehosts",
         "endpoint_user": "root",
-        "default_userenv": "default",
+        "default_userenv": "discover",
         "default_osruntime": "podman",
         "pre_run": ["ssh_key_setup"],
         "run_file_format": "json",

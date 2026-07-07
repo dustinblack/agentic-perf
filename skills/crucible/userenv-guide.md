@@ -1,53 +1,126 @@
 # Crucible Userenv Selection Guide
 
 A userenv (user environment) determines the base container
-image used to run benchmark and tool engines. Each userenv
-is a specific OS distribution and version.
+image used to run benchmark and tool engines. Choosing the
+right userenv is critical — a bad choice causes image build
+failures or missing benchmark dependencies.
 
-## Valid userenv names
+## How userenvs work
 
-Userenvs are defined in rickshaw's `userenvs/` directory.
-Each has a `<name>.json` config file. Common valid names:
+Two things must align for a userenv to work:
 
-- `fedora-latest` — latest Fedora (recommended default)
-- `fedora42`, `fedora43` — specific Fedora versions
-- `rhubi8`, `rhubi9`, `rhubi10` — RHEL UBI images
-- `alma8`, `alma9`, `alma10` — AlmaLinux
-- `stream8`, `stream9`, `stream10` — CentOS Stream
+1. **Rickshaw must define it.** Each userenv has a
+   `<name>.json` file in rickshaw's `userenvs/` directory
+   that specifies the base container image, OS distro,
+   package manager, and core packages. Run `crucible userenvs`
+   on the controller to see available userenvs.
 
-Use `crucible userenvs list` to see the full list on a
-given installation.
+2. **The benchmark must support it.** Each benchmark has a
+   `workshop.json` that declares per-userenv requirements
+   (packages, source builds, scripts). The file is at:
+   `/opt/crucible/subprojects/benchmarks/<name>/workshop.json`
 
-## "default" is NOT a valid userenv
+### How workshop.json resolution works
 
-Workshop.json files for benchmarks and tools contain a
-`"name": "default"` entry in their `userenvs` array. This
-is a FALLBACK CATEGORY — it defines the dependency
-requirements for any userenv not explicitly listed. It is
-NOT a literal userenv name you can use in a run file.
+When crucible builds a container image for a benchmark +
+userenv combination, `workshop.py` looks at the benchmark's
+workshop.json `userenvs` array:
 
-Setting `"userenv": "default"` in a run file will fail
-because there is no `userenvs/default.json` file in
-rickshaw.
+- If there is an entry whose `name` matches the requested
+  userenv, those requirements are used. This means the
+  benchmark has **explicit support** for that userenv.
+- If there is no explicit match but a `"name": "default"`
+  entry exists, those requirements are used as a **fallback**.
+  The benchmark will probably work but has not been
+  specifically validated for this userenv.
+- If neither matches, the build fails.
+
+**"default" is NOT a userenv name.** It is a fallback
+category in workshop.json. Setting `"userenv": "default"`
+in a run file will fail — there is no `default.json` in
+rickshaw's userenvs directory.
 
 ## How to choose a userenv
 
-1. Use `fedora-latest` as a safe default for most benchmarks
-2. For trafficgen (TRex/testpmd), use `alma8` — TRex
-   packages are only built for this userenv
-3. For RHEL-specific testing, use `rhubi8`, `rhubi9`, or
-   `rhubi10`
-4. All tools (sysstat, procstat, etc.) use their own
-   userenv independently — typically `fedora-latest`
+Before constructing a run file, determine the right userenv
+by cross-referencing two sources on the controller:
 
-## How userenvs work internally
+### Step 1: Get available userenvs
 
-1. Each benchmark and tool has a `workshop.json` declaring
-   requirements per userenv (packages, source builds)
-2. Rickshaw combines all workshop.json files into a merged
-   config for the requested userenv
-3. The image-sourcing service builds or finds a container
-   image tagged with a hash of the combined requirements
-4. If the userenv name doesn't match any `<name>.json` file
-   in rickshaw's userenvs directory, the build fails before
-   the image hash can even be computed
+Run `crucible userenvs` on the controller. This shows all
+userenvs defined in rickshaw (official) and any external
+userenv repos. Note the "Pull Token" and "Notes" columns:
+
+- `Pull Token: yes` means a registry auth token is needed
+- `not CI tested` means crucible CI does not validate this
+  userenv — there is lower confidence it works
+
+### Step 2: Check benchmark support
+
+Read the benchmark's workshop.json:
+`/opt/crucible/subprojects/benchmarks/<name>/workshop.json`
+
+Look at the `userenvs` array. Each entry has a `name` and
+a list of `requirements`. Check whether the userenvs you
+are considering have explicit entries or would fall through
+to "default".
+
+### Step 3: Pick with confidence ranking
+
+Rank your options by confidence:
+
+1. **High confidence** — the benchmark's workshop.json has
+   an explicit entry for this userenv. The benchmark was
+   designed and tested with it.
+
+2. **Medium confidence** — the userenv is CI-tested (no
+   "not CI tested" note in `crucible userenvs` output) and
+   the benchmark has a `"default"` fallback entry. The
+   container image is validated by CI and the benchmark's
+   generic requirements should install correctly.
+
+3. **Low confidence** — the userenv is NOT CI-tested and
+   would only match the `"default"` fallback. The container
+   image may have issues and the benchmark was never
+   validated on this OS.
+
+Prefer high-confidence options. If only medium-confidence
+options exist, prefer CI-tested userenvs. Avoid
+low-confidence options unless the user specifically
+requests that OS.
+
+### Common patterns
+
+- **uperf, fio, iperf** — workshop.json only has "default"
+  with source builds. Any CI-tested userenv works (medium
+  confidence). Good defaults: `stream10`, `fedora-latest`.
+- **trafficgen** — workshop.json has explicit `alma8` for
+  client (TRex packages). Client MUST use `alma8`. Server
+  can use any userenv via "default" fallback.
+- **ilab** — uses specialized RHEL AI userenvs that require
+  pull tokens.
+
+### Matching user OS preferences
+
+If the user specifies an OS (e.g., "use RHEL9"), map it to
+the closest available userenv:
+
+| User says     | Userenv      | Notes                        |
+|---------------|--------------|------------------------------|
+| RHEL 8        | `rhubi8`     | Red Hat UBI 8                |
+| RHEL 9        | `rhubi9`     | Red Hat UBI 9                |
+| RHEL 10       | `rhubi10`    | Red Hat UBI 10               |
+| CentOS        | `stream10`   | CentOS Stream                |
+| Fedora        | `fedora-latest` | Latest Fedora             |
+| AlmaLinux     | `alma9`      | Or `alma8` for trafficgen    |
+
+If the user does not specify an OS preference, use a
+CI-tested userenv with at least medium confidence. Good
+general-purpose defaults are `stream10` or `fedora-latest`.
+
+## Tools also have workshop.json
+
+Tools (sysstat, procstat, etc.) each have their own
+workshop.json. They resolve userenvs independently from
+the benchmark. Most tools only have a "default" entry and
+work with any CI-tested userenv.

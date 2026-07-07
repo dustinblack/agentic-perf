@@ -371,7 +371,7 @@ def create_benchmark_tool_handlers(
             "run_command": execution.get("run_command", ""),
             "endpoint_type": execution.get("endpoint_type", "remotehosts"),
             "endpoint_user": execution.get("endpoint_user", "root"),
-            "default_userenv": execution.get("default_userenv", "default"),
+            "default_userenv": execution.get("default_userenv", "discover"),
             "default_osruntime": execution.get("default_osruntime", "podman"),
             "pre_run": execution.get("pre_run", []),
             "run_file_format": execution.get("run_file_format", "json"),
