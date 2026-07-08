@@ -369,6 +369,6 @@ class TestCheckAvailableRequiresSelector:
         result = await provider.check_available({})
         assert result["available"] is False
         assert "error" in result
-        assert "list_jumpstarter_targets" in result["error"]
+        assert "jumpstarter_selector" in result["error"]
         assert len(result["available_targets"]) == 1
         assert result["available_targets"][0]["selector"] == "target=myboard"

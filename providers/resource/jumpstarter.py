@@ -172,7 +172,8 @@ class JumpstarterResourceProvider(ResourceProvider):
             online = getattr(e, "online", False)
             enabled = labels.get("enabled", "true") == "true"
             status = getattr(e, "status", None)
-            if not (online and enabled and status == "AVAILABLE"):
+            status_name = status.name if hasattr(status, "name") else str(status)
+            if not (online and enabled and status_name == "AVAILABLE"):
                 continue
             target = labels.get("target", "unknown")
             if target not in targets:
@@ -222,10 +223,13 @@ class JumpstarterResourceProvider(ResourceProvider):
             # - online: exporter process connected
             # - enabled: not disabled by admin
             # - status AVAILABLE: not leased or offline
+            status_name = (
+                status.name if hasattr(status, "name") else str(status)
+            )
             available = (
                 online
                 and enabled
-                and status == "AVAILABLE"
+                and status_name == "AVAILABLE"
             )
             all_devices.append(
                 {
@@ -233,7 +237,7 @@ class JumpstarterResourceProvider(ResourceProvider):
                     "labels": labels,
                     "online": online,
                     "enabled": enabled,
-                    "status": status,
+                    "status": status_name,
                     "available": available,
                 }
             )
@@ -252,11 +256,12 @@ class JumpstarterResourceProvider(ResourceProvider):
                 "provider": "jumpstarter",
                 "available": False,
                 "error": (
-                    "No jumpstarter_selector provided. Call "
-                    "list_jumpstarter_targets first to see "
-                    "available hardware types, then match the "
-                    "user's platform request to the correct "
-                    "target selector."
+                    "No jumpstarter_selector provided. Use "
+                    "the available_targets list below to "
+                    "find the correct target selector for "
+                    "the user's platform, then call "
+                    "check_available_resources again with "
+                    "jumpstarter_selector set."
                 ),
                 "available_targets": targets,
             }
