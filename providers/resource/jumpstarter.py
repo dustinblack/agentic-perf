@@ -355,6 +355,25 @@ class JumpstarterResourceProvider(ResourceProvider):
         await self._ensure_connected()
         assert self._service is not None
 
+        # Jumpstarter creates one lease → one exporter.
+        # Reject count > 1 with a clear error so the LLM
+        # doesn't build a multi-device target list from
+        # a single-device lease.
+        requested = selection.get("count", 1)
+        if requested > 1:
+            return {
+                "provider": "jumpstarter",
+                "error": (
+                    f"Cannot reserve {requested} devices "
+                    f"in one lease. Jumpstarter assigns "
+                    f"one device per lease. Set count=1 "
+                    f"and retry. For fleet investigations, "
+                    f"the system iterates one board at a "
+                    f"time automatically."
+                ),
+                "status": "rejected",
+            }
+
         selector = selection.get(
             "jumpstarter_selector",
             self._default_selector,
