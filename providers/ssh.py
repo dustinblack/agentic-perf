@@ -126,12 +126,10 @@ class SSHExecutor:
 
         escaped = command.replace("'", "'\\''")
         bg_cmd = (
-            f"nohup sh -c '{escaped}; echo $? > {rc_file}'"
-            f" > {out_file} 2>&1 & echo $!"
+            f"nohup sh -c '{escaped}; echo $? > {rc_file}' > {out_file} 2>&1 & echo $!"
         )
         launch = await self.run(host, bg_cmd, timeout=15, key_path=key_path)
-        pid_str = (launch.stdout.strip().splitlines()[-1]
-                   if launch.stdout else "")
+        pid_str = launch.stdout.strip().splitlines()[-1] if launch.stdout else ""
         if launch.exit_code != 0 or not pid_str.isdigit():
             return SSHResult(
                 stdout=launch.stdout or "",
@@ -139,9 +137,7 @@ class SSHExecutor:
                 exit_code=launch.exit_code or 1,
             )
         pid = int(pid_str)
-        logger.info(
-            f"[ssh] {host}: background pid={pid} for: {command[:120]}"
-        )
+        logger.info(f"[ssh] {host}: background pid={pid} for: {command[:120]}")
 
         last_reported = ""
         elapsed = 0
@@ -151,7 +147,10 @@ class SSHExecutor:
             elapsed += poll_interval
 
             done_check = await self.run(
-                host, f"test -f {rc_file}", timeout=5, key_path=key_path,
+                host,
+                f"test -f {rc_file}",
+                timeout=5,
+                key_path=key_path,
             )
             finished = done_check.exit_code == 0
 
@@ -162,10 +161,7 @@ class SSHExecutor:
                     timeout=10,
                     key_path=key_path,
                 )
-                lines = [
-                    ln for ln in (tail.stdout or "").splitlines()
-                    if ln.strip()
-                ]
+                lines = [ln for ln in (tail.stdout or "").splitlines() if ln.strip()]
                 last_line = lines[-1] if lines else ""
                 if last_line and last_line != last_reported:
                     last_reported = last_line
@@ -178,15 +174,24 @@ class SSHExecutor:
                 break
 
         full_output = await self.run(
-            host, f"cat {out_file}", timeout=60, key_path=key_path,
+            host,
+            f"cat {out_file}",
+            timeout=60,
+            key_path=key_path,
         )
         rc_output = await self.run(
-            host, f"cat {rc_file}", timeout=5, key_path=key_path,
+            host,
+            f"cat {rc_file}",
+            timeout=5,
+            key_path=key_path,
         )
         exit_code = int(rc_output.stdout.strip() or "1")
 
         await self.run(
-            host, f"rm -f {out_file} {rc_file}", timeout=5, key_path=key_path,
+            host,
+            f"rm -f {out_file} {rc_file}",
+            timeout=5,
+            key_path=key_path,
         )
 
         return SSHResult(

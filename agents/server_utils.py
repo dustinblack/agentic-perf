@@ -181,7 +181,8 @@ async def tool_progress(
 
     ticket_id = ticket_id or os.environ.get("TICKET_ID", "")
     state_store_url = state_store_url or os.environ.get(
-        "STATE_STORE_URL", "http://localhost:8090",
+        "STATE_STORE_URL",
+        "http://localhost:8090",
     )
     if not ticket_id:
         return

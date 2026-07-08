@@ -142,14 +142,18 @@ class TestRunWithProgress:
             # 3: tail output
             if "tail -5" in cmd and call_count <= 5:
                 return SSHResult(
-                    stdout="Starting sample 1\n", stderr="", exit_code=0,
+                    stdout="Starting sample 1\n",
+                    stderr="",
+                    exit_code=0,
                 )
             # 4: second poll — rc file present (done)
             if "test -f" in cmd:
                 return SSHResult(stdout="", stderr="", exit_code=0)
             if "tail -5" in cmd:
                 return SSHResult(
-                    stdout="Benchmark complete\n", stderr="", exit_code=0,
+                    stdout="Benchmark complete\n",
+                    stderr="",
+                    exit_code=0,
                 )
             # 5: cat output
             if "cat" in cmd and ".out" in cmd:
@@ -168,11 +172,14 @@ class TestRunWithProgress:
 
         ssh.run = mock_run
 
-        async def noop_sleep(_): pass
+        async def noop_sleep(_):
+            pass
 
         with patch("asyncio.sleep", noop_sleep):
             result = await ssh.run_with_progress(
-                "10.0.0.1", "benchmark run", progress_callback=cb,
+                "10.0.0.1",
+                "benchmark run",
+                progress_callback=cb,
                 poll_interval=1,
             )
 
@@ -200,11 +207,14 @@ class TestRunWithProgress:
 
         ssh.run = mock_run
 
-        async def noop_sleep(_): pass
+        async def noop_sleep(_):
+            pass
 
         with patch("asyncio.sleep", noop_sleep):
             result = await ssh.run_with_progress(
-                "10.0.0.1", "failing cmd", poll_interval=1,
+                "10.0.0.1",
+                "failing cmd",
+                poll_interval=1,
             )
 
         assert result.exit_code == 42
@@ -232,7 +242,9 @@ class TestRunWithProgress:
                 return SSHResult(stdout="", stderr="", exit_code=1)
             if "tail -5" in cmd:
                 return SSHResult(
-                    stdout="same line\n", stderr="", exit_code=0,
+                    stdout="same line\n",
+                    stderr="",
+                    exit_code=0,
                 )
             if "cat" in cmd and ".out" in cmd:
                 return SSHResult(stdout="same line\n", stderr="", exit_code=0)
@@ -244,11 +256,15 @@ class TestRunWithProgress:
 
         ssh.run = mock_run
 
-        async def noop_sleep(_): pass
+        async def noop_sleep(_):
+            pass
 
         with patch("asyncio.sleep", noop_sleep):
             await ssh.run_with_progress(
-                "10.0.0.1", "cmd", progress_callback=cb, poll_interval=1,
+                "10.0.0.1",
+                "cmd",
+                progress_callback=cb,
+                poll_interval=1,
             )
 
         assert len(call_log) == 1
@@ -259,7 +275,9 @@ class TestRunWithProgress:
 
         async def mock_run(host, cmd, **kwargs):
             return SSHResult(
-                stdout="", stderr="Permission denied", exit_code=255,
+                stdout="",
+                stderr="Permission denied",
+                exit_code=255,
             )
 
         ssh.run = mock_run

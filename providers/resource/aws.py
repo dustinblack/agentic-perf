@@ -483,7 +483,8 @@ class AWSResourceProvider(ResourceProvider):
                 if proc.returncode == 0 and b"SSH_OK" in stdout:
                     logger.info(f"[aws-provider] SSH ready on {host}")
                     await tool_progress(
-                        f"SSH ready on {host}", "setup_ssh",
+                        f"SSH ready on {host}",
+                        "setup_ssh",
                     )
                     break
                 if attempt < retries - 1:
