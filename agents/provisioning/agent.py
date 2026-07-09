@@ -313,11 +313,29 @@ class ProvisioningAgent(AgentBase):
                 "notes": "Could not produce structured output",
             }
 
+        # Self-installing harnesses don't need
+        # provisioning to install them. If the LLM
+        # reports incomplete because install_harness
+        # failed, override when hosts were provisioned.
+        _SELF_INSTALLING = {"boot-time"}
+        harness = result.get("harness_name", "unknown")
+        prov_complete = result.get("provisioning_complete", False)
+        if (
+            not prov_complete
+            and harness in _SELF_INSTALLING
+            and result.get("hosts_provisioned")
+        ):
+            prov_complete = True
+            logger.info(
+                f"[provisioning] Overriding provisioning_complete "
+                f"for self-installing harness {harness}"
+            )
+
         fields = {
-            "provisioning_complete": result.get("provisioning_complete", False),
+            "provisioning_complete": prov_complete,
             "hosts_provisioned": result.get("hosts_provisioned", []),
             "harness_version": result.get("harness_version", "unknown"),
-            "harness_name": result.get("harness_name", "unknown"),
+            "harness_name": harness,
             "configuration_applied": result.get("configuration_applied", {}),
         }
         if result.get("k3s_installed"):
@@ -350,6 +368,26 @@ class ProvisioningAgent(AgentBase):
             fields["ssh_user"] = result["ssh_user"]
         if result.get("ssh_key_path"):
             fields["ssh_key_path"] = result["ssh_key_path"]
+
+        # Update exporter_name in metadata so fleet
+        # failure recording can identify the board.
+        # The LLM discovers this from jmp_connect but
+        # doesn't reliably write it back.
+        config = fields.get("configuration_applied", {})
+        board_name = (
+            config.get("exporter")
+            or config.get("board")
+            or config.get("exporter_name")
+            or ""
+        )
+        if board_name:
+            ticket = await self._get_ticket(ticket_id)
+            meta = ticket.get("custom_fields", {}).get(
+                "resource_provider_metadata", {}
+            )
+            if not meta.get("exporter_name"):
+                meta["exporter_name"] = board_name
+                fields["resource_provider_metadata"] = meta
 
         await self._update_fields(ticket_id, fields)
 
