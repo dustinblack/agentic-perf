@@ -155,6 +155,12 @@ class AgentMCPClient:
     # fleet loop can move to the next host.
     _JMP_CONNECT_TIMEOUT = 180  # 3 minutes
 
+    # One connection per agent session. Fleet iterations
+    # provision one board at a time — the system handles
+    # iteration. Prevents the provisioning agent from
+    # calling jmp_connect repeatedly to flash all boards.
+    _jmp_connected = False
+
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> str:
         server_name = self._tool_routing.get(name)
         if server_name is None:
@@ -165,6 +171,21 @@ class AgentMCPClient:
         # Apply timeout to jmp_connect to prevent hanging
         # when no exporters are available.
         if name == "jmp_connect":
+            if self._jmp_connected:
+                import json
+
+                return json.dumps(
+                    {
+                        "error": (
+                            "Already connected to a "
+                            "Jumpstarter device in this "
+                            "session. You are provisioning "
+                            "ONE board. Submit your result "
+                            "and the system will handle "
+                            "fleet iteration automatically."
+                        ),
+                    }
+                )
             import asyncio
 
             try:
@@ -172,6 +193,7 @@ class AgentMCPClient:
                     conn.session.call_tool(name, arguments),
                     timeout=self._JMP_CONNECT_TIMEOUT,
                 )
+                self._jmp_connected = True
             except asyncio.TimeoutError:
                 import json
 
