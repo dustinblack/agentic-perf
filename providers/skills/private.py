@@ -4,9 +4,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .base import BenchmarkSuite, RunfileTemplate, SkillProvider
+from paths import PRIVATE_SKILLS_DIR as DEFAULT_PRIVATE_SKILLS_DIR
 
-DEFAULT_PRIVATE_SKILLS_DIR = Path.home() / ".agentic-perf" / "private-skills"
+from .base import BenchmarkSuite, RunfileTemplate, SkillProvider
 
 
 class PrivateSkillProvider(SkillProvider):

@@ -3,11 +3,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from paths import SECRETS_DIR as DEFAULT_SECRETS_DIR
+
 from .base import SecretsProvider
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_SECRETS_DIR = Path.home() / ".agentic-perf" / "secrets"
 
 
 class LocalSecretsProvider(SecretsProvider):
@@ -29,7 +29,7 @@ class LocalSecretsProvider(SecretsProvider):
         self._dir = Path(secrets_dir) if secrets_dir else DEFAULT_SECRETS_DIR
 
     def _resolve_path(self, path: str) -> Path:
-        logical = (self._dir / path)
+        logical = self._dir / path
         # Prevent path traversal via ".." in the input path itself
         try:
             logical.relative_to(self._dir)

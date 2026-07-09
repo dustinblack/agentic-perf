@@ -8,7 +8,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-CONFIG="$HOME/.agentic-perf/config.json"
+AP_HOME="${AGENTIC_PERF_HOME:-$HOME/.agentic-perf}"
+CONFIG="$AP_HOME/config.json"
 if [ ! -f "$CONFIG" ]; then
     echo "ERROR: Config file not found: $CONFIG"
     echo "Create it with LLM backend, project_id, crucible_home, etc."

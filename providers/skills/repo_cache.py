@@ -4,9 +4,9 @@ import logging
 import subprocess
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from paths import SKILL_CACHE_DIR as DEFAULT_CACHE_DIR
 
-DEFAULT_CACHE_DIR = Path.home() / ".agentic-perf" / "skill-cache"
+logger = logging.getLogger(__name__)
 
 
 class RepoCache:

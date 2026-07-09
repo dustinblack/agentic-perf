@@ -6,6 +6,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from paths import TICKET_DIR as DEFAULT_PERSIST_DIR
+
 from .models import (
     VALID_TRANSITIONS,
     AddCommentRequest,
@@ -17,8 +19,6 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_PERSIST_DIR = Path.home() / ".agentic-perf" / "tickets"
 
 
 class InvalidTransition(Exception):

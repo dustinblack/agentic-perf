@@ -9,7 +9,6 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 
 import httpx
 
@@ -136,7 +135,9 @@ EVENT_ICONS = {
 
 
 def _read_events(ticket_id, last_seq):
-    log_path = Path.home() / ".agentic-perf" / "logs" / f"{ticket_id}.jsonl"
+    from paths import LOG_DIR
+
+    log_path = LOG_DIR / f"{ticket_id}.jsonl"
     if not log_path.exists():
         return [], last_seq
     events = []
@@ -432,8 +433,7 @@ def cmd_stop_all(args):
         total = r.json().get("total", 0)
         label = "hard-stop" if args.hard else "stop"
         confirm = input(
-            f"This will {label} all active tickets"
-            f" ({total} total). Continue? [y/N] "
+            f"This will {label} all active tickets ({total} total). Continue? [y/N] "
         )
         if confirm.lower() not in ("y", "yes"):
             print("Cancelled.")
@@ -448,7 +448,9 @@ def cmd_stop_all(args):
 
 
 def _load_aws_config() -> dict:
-    config_path = Path.home() / ".agentic-perf" / "secrets" / "aws" / "config.json"
+    from paths import SECRETS_DIR
+
+    config_path = SECRETS_DIR / "aws" / "config.json"
     if not config_path.exists():
         print(f"AWS config not found: {config_path}")
         sys.exit(1)
@@ -538,7 +540,9 @@ def cmd_cleanup(args):
 
 
 def _read_all_events(ticket_id):
-    log_path = Path.home() / ".agentic-perf" / "logs" / f"{ticket_id}.jsonl"
+    from paths import LOG_DIR
+
+    log_path = LOG_DIR / f"{ticket_id}.jsonl"
     if not log_path.exists():
         return []
     events = []
@@ -834,7 +838,10 @@ def main():
         help="Kill all agents immediately",
     )
     p_stop_all.add_argument(
-        "--yes", "-y", action="store_true", help="Skip confirmation prompt",
+        "--yes",
+        "-y",
+        action="store_true",
+        help="Skip confirmation prompt",
     )
 
     p_transcript = sub.add_parser(

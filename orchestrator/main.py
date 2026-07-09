@@ -7,8 +7,8 @@ import logging
 import os
 import signal
 import sys
-from pathlib import Path
 
+from paths import LOCK_FILE
 from providers.events import EventBus
 from providers.llm.factory import create_llm_provider
 from providers.secrets.local import LocalSecretsProvider
@@ -677,8 +677,6 @@ async def poll_loop(config: OrchestratorConfig) -> None:
 
         await asyncio.sleep(config.poll_interval)
 
-
-LOCK_FILE = Path.home() / ".agentic-perf" / "orchestrator.pid"
 
 _lock_fd: int | None = None
 
