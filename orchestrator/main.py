@@ -450,6 +450,26 @@ async def run_agent_task(
         logger.exception(f"Agent failed on ticket {ticket_id} (status={status})")
     finally:
         logger.info(f"run_agent_task finally block for {ticket_id}")
+
+        # Release Jumpstarter lease after benchmark completes.
+        # The lease is no longer needed — serial capture and
+        # SSH are done. Releasing here (not in evaluate or
+        # orchestrator poll) ensures exactly one lease is
+        # active at a time during fleet investigations.
+        if status == "executing_benchmark":
+            try:
+                await _cleanup_jumpstarter_lease(
+                    dispatcher.store_url,
+                    ticket_id,
+                    event_bus=dispatcher.events,
+                )
+            except Exception:
+                logger.debug(
+                    f"Post-benchmark lease cleanup failed "
+                    f"for {ticket_id}",
+                    exc_info=True,
+                )
+
         if status in PLAN_AGENT_STATUS.values():
             try:
                 _advance_plan(
@@ -1086,35 +1106,13 @@ async def poll_loop(config: OrchestratorConfig) -> None:
                     )
                     continue
 
-                # Fleet loop-back: release the previous
-                # Jumpstarter lease when a fleet ticket
-                # returns to awaiting_hardware. The evaluate
-                # agent can't do this — it runs in an MCP
-                # subprocess without Jumpstarter access.
-                if status == "awaiting_hardware":
-                    cf = ticket.get("custom_fields", {})
-                    fleet = cf.get("fleet_investigation", {})
-                    if fleet.get("enabled") and cf.get(
-                        "resource_provider"
-                    ) == "jumpstarter":
-                        try:
-                            await _cleanup_jumpstarter_lease(
-                                config.state_store_url,
-                                tid,
-                                event_bus=dispatcher.events,
-                            )
-                        except Exception:
-                            logger.debug(
-                                f"Fleet lease cleanup failed for {tid}",
-                                exc_info=True,
-                            )
-
                 # Code-enforce investigation routing.
                 # If triage routed to awaiting_hardware but
                 # the ticket has anomaly_context, redirect
                 # to gathering_context (investigation path).
                 # LLM decides intent; code enforces invariants.
                 if status == "awaiting_hardware":
+                    cf = ticket.get("custom_fields", {})
                     fleet = cf.get("fleet_investigation", {})
                     if cf.get("anomaly_context") and not fleet.get(
                         "enabled"

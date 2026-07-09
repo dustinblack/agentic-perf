@@ -434,7 +434,6 @@ class ProvisioningAgent(AgentBase):
         if await self._plan_controls_next_transition(ticket_id):
             return
 
-        # Fleet investigation: if provisioning failed
         # Fleet investigation: record failures and loop
         # back for the next host instead of blocking.
         from providers.fleet import is_fleet_investigation
