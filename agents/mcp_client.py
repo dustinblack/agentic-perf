@@ -199,6 +199,77 @@ class AgentMCPClient:
         content = "\n".join(parts) if parts else ""
         if result.isError:
             raise RuntimeError(content)
+
+        # Trim verbose Jumpstarter responses to reduce
+        # token accumulation in conversation history.
+        content = self._trim_jumpstarter_response(
+            name, content
+        )
+
+        return content
+
+    @staticmethod
+    def _trim_jumpstarter_response(
+        tool_name: str,
+        content: str,
+    ) -> str:
+        """Trim verbose Jumpstarter tool responses.
+
+        jmp_connect returns cli_tree (~10K chars) and
+        drivers (~4K chars) that the agent never uses.
+        jmp_run for storage flash returns full progress
+        logs (~18K chars) on success.
+
+        These accumulate in conversation history across
+        every subsequent LLM call, consuming ~120K tokens
+        per provisioning session.
+        """
+        import json as _json
+
+        if tool_name == "jmp_connect":
+            try:
+                data = _json.loads(content)
+                if "connection_id" in data:
+                    # Keep only what the agent needs
+                    trimmed = {
+                        "connection_id": data["connection_id"],
+                        "lease_name": data.get("lease_name", ""),
+                        "exporter_name": data.get(
+                            "exporter_name", ""
+                        ),
+                        "socket_path": data.get(
+                            "socket_path", ""
+                        ),
+                    }
+                    return _json.dumps(trimmed, indent=2)
+            except (ValueError, KeyError):
+                pass
+
+        if tool_name == "jmp_run":
+            try:
+                data = _json.loads(content)
+                # Only trim successful commands with
+                # large stdout (flash logs, etc.)
+                stdout = data.get("stdout", "")
+                if (
+                    data.get("exit_code") == 0
+                    and len(stdout) > 2000
+                ):
+                    # Keep first and last lines for context
+                    lines = stdout.strip().split("\n")
+                    if len(lines) > 10:
+                        summary = (
+                            "\n".join(lines[:3])
+                            + f"\n... ({len(lines) - 6} lines "
+                            f"trimmed) ...\n"
+                            + "\n".join(lines[-3:])
+                        )
+                        data["stdout"] = summary
+                        data["_trimmed"] = True
+                        return _json.dumps(data, indent=2)
+            except (ValueError, KeyError):
+                pass
+
         return content
 
     async def disconnect(self) -> None:
