@@ -12,6 +12,8 @@ from typing import Any
 
 import httpx
 
+from paths import PLUGIN_SCHEMA_CACHE_DIR as _DEFAULT_SCHEMA_CACHE_DIR
+
 from .base import BenchmarkSuite, RunfileTemplate, SkillProvider
 
 logger = logging.getLogger(__name__)
@@ -19,9 +21,6 @@ logger = logging.getLogger(__name__)
 QUAY_ORG = "arcalot"
 QUAY_API = "https://quay.io/api/v1"
 QUAY_IMAGE_PREFIX = f"quay.io/{QUAY_ORG}"
-
-# Default directory for caching plugin schemas
-_DEFAULT_SCHEMA_CACHE_DIR = Path.home() / ".agentic-perf" / "plugin-schema-cache"
 
 
 class PluginSchemaCache:

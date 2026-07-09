@@ -20,6 +20,8 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
+from paths import INVESTIGATION_RECORDS_DIR as _DEFAULT_DIR
+
 from .base import InvestigationRecordProvider
 from .models import (
     BuildHistoryEntry,
@@ -28,8 +30,6 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
-
-_DEFAULT_DIR = Path.home() / ".agentic-perf" / "investigation-records"
 
 
 class FileRecordProvider(InvestigationRecordProvider):

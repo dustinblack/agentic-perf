@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from paths import LOG_DIR as DEFAULT_LOG_DIR
 
-DEFAULT_LOG_DIR = Path.home() / ".agentic-perf" / "logs"
+logger = logging.getLogger(__name__)
 
 EVENT_TYPES = {
     "agent_started",
@@ -24,6 +24,7 @@ EVENT_TYPES = {
     "comment",
     "tool_progress",
     "llm_usage",
+    "agent_stopped",
 }
 
 

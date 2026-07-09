@@ -22,10 +22,11 @@ from typing import Any
 
 import yaml
 
+from paths import PRICING_PATH as _USER_PRICING
+
 logger = logging.getLogger(__name__)
 
 _BUNDLED_PRICING = Path(__file__).parent / "pricing.yaml"
-_USER_PRICING = Path.home() / ".agentic-perf" / "pricing.yaml"
 
 _pricing_cache: dict[str, Any] | None = None
 

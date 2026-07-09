@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 
-CONFIG_PATH = Path.home() / ".agentic-perf" / "config.json"
+from paths import CONFIG_PATH
 
 
 def _load_config_file() -> dict:

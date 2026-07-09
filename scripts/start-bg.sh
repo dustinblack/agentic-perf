@@ -27,8 +27,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_DIR"
 
-CONFIG="$HOME/.agentic-perf/config.json"
-LOG_DIR="$HOME/.agentic-perf/logs"
+AP_HOME="${AGENTIC_PERF_HOME:-$HOME/.agentic-perf}"
+export AGENTIC_PERF_HOME="$AP_HOME"
+CONFIG="$AP_HOME/config.json"
+LOG_DIR="$AP_HOME/logs"
 STORE_PID_FILE="$LOG_DIR/state-store.pid"
 STORE_LOG="$LOG_DIR/state-store.log"
 ORCH_LOG="$LOG_DIR/orchestrator.log"
@@ -59,7 +61,7 @@ _is_store_running() {
 }
 
 _is_orch_running() {
-    local pid_file="$HOME/.agentic-perf/orchestrator.pid"
+    local pid_file="$AP_HOME/orchestrator.pid"
     if [ -f "$pid_file" ]; then
         # The orchestrator uses fcntl.flock — if we can't lock
         # the file, the orchestrator is running.
@@ -142,7 +144,7 @@ cmd_stop() {
     echo "Stopping services..."
 
     # Stop orchestrator first
-    local orch_pid_file="$HOME/.agentic-perf/orchestrator.pid"
+    local orch_pid_file="$AP_HOME/orchestrator.pid"
     if [ -f "$orch_pid_file" ]; then
         local pid
         pid=$(cat "$orch_pid_file" 2>/dev/null)

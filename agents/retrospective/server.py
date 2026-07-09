@@ -6,10 +6,10 @@ from pathlib import Path
 
 from fastmcp import FastMCP
 
-mcp = FastMCP("retrospective")
+from paths import LOG_DIR as DEFAULT_LOG_DIR
+from paths import TICKET_DIR as DEFAULT_TICKET_DIR
 
-DEFAULT_LOG_DIR = Path.home() / ".agentic-perf" / "logs"
-DEFAULT_TICKET_DIR = Path.home() / ".agentic-perf" / "tickets"
+mcp = FastMCP("retrospective")
 
 SENSITIVE_TOOLS = frozenset(
     {

@@ -32,16 +32,14 @@ from __future__ import annotations
 import importlib
 import json
 import logging
-from pathlib import Path
 from typing import Any
+
+from paths import CONFIG_PATH as _CONFIG_PATH
 
 from .base import InvestigationRecordProvider
 
 logger = logging.getLogger(__name__)
 
-# Backend registry — maps backend names to their implementation.
-# Each entry specifies the module path and class name. New backends
-# add an entry here; no other code changes needed.
 BACKEND_REGISTRY: dict[str, dict[str, str]] = {
     "file": {
         "class": ("providers.investigation.file.FileRecordProvider"),
@@ -49,16 +47,7 @@ BACKEND_REGISTRY: dict[str, dict[str, str]] = {
     "horreum": {
         "class": ("providers.investigation.horreum.HorreumRecordProvider"),
     },
-    # Future backends:
-    # "opensearch": {
-    #     "class": (
-    #         "providers.investigation.opensearch"
-    #         ".OpenSearchRecordProvider"
-    #     ),
-    # },
 }
-
-_CONFIG_PATH = Path.home() / ".agentic-perf" / "config.json"
 
 
 def _load_config() -> dict[str, Any]:

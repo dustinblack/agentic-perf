@@ -211,7 +211,9 @@ def _emit_tool_progress_event(
     import json as _json
     from datetime import datetime, timezone
 
-    log_dir = Path.home() / ".agentic-perf" / "logs"
+    from paths import LOG_DIR
+
+    log_dir = LOG_DIR
     path = log_dir / f"{ticket_id}.jsonl"
 
     try:
