@@ -185,6 +185,7 @@ class EvaluateAgent(AgentBase):
         bench_status = cf.get("benchmark_status", "")
         output_dir = cf.get("output_dir", "")
         bench_results = cf.get("benchmark_results", {})
+        output_dir = cf.get("output_dir", "")
         if run_id:
             content += (
                 f"**Latest Benchmark Result:**\n"
