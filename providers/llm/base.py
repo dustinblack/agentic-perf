@@ -32,6 +32,7 @@ class LLMResponse:
     tool_calls: list[ToolCall] = field(default_factory=list)
     stop_reason: str = "end_turn"
     raw_content: list[dict[str, Any]] = field(default_factory=list)
+    usage: dict[str, Any] | None = None
 
 
 class LLMProvider(ABC):

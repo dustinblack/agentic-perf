@@ -236,9 +236,22 @@ class GeminiLLMProvider(LLMProvider):
             else:
                 stop_reason = "end_turn"
 
+        usage = None
+        um = getattr(response, "usage_metadata", None)
+        if um is not None:
+            usage = {
+                "input_tokens": getattr(um, "prompt_token_count", 0) or 0,
+                "output_tokens": getattr(um, "candidates_token_count", 0) or 0,
+                "cache_read_input_tokens": getattr(um, "cached_content_token_count", 0)
+                or 0,
+                "cache_creation_input_tokens": 0,
+                "model": "",
+            }
+
         return LLMResponse(
             text="\n".join(text_parts) if text_parts else None,
             tool_calls=tool_calls,
             stop_reason=stop_reason,
             raw_content=raw_content,
+            usage=usage,
         )
