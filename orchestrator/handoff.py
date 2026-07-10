@@ -63,11 +63,13 @@ def _check_awaiting_provision(ticket: dict[str, Any]) -> tuple[bool, str]:
     targets = ips.get("targets", [])
 
     # Jumpstarter boards don't have IPs until after
-    # provisioning (flash + boot). Skip the IP check
-    # when resource_provider is jumpstarter.
+    # provisioning (flash + boot). Skip all host
+    # validation when resource_provider is jumpstarter.
+    if cf.get("resource_provider") == "jumpstarter":
+        return True, ""
+
     if not controller and not targets:
-        if cf.get("resource_provider") != "jumpstarter":
-            return False, "No hosts allocated — assigned_hardware_ips is empty"
+        return False, "No hosts allocated — assigned_hardware_ips is empty"
 
     meta = cf.get("resource_provider_metadata", {})
     ip_mapping: dict[str, str] = {}
