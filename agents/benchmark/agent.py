@@ -346,7 +346,23 @@ class BenchmarkAgent(AgentBase):
             else:
                 conn_list = conns.get("connections", [])
             if not conn_list:
-                return "No active Jumpstarter connection"
+                # No active connection — establish one
+                # from the lease. This bypasses tool
+                # scoping since it's deterministic code.
+                if not self._ticket_id:
+                    return "No active Jumpstarter connection"
+                ticket = await self._get_ticket(self._ticket_id)
+                _cf = ticket.get("custom_fields", {})
+                _lid = _cf.get("resource_reservation_id") or _cf.get(
+                    "resource_provider_metadata", {}
+                ).get("lease_id", "")
+                if not _lid:
+                    return "No lease ID available"
+                conn_raw = await self._mcp.call_tool("jmp_connect", {"lease_id": _lid})
+                conn_data = _json.loads(conn_raw)
+                if conn_data.get("error"):
+                    return f"Connect failed: {conn_data['error'][:200]}"
+                conn_list = [conn_data]
             conn_id = conn_list[0].get(
                 "connection_id",
                 conn_list[0].get("id", ""),
