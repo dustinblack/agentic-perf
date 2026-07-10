@@ -1440,7 +1440,6 @@ async def _cleanup_jumpstarter_lease(
             await client.aclose()
 
 
-LOCK_FILE = Path.home() / ".agentic-perf" / "orchestrator.pid"
 
 _lock_fd: int | None = None
 
