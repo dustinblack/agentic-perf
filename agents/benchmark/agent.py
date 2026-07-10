@@ -339,10 +339,18 @@ class BenchmarkAgent(AgentBase):
         try:
             conns_raw = await self._mcp.call_tool("jmp_list_connections", {})
             conns = _json.loads(conns_raw)
-            conn_list = conns.get("connections", [])
+            # Result may be a list or a dict with
+            # a "connections" key.
+            if isinstance(conns, list):
+                conn_list = conns
+            else:
+                conn_list = conns.get("connections", [])
             if not conn_list:
                 return "No active Jumpstarter connection"
-            conn_id = conn_list[0]["connection_id"]
+            conn_id = conn_list[0].get(
+                "connection_id",
+                conn_list[0].get("id", ""),
+            )
         except Exception as exc:
             return f"Could not list connections: {exc}"
 
@@ -464,11 +472,27 @@ class BenchmarkAgent(AgentBase):
         await self._add_comment(ticket_id, summary)
 
         if status == "failed":
-            await self._transition_ticket(
-                ticket_id,
-                "awaiting_customer_guidance",
-                comment="Benchmark failed — needs investigation",
-            )
+            # Fleet: failures are data points. Route to
+            # evaluate so the fleet loop can record the
+            # failure and move to the next host.
+            from providers.fleet import is_fleet_investigation
+
+            ticket = await self._get_ticket(ticket_id)
+            cf = ticket.get("custom_fields", {})
+            if is_fleet_investigation(cf):
+                await self._transition_ticket(
+                    ticket_id,
+                    "evaluating_convergence",
+                    comment=(
+                        "Benchmark failed on this host, evaluating fleet progress"
+                    ),
+                )
+            else:
+                await self._transition_ticket(
+                    ticket_id,
+                    "awaiting_customer_guidance",
+                    comment="Benchmark failed — needs investigation",
+                )
         else:
             # Route based on whether this is an investigation
             # ticket. Same code-enforced pattern as triage.
