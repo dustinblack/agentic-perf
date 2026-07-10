@@ -72,11 +72,27 @@ class ClaudeLLMProvider(LLMProvider):
                     }
                 )
 
+        usage = None
+        if hasattr(response, "usage") and response.usage:
+            u = response.usage
+            usage = {
+                "input_tokens": getattr(u, "input_tokens", 0) or 0,
+                "output_tokens": getattr(u, "output_tokens", 0) or 0,
+                "cache_read_input_tokens": getattr(u, "cache_read_input_tokens", 0)
+                or 0,
+                "cache_creation_input_tokens": getattr(
+                    u, "cache_creation_input_tokens", 0
+                )
+                or 0,
+                "model": self._model,
+            }
+
         return LLMResponse(
             text="\n".join(text_parts) if text_parts else None,
             tool_calls=tool_calls,
             stop_reason=response.stop_reason,
             raw_content=raw_content,
+            usage=usage,
         )
 
     async def complete(

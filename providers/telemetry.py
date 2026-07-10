@@ -37,7 +37,6 @@ from opentelemetry.sdk.trace import (
     SpanProcessor,
     TracerProvider,
 )
-from opentelemetry.semconv_ai import SpanAttributes
 
 logger = logging.getLogger(__name__)
 
@@ -107,105 +106,12 @@ class EventBusSpanProcessor(SpanProcessor):
                 span.set_attribute("agentic_perf.agent_name", agent_name)
 
     def on_end(self, span: ReadableSpan) -> None:
-        """Process completed spans for token accounting."""
-        attrs = span.attributes or {}
+        """No-op — token accounting moved to AgentBase via LLMResponse.usage.
 
-        # Only process GenAI/LLM spans
-        if not attrs.get(SpanAttributes.LLM_REQUEST_MODEL) and not attrs.get(
-            "gen_ai.request.model"
-        ):
-            return
-
-        ticket_id = attrs.get("agentic_perf.ticket_id")
-        if not ticket_id:
-            return
-
-        # Extract token usage from span attributes.
-        # The semconv library uses prompt_tokens/completion_tokens
-        # but the Anthropic instrumentor emits input_tokens/
-        # output_tokens — check both naming conventions.
-        _prompt = attrs.get(SpanAttributes.LLM_USAGE_PROMPT_TOKENS)
-        _input = attrs.get("gen_ai.usage.input_tokens")
-        input_tokens = (
-            _prompt if _prompt is not None else (_input if _input is not None else 0)
-        )
-        _completion = attrs.get(SpanAttributes.LLM_USAGE_COMPLETION_TOKENS)
-        _output = attrs.get("gen_ai.usage.output_tokens")
-        output_tokens = (
-            _completion
-            if _completion is not None
-            else (_output if _output is not None else 0)
-        )
-
-        # Extract cache token counts from span attributes.
-        # Check the current semconv names first, then the
-        # deprecated aliases.
-        _cache_read = attrs.get(
-            SpanAttributes.GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
-            attrs.get(
-                SpanAttributes.GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_DEPRECATED,
-            ),
-        )
-        cache_read = int(_cache_read) if _cache_read is not None else 0
-
-        _cache_create = attrs.get(
-            SpanAttributes.GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
-            attrs.get(
-                SpanAttributes.GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_DEPRECATED,
-            ),
-        )
-        cache_create = int(_cache_create) if _cache_create is not None else 0
-
-        # Calculate duration from span timestamps
-        duration_ms = 0
-        if span.start_time and span.end_time:
-            duration_ms = (span.end_time - span.start_time) // 1_000_000  # ns to ms
-
-        model = attrs.get(
-            SpanAttributes.LLM_REQUEST_MODEL,
-            attrs.get("gen_ai.request.model", "unknown"),
-        )
-
-        agent_name = attrs.get("agentic_perf.agent_name", "")
-
-        # Record in the EventBus: both in-memory accumulation
-        # (for the orchestrator) and a persisted event (for the
-        # state store, which is a separate process).
-        ticket_str = str(ticket_id)
-        agent_str = str(agent_name)
-        in_tok = int(input_tokens or 0)
-        out_tok = int(output_tokens or 0)
-        dur_ms = int(duration_ms)
-        model_str = str(model)
-
-        if hasattr(self._event_bus, "record_llm_usage"):
-            self._event_bus.record_llm_usage(
-                ticket_id=ticket_str,
-                input_tokens=in_tok,
-                output_tokens=out_tok,
-                duration_ms=dur_ms,
-                model=model_str,
-                agent_name=agent_str,
-                cache_read_input_tokens=cache_read,
-                cache_creation_input_tokens=cache_create,
-            )
-
-        # Persist as an event so the state store process
-        # can compute usage from the JSONL log.
-        if hasattr(self._event_bus, "emit"):
-            self._event_bus.emit(
-                ticket_str,
-                agent_str or "system",
-                "llm_usage",
-                {
-                    "input_tokens": in_tok,
-                    "output_tokens": out_tok,
-                    "cache_read_input_tokens": cache_read,
-                    "cache_creation_input_tokens": cache_create,
-                    "duration_ms": dur_ms,
-                    "model": model_str,
-                },
-            )
+        This processor is retained for external OTLP export
+        (Jaeger, Grafana Tempo) and span correlation, but no
+        longer emits to the EventBus.
+        """
 
     def shutdown(self) -> None:
         """No-op — EventBus manages its own lifecycle."""

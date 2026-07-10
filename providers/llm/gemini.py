@@ -21,6 +21,40 @@ from .base import LLMProvider, LLMResponse, ToolCall, ToolDefinition
 logger = logging.getLogger(__name__)
 
 
+def _resolve_json_refs(obj: Any) -> Any:
+    """Inline JSON Schema $ref definitions so Gemini doesn't
+    misinterpret '#/definitions/...' as internal part references.
+    """
+    if not isinstance(obj, dict):
+        return obj
+
+    definitions = obj.get("definitions") or obj.get("$defs") or {}
+
+    def _resolve(node: Any) -> Any:
+        if isinstance(node, dict):
+            ref = node.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/"):
+                parts = ref.lstrip("#/").split("/")
+                target: Any = obj
+                for p in parts:
+                    if isinstance(target, dict):
+                        target = target.get(p)
+                    else:
+                        return node
+                if target is not None:
+                    return _resolve(target)
+                return node
+            skip = ("definitions", "$defs")
+            return {k: _resolve(v) for k, v in node.items() if k not in skip}
+        if isinstance(node, list):
+            return [_resolve(item) for item in node]
+        return node
+
+    if not definitions:
+        return obj
+    return _resolve(obj)
+
+
 class GeminiLLMProvider(LLMProvider):
     def __init__(
         self,
@@ -147,6 +181,7 @@ class GeminiLLMProvider(LLMProvider):
                             )
                         except (json.JSONDecodeError, TypeError):
                             result_dict = {"result": result_content}
+                        result_dict = _resolve_json_refs(result_dict)
                         parts.append(
                             types.Part.from_function_response(
                                 name=name,
@@ -236,9 +271,22 @@ class GeminiLLMProvider(LLMProvider):
             else:
                 stop_reason = "end_turn"
 
+        usage = None
+        um = getattr(response, "usage_metadata", None)
+        if um is not None:
+            usage = {
+                "input_tokens": getattr(um, "prompt_token_count", 0) or 0,
+                "output_tokens": getattr(um, "candidates_token_count", 0) or 0,
+                "cache_read_input_tokens": getattr(um, "cached_content_token_count", 0)
+                or 0,
+                "cache_creation_input_tokens": 0,
+                "model": "",
+            }
+
         return LLMResponse(
             text="\n".join(text_parts) if text_parts else None,
             tool_calls=tool_calls,
             stop_reason=stop_reason,
             raw_content=raw_content,
+            usage=usage,
         )

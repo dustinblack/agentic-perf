@@ -177,9 +177,21 @@ class OpenAICompatLLMProvider(LLMProvider):
         else:
             stop_reason = finish_reason or "end_turn"
 
+        usage = None
+        if hasattr(response, "usage") and response.usage:
+            u = response.usage
+            usage = {
+                "input_tokens": getattr(u, "prompt_tokens", 0) or 0,
+                "output_tokens": getattr(u, "completion_tokens", 0) or 0,
+                "cache_read_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
+                "model": "",
+            }
+
         return LLMResponse(
             text=text,
             tool_calls=tool_calls,
             stop_reason=stop_reason,
             raw_content=raw_content,
+            usage=usage,
         )

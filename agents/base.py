@@ -155,9 +155,27 @@ class AgentBase(ABC):
                     },
                 )
 
-                # Check per-ticket budget after each LLM call.
-                # Uses the EventBus cumulative usage which is
-                # updated by the OTLP span processor.
+                if response.usage and self._events:
+                    self._events.record_llm_usage(
+                        ticket_id=ticket_id,
+                        input_tokens=response.usage.get("input_tokens", 0),
+                        output_tokens=response.usage.get("output_tokens", 0),
+                        duration_ms=0,
+                        model=response.usage.get("model", ""),
+                        agent_name=self.agent_name,
+                        cache_read_input_tokens=response.usage.get(
+                            "cache_read_input_tokens", 0
+                        ),
+                        cache_creation_input_tokens=response.usage.get(
+                            "cache_creation_input_tokens", 0
+                        ),
+                    )
+                    self._emit(
+                        ticket_id,
+                        "llm_usage",
+                        response.usage,
+                    )
+
                 if self._events and iteration > 1:
                     budget_status = await self._check_budget(
                         ticket_id,
