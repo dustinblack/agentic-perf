@@ -86,7 +86,21 @@ class AgentBase(ABC):
         logger.info(f"[{self.agent_name}] Starting on ticket {ticket_id}")
         ticket = await self._get_ticket(ticket_id)
         system_prompt = self._system_prompt(ticket)
-        messages = self._build_messages(ticket)
+        cf = ticket.get("custom_fields", {})
+        if cf.get("remember_previous") and cf.get("previous_messages"):
+            messages = cf["previous_messages"]
+            logger.info(
+                f"[{self.agent_name}] Resuming with {len(messages)} previous messages"
+            )
+            await self._update_fields(
+                ticket_id,
+                {
+                    "remember_previous": None,
+                    "previous_messages": None,
+                },
+            )
+        else:
+            messages = self._build_messages(ticket)
         self._emit(
             ticket_id,
             "agent_started",
@@ -299,6 +313,7 @@ class AgentBase(ABC):
                             )
                             continue  # one more LLM call
                         # Grace iteration used — hard stop.
+                        await self._save_messages(ticket_id, messages)
                         await self._handle_budget_pause(ticket_id)
                         break
                     if budget_status == "warn":
@@ -483,6 +498,7 @@ class AgentBase(ABC):
                 messages.append({"role": "user", "content": tool_results_content})
             else:
                 # while loop exhausted (max_iterations reached)
+                await self._save_messages(ticket_id, messages)
                 self._emit(
                     ticket_id,
                     "agent_error",
@@ -851,6 +867,19 @@ class AgentBase(ABC):
             },
         )
         return r.json()
+
+    async def _save_messages(
+        self,
+        ticket_id: str,
+        messages: list[dict[str, Any]],
+    ) -> None:
+        try:
+            await self._update_fields(
+                ticket_id,
+                {"previous_messages": messages},
+            )
+        except Exception:
+            logger.debug(f"Failed to save messages for {ticket_id}")
 
     async def _update_fields(
         self, ticket_id: str, fields: dict[str, Any]
