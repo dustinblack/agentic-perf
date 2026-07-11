@@ -284,6 +284,20 @@ def cmd_reply(args):
         print("Reply added and ticket aborted — moving to teardown.")
         return
 
+    model = getattr(args, "model", None)
+    provider = getattr(args, "provider", None)
+    if model or provider:
+        override = {}
+        if provider:
+            override["provider"] = provider
+        if model:
+            override["model"] = model
+        r = client.patch(
+            f"/api/v1/tickets/{args.ticket_id}/fields",
+            json={"fields": {"llm_override": override}},
+        )
+        r.raise_for_status()
+
     previous = t.get("previous_status")
     if not previous:
         print("Warning: no previous_status recorded, cannot resume automatically.")
@@ -298,7 +312,15 @@ def cmd_reply(args):
     )
     r.raise_for_status()
 
-    print(f"Reply added and ticket resumed to: {previous}")
+    msg = f"Reply added and ticket resumed to: {previous}"
+    if model or provider:
+        parts = []
+        if provider:
+            parts.append(f"provider={provider}")
+        if model:
+            parts.append(f"model={model}")
+        msg += f" (LLM override: {', '.join(parts)})"
+    print(msg)
 
 
 def cmd_approve(args):
@@ -803,6 +825,14 @@ def main():
         "--abort",
         action="store_true",
         help="Abort the ticket after replying (skip to cleanup)",
+    )
+    p_reply.add_argument(
+        "--model",
+        help="Override LLM model for the next agent (e.g., claude-haiku-4-5)",
+    )
+    p_reply.add_argument(
+        "--provider",
+        help="Override LLM provider for the next agent (e.g., claude, gemini)",
     )
 
     p_approve = sub.add_parser("approve", help="Approve a pending command execution")
