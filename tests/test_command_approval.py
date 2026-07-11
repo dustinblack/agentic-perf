@@ -11,7 +11,36 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agents.infra.server import _extract_binary
+from agents.infra.server import _approval_matches, _extract_binary
+
+
+class TestApprovalMatches:
+    def test_exact_match(self):
+        approvals = [{"binary": "python3", "host": "10.0.0.1"}]
+        assert _approval_matches(approvals, "python3", "10.0.0.1")
+
+    def test_wrong_host_no_match(self):
+        approvals = [{"binary": "python3", "host": "10.0.0.1"}]
+        assert not _approval_matches(approvals, "python3", "10.0.0.2")
+
+    def test_wrong_binary_no_match(self):
+        approvals = [{"binary": "python3", "host": "10.0.0.1"}]
+        assert not _approval_matches(approvals, "dnf", "10.0.0.1")
+
+    def test_wildcard_host_matches_any(self):
+        approvals = [{"binary": "python3", "host": "*"}]
+        assert _approval_matches(approvals, "python3", "10.0.0.99")
+
+    def test_empty_approvals(self):
+        assert not _approval_matches([], "python3", "10.0.0.1")
+
+    def test_multiple_entries(self):
+        approvals = [
+            {"binary": "python3", "host": "10.0.0.1"},
+            {"binary": "dnf", "host": "10.0.0.2"},
+        ]
+        assert _approval_matches(approvals, "dnf", "10.0.0.2")
+        assert not _approval_matches(approvals, "dnf", "10.0.0.1")
 
 
 class TestExtractBinary:
@@ -30,13 +59,16 @@ class TestExtractBinary:
 
 class TestGetTicketApprovals:
     @pytest.mark.asyncio
-    async def test_returns_approvals(self):
+    async def test_returns_scoped_approvals(self):
         from agents.infra import server
 
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
             "custom_fields": {
-                "command_approvals": ["python3", "dnf"],
+                "command_approvals": [
+                    {"binary": "python3", "host": "10.0.0.1"},
+                    {"binary": "dnf", "host": "10.0.0.2"},
+                ],
             },
         }
         mock_resp.raise_for_status = MagicMock()
@@ -53,7 +85,39 @@ class TestGetTicketApprovals:
             server._ticket_id = "PERF-TEST"
             with patch("httpx.AsyncClient", return_value=mock_client):
                 result = await server._get_ticket_approvals()
-                assert result == ["python3", "dnf"]
+                assert len(result) == 2
+                assert result[0]["binary"] == "python3"
+                assert result[0]["host"] == "10.0.0.1"
+        finally:
+            server._state_store_url = old_url
+            server._ticket_id = old_tid
+
+    @pytest.mark.asyncio
+    async def test_legacy_string_format_converted(self):
+        """Bare string entries get host='*' for backwards compat."""
+        from agents.infra import server
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "custom_fields": {
+                "command_approvals": ["python3"],
+            },
+        }
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        old_url = server._state_store_url
+        old_tid = server._ticket_id
+        try:
+            server._state_store_url = "http://localhost:8090"
+            server._ticket_id = "PERF-TEST"
+            with patch("httpx.AsyncClient", return_value=mock_client):
+                result = await server._get_ticket_approvals()
+                assert result == [{"binary": "python3", "host": "*"}]
         finally:
             server._state_store_url = old_url
             server._ticket_id = old_tid
@@ -191,7 +255,7 @@ class TestExecuteCommandApproval:
 
     @pytest.mark.asyncio
     async def test_pre_approved_binary_executes(self):
-        """Binary in command_approvals skips the approval prompt."""
+        """Binary+host in command_approvals skips the approval prompt."""
         from agents.infra import server
         from agents.infra.command_policy import CommandPolicy
         from providers.ssh import SSHResult
@@ -210,14 +274,50 @@ class TestExecuteCommandApproval:
             with patch.object(
                 server,
                 "_get_ticket_approvals",
-                return_value=["python3"],
+                return_value=[{"binary": "dnf", "host": "10.0.0.1"}],
             ):
                 result_str = await server.execute_command(
-                    "10.0.0.1", "python3 test.py", timeout=10
+                    "10.0.0.1", "dnf install -y vim", timeout=10
                 )
                 result = json.loads(result_str)
                 assert result["exit_code"] == 0
                 assert result["stdout"] == "ok"
+        finally:
+            server._policy = old_policy
+            server._ssh = old_ssh
+
+    @pytest.mark.asyncio
+    async def test_pre_approved_wrong_host_prompts(self):
+        """Approval for a different host should not skip the prompt."""
+        from agents.infra import server
+        from agents.infra.command_policy import CommandPolicy
+
+        old_policy = server._policy
+        old_ssh = server._ssh
+        try:
+            server._policy = CommandPolicy(
+                agent_name="test",
+                allowed_binaries={"ls"},
+            )
+            server._ssh = MagicMock()
+
+            with (
+                patch.object(
+                    server,
+                    "_get_ticket_approvals",
+                    return_value=[{"binary": "dnf", "host": "10.0.0.1"}],
+                ),
+                patch.object(
+                    server,
+                    "_request_approval",
+                    return_value="denied",
+                ),
+            ):
+                result_str = await server.execute_command(
+                    "10.0.0.2", "dnf install -y vim", timeout=10
+                )
+                result = json.loads(result_str)
+                assert result["blocked"] is True
         finally:
             server._policy = old_policy
             server._ssh = old_ssh
@@ -250,7 +350,7 @@ class TestExecuteCommandApproval:
                 ),
             ):
                 result_str = await server.execute_command(
-                    "10.0.0.1", "python3 test.py", timeout=10
+                    "10.0.0.1", "dnf install -y vim", timeout=10
                 )
                 result = json.loads(result_str)
                 assert result["blocked"] is True
@@ -370,7 +470,11 @@ class TestCLIApproval:
         fields = call_args.kwargs.get("json", call_args[1].get("json", {}))
         pa = fields["fields"]["pending_approval"]
         assert pa["status"] == "approved_ticket"
-        assert "python3" in fields["fields"]["command_approvals"]
+        approvals = fields["fields"]["command_approvals"]
+        assert len(approvals) == 1
+        assert approvals[0]["binary"] == "python3"
+        assert approvals[0]["host"] == "10.0.0.1"
+        assert "approved_at" in approvals[0]
 
     def test_deny(self):
         from cli import cmd_deny
