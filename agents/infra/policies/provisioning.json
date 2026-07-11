@@ -8,7 +8,7 @@
         "dnf", "yum", "rpm", "which",
         "curl", "wget",
         "git",
-        "podman", "docker",
+        "podman",
         "sudo",
         "systemctl", "setenforce", "getenforce",
         "ssh-keygen", "ssh", "scp",
@@ -18,6 +18,17 @@
         "hostname", "uname", "nproc", "free", "lscpu",
         "cd"
     ],
-    "blocked_patterns": [],
+    "blocked_patterns": [
+        "\\bdd\\b.*\\bof\\s*=\\s*/dev/[sv]d",
+        "\\bdd\\b.*\\bof\\s*=\\s*/dev/nvme",
+        "\\bmkfs\\.",
+        "\\bfdisk\\b",
+        "\\bparted\\b",
+        "\\bwipefs\\b",
+        "\\brm\\s+-[^\\s]*r[^\\s]*f[^\\s]*\\s+/$",
+        "\\b(?:docker|podman)\\s+run\\s+.*--privileged",
+        "\\b(?:docker|podman)\\s+run\\s+.*-v\\s+/:/",
+        "\\b(?:docker|podman)\\s+run\\s+.*--mount\\s+.*source=/[,\\s]"
+    ],
     "max_timeout": 7200
 }

@@ -373,3 +373,49 @@ class TestShellBypassPrevention:
     def test_ssh_localhost_with_user_blocked(self, benchmark_policy):
         allowed, _ = check_command("ssh root@localhost whoami", benchmark_policy)
         assert not allowed
+
+
+class TestSudoAndContainerPolicies:
+    """Verify sudo payload validation and container privilege blocking."""
+
+    def test_sudo_validates_payload(self, provisioning_policy):
+        allowed, _ = check_command("sudo reboot", provisioning_policy)
+        assert not allowed
+
+    def test_sudo_bash_c_validates_inner(self, provisioning_policy):
+        allowed, _ = check_command('sudo bash -c "rm -rf /"', provisioning_policy)
+        assert not allowed
+
+    def test_sudo_allowed_command(self, provisioning_policy):
+        allowed, _ = check_command("sudo systemctl restart sshd", provisioning_policy)
+        assert allowed
+
+    def test_sudo_dnf_allowed(self, provisioning_policy):
+        allowed, _ = check_command("sudo dnf install -y vim", provisioning_policy)
+        assert allowed
+
+    def test_sudo_no_command_denied(self, provisioning_policy):
+        allowed, _ = check_command("sudo", provisioning_policy)
+        assert not allowed
+
+    def test_podman_privileged_blocked(self, provisioning_policy):
+        allowed, _ = check_command(
+            "podman run --privileged alpine sh", provisioning_policy
+        )
+        assert not allowed
+
+    def test_podman_host_mount_blocked(self, provisioning_policy):
+        allowed, _ = check_command(
+            "podman run -v /:/host alpine sh", provisioning_policy
+        )
+        assert not allowed
+
+    def test_podman_normal_allowed(self, provisioning_policy):
+        allowed, _ = check_command(
+            "podman run --rm alpine echo hi", provisioning_policy
+        )
+        assert allowed
+
+    def test_docker_not_in_provisioning(self, provisioning_policy):
+        """docker removed from provisioning allowlist."""
+        assert "docker" not in provisioning_policy.allowed_binaries
