@@ -295,7 +295,12 @@ def _advance_plan(
         client.close()
 
 
-async def run_agent_task(dispatcher: Dispatcher, status: str, ticket_id: str):
+async def run_agent_task(
+    dispatcher: Dispatcher,
+    status: str,
+    ticket_id: str,
+    config: OrchestratorConfig | None = None,
+):
     agent = None
     try:
         agent = dispatcher.create_agent(status)
@@ -321,10 +326,35 @@ async def run_agent_task(dispatcher: Dispatcher, status: str, ticket_id: str):
                     cf = r.json().get("custom_fields", {})
                     if cf.get("investigation_ledger") or cf.get("anomaly_context"):
                         agent.max_iterations = 0
+                    llm_override = cf.get("llm_override")
+                    if llm_override and config:
+                        override_llm = _make_llm_provider(
+                            config,
+                            provider=llm_override.get("provider", ""),
+                            model=llm_override.get("model", ""),
+                        )
+                        agent.llm = override_llm
+                        logger.info(
+                            f"LLM override for {ticket_id}:"
+                            f" provider={llm_override.get('provider', '')}"
+                            f" model={llm_override.get('model', '')}"
+                        )
         except Exception:
             pass  # proceed with default iterations
 
         await agent.run(ticket_id)
+
+        if config:
+            try:
+                import httpx
+
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    await client.patch(
+                        f"{dispatcher.store_url}/api/v1/tickets/{ticket_id}/fields",
+                        json={"fields": {"llm_override": None}},
+                    )
+            except Exception:
+                pass
     except asyncio.CancelledError:
         logger.warning(f"Agent hard-stopped on ticket {ticket_id} (status={status})")
         try:
@@ -670,7 +700,9 @@ async def poll_loop(config: OrchestratorConfig) -> None:
 
                 dispatcher.mark_dispatched(tid, status)
                 logger.info(f"Dispatching {status} agent for ticket {tid}")
-                task = asyncio.create_task(run_agent_task(dispatcher, status, tid))
+                task = asyncio.create_task(
+                    run_agent_task(dispatcher, status, tid, config=config)
+                )
                 dispatcher.set_task(tid, task)
 
         await _process_stop_requests(dispatcher, config.state_store_url)
