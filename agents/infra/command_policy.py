@@ -55,6 +55,7 @@ GLOBAL_BLOCKED_PATTERNS: list[re.Pattern] = [
 
 SHELL_INTERPRETERS = frozenset({"bash", "sh"})
 SCRIPT_INTERPRETERS = frozenset({"python3", "python"})
+PRIVILEGE_ESCALATORS = frozenset({"sudo"})
 
 _SUBSHELL_RE = re.compile(r"\$\(|`")
 
@@ -308,6 +309,15 @@ def check_command(
             f"{binary!r} without -c is not allowed — "
             f"script file contents cannot be validated"
         )
+
+    if binary in PRIVILEGE_ESCALATORS:
+        bin_idx = tokens.index(binary) if binary in tokens else 0
+        sub_tokens = tokens[bin_idx + 1 :]
+        sub_tokens = [t for t in sub_tokens if not t.startswith("-")]
+        if not sub_tokens:
+            return False, f"{binary} with no command"
+        sub_cmd = " ".join(tokens[bin_idx + 1 :])
+        return check_command(sub_cmd, policy, _depth + 1)
 
     if binary not in policy.allowed_binaries:
         return False, f"Binary {binary!r} not in allowlist for {policy.agent_name}"
