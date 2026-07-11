@@ -40,7 +40,6 @@
         "crucible", "zathras", "burden",
         "kube-burner", "clusterbuster", "k8s-netperf", "vstorm",
 
-        "python3", "python",
         "sleep", "xargs", "xzcat",
         "cd"
     ],

@@ -14,7 +14,6 @@
         "ssh-keygen", "ssh", "scp",
         "k3s", "kubectl", "oc",
         "crucible", "zathras", "burden",
-        "python3", "python",
         "sleep", "xargs",
         "hostname", "uname", "nproc", "free", "lscpu",
         "cd"
