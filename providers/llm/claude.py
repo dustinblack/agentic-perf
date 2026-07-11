@@ -91,6 +91,7 @@ class ClaudeLLMProvider(LLMProvider):
             "max_tokens": max_tokens,
             "system": system_prompt,
             "messages": messages,
+            "cache_control": {"type": "ephemeral"},
         }
         if tools:
             kwargs["tools"] = [self._tool_def_to_dict(t) for t in tools]
