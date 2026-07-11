@@ -306,6 +306,14 @@ def cmd_reply(args):
         )
         r.raise_for_status()
 
+    remember = getattr(args, "remember", False)
+    if remember:
+        r = client.patch(
+            f"/api/v1/tickets/{args.ticket_id}/fields",
+            json={"fields": {"remember_previous": True}},
+        )
+        r.raise_for_status()
+
     previous = t.get("previous_status")
     if not previous:
         print("Warning: no previous_status recorded, cannot resume automatically.")
@@ -328,6 +336,8 @@ def cmd_reply(args):
         overrides.append(f"model={model}")
     if max_iter is not None:
         overrides.append(f"max_iterations={max_iter}")
+    if remember:
+        overrides.append("remember")
     if overrides:
         msg += f" ({', '.join(overrides)})"
     print(msg)
@@ -848,6 +858,11 @@ def main():
         "--max-iterations",
         type=int,
         help="Override max iterations for the next agent (e.g., 40)",
+    )
+    p_reply.add_argument(
+        "--remember",
+        action="store_true",
+        help="Resume with conversation context from the previous attempt",
     )
 
     p_approve = sub.add_parser("approve", help="Approve a pending command execution")
