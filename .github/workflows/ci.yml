@@ -17,7 +17,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -e ".[dev,gemini,openai]"
+        run: pip install -r requirements-dev.lock && pip install -e . --no-deps
 
       - name: Lint
         run: ./scripts/lint.sh
@@ -35,7 +35,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: pip install -e ".[dev,gemini,openai]"
+        run: pip install -r requirements-dev.lock && pip install -e . --no-deps
 
       - name: Test with coverage
         run: ./scripts/test.sh
@@ -60,7 +60,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -e ".[dev,gemini,openai]" bandit pip-audit
+        run: pip install -r requirements-dev.lock && pip install -e . --no-deps && pip install bandit pip-audit
 
       - name: Static security scan (bandit)
         run: |
@@ -73,8 +73,9 @@ jobs:
           bandit -r agents/ providers/ orchestrator/ state_store/ -lll
 
       - name: Dependency vulnerability scan (pip-audit)
-        run: pip-audit --format json --output pip-audit-report.json || true
-        continue-on-error: true
+        run: |
+          pip-audit --format json --output pip-audit-report.json
+          pip-audit --desc
 
       - name: Upload security reports
         uses: actions/upload-artifact@v7
