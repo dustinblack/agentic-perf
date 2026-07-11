@@ -29,13 +29,12 @@ class LocalSecretsProvider(SecretsProvider):
         self._dir = Path(secrets_dir) if secrets_dir else DEFAULT_SECRETS_DIR
 
     def _resolve_path(self, path: str) -> Path:
-        logical = self._dir / path
-        # Prevent path traversal via ".." in the input path itself
+        resolved = (self._dir / path).resolve()
         try:
-            logical.relative_to(self._dir)
+            resolved.relative_to(self._dir.resolve())
         except ValueError:
             raise ValueError(f"Secret path escapes secrets directory: {path}")
-        return logical
+        return resolved
 
     async def get_secret(self, path: str) -> str | None:
         file_path = self._resolve_path(path)
@@ -51,7 +50,7 @@ class LocalSecretsProvider(SecretsProvider):
     async def get_secret_file(self, path: str) -> Path | None:
         file_path = self._resolve_path(path)
         if file_path.exists():
-            return file_path.resolve()
+            return file_path
         return None
 
     async def list_secrets(self, prefix: str = "") -> list[str]:
