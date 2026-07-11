@@ -60,6 +60,42 @@ def _store_headers() -> dict[str, str]:
     return {}
 
 
+def _emit_approval_event(
+    decision: str,
+    binary: str,
+    host: str,
+    command: str,
+) -> None:
+    """Write an approval audit event to the ticket's JSONL log."""
+    import json as _json
+    from datetime import datetime, timezone
+
+    from paths import LOG_DIR
+
+    if not _ticket_id:
+        return
+
+    agent = _agent_name or "unknown"
+    event = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "ticket_id": _ticket_id,
+        "agent": agent,
+        "event_type": "command_approval",
+        "data": {
+            "decision": decision,
+            "binary": binary,
+            "host": host,
+            "command": command[:500],
+        },
+    }
+    try:
+        path = LOG_DIR / f"{_ticket_id}.jsonl"
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(_json.dumps(event, default=str) + "\n")
+    except Exception:
+        pass
+
+
 def _get_ssh() -> SSHExecutor:
     if _ssh is None:
         raise RuntimeError("SSH context not set. Call set_ssh_context() first.")
@@ -315,8 +351,12 @@ def _extract_binary(command: str) -> str:
     return ""
 
 
-async def _get_ticket_approvals() -> list[str]:
-    """Read the per-ticket command_approvals list from custom_fields."""
+async def _get_ticket_approvals() -> list[dict]:
+    """Read the per-ticket command_approvals list from custom_fields.
+
+    Returns a list of approval records: [{"binary": ..., "host": ...}, ...]
+    Also supports the legacy format (bare string list) for backwards compat.
+    """
     if not _state_store_url or not _ticket_id:
         return []
     import httpx
@@ -326,9 +366,31 @@ async def _get_ticket_approvals() -> list[str]:
             r = await client.get(f"{_state_store_url}/api/v1/tickets/{_ticket_id}")
             r.raise_for_status()
             fields = r.json().get("custom_fields", {})
-            return fields.get("command_approvals", [])
+            raw = fields.get("command_approvals", [])
+            result = []
+            for entry in raw:
+                if isinstance(entry, str):
+                    result.append({"binary": entry, "host": "*"})
+                elif isinstance(entry, dict):
+                    result.append(entry)
+            return result
     except Exception:
         return []
+
+
+def _approval_matches(
+    approvals: list[dict],
+    binary: str,
+    host: str,
+) -> bool:
+    """Check if a binary+host pair is covered by an existing approval."""
+    for entry in approvals:
+        if entry.get("binary") != binary:
+            continue
+        approved_host = entry.get("host", "*")
+        if approved_host == "*" or approved_host == host:
+            return True
+    return False
 
 
 async def _request_approval(command: str, binary: str, host: str) -> str:
@@ -439,13 +501,16 @@ async def execute_command(
             if "not in allowlist" in reason:
                 binary = _extract_binary(command)
                 ticket_approvals = await _get_ticket_approvals()
-                if binary in ticket_approvals:
+                if _approval_matches(ticket_approvals, binary, host):
                     logger.info(
-                        "Binary %r pre-approved for ticket, executing",
+                        "Binary %r pre-approved for host %s, executing",
                         binary,
+                        host,
                     )
+                    _emit_approval_event("pre_approved", binary, host, command)
                 else:
                     decision = await _request_approval(command, binary, host)
+                    _emit_approval_event(decision, binary, host, command)
                     if decision not in (
                         "approved_once",
                         "approved_ticket",

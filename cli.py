@@ -370,7 +370,7 @@ def cmd_approve(args):
 
     if args.ticket:
         decision = "approved_ticket"
-        label = f"Approved '{pa['binary']}' for this ticket"
+        label = f"Approved '{pa['binary']}' on '{pa.get('host', '*')}' for this ticket"
     else:
         decision = "approved_once"
         label = "Approved (once)"
@@ -381,8 +381,19 @@ def cmd_approve(args):
     if args.ticket:
         approvals = t.get("custom_fields", {}).get("command_approvals", [])
         binary = pa.get("binary", "")
-        if binary and binary not in approvals:
-            approvals.append(binary)
+        host = pa.get("host", "*")
+        new_entry = {
+            "binary": binary,
+            "host": host,
+            "command": pa.get("command", "")[:500],
+            "approved_at": datetime.now(timezone.utc).isoformat(),
+        }
+        already = any(
+            isinstance(a, dict) and a.get("binary") == binary and a.get("host") == host
+            for a in approvals
+        )
+        if binary and not already:
+            approvals.append(new_entry)
         fields["command_approvals"] = approvals
 
     r = client.patch(
