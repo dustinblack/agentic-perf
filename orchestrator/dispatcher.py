@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any
+
+import httpx
 
 from agents.benchmark.agent import BenchmarkAgent
 from agents.evaluate.agent import EvaluateAgent
@@ -38,10 +41,11 @@ STATUS_AGENT_MAP = {
     "synthesizing_results": "synthesizing_results",
 }
 
-TERMINAL_STATUSES = {"closed", "awaiting_customer_guidance"}
 
 
 class Dispatcher:
+    DEFAULT_LEASE_SECONDS = 300
+
     def __init__(
         self,
         state_store_url: str,
@@ -52,6 +56,7 @@ class Dispatcher:
         repo_cache: RepoCache | None = None,
         llm_factory: Any | None = None,
         instance_name: str | None = None,
+        lease_seconds: int = DEFAULT_LEASE_SECONDS,
     ) -> None:
         self.store_url = state_store_url
         self.llm = llm_provider
@@ -60,10 +65,11 @@ class Dispatcher:
         self.events = event_bus
         self.repo_cache = repo_cache
         self._llm_factory = llm_factory
-        self._instance_name = instance_name
+        self._instance_name = instance_name or "unknown"
+        self.lease_seconds = lease_seconds
         self._tasks: dict[str, asyncio.Task] = {}
         self._agents: dict[str, Any] = {}
-        self._dispatched: set[tuple[str, str]] = set()
+        self._renewal_tasks: dict[str, asyncio.Task] = {}
         self._handoff_blocked: set[tuple[str, str]] = set()
 
     def is_active(self, ticket_id: str) -> bool:
@@ -75,8 +81,78 @@ class Dispatcher:
             return False
         return True
 
-    def was_dispatched(self, ticket_id: str, status: str) -> bool:
-        return (ticket_id, status) in self._dispatched
+    def _auth_headers(self) -> dict[str, str]:
+        token = os.environ.get("AGENTIC_PERF_API_TOKEN", "")
+        if token:
+            return {"Authorization": f"Bearer {token}"}
+        return {}
+
+    def try_claim(self, ticket_id: str, status: str) -> bool:
+        """Attempt to claim a ticket via the state store. Returns True on success."""
+        try:
+            with httpx.Client(timeout=10.0, headers=self._auth_headers()) as client:
+                r = client.post(
+                    f"{self.store_url}/api/v1/tickets/{ticket_id}/claim",
+                    json={
+                        "owner": self._instance_name,
+                        "duration_seconds": self.lease_seconds,
+                    },
+                )
+                return r.status_code == 200
+        except Exception:
+            logger.exception(f"Failed to claim ticket {ticket_id}")
+            return False
+
+    def release_claim(self, ticket_id: str) -> None:
+        """Release our claim on a ticket."""
+        try:
+            with httpx.Client(timeout=10.0, headers=self._auth_headers()) as client:
+                client.request(
+                    "DELETE",
+                    f"{self.store_url}/api/v1/tickets/{ticket_id}/claim",
+                    json={"owner": self._instance_name},
+                )
+        except Exception:
+            logger.exception(f"Failed to release claim on {ticket_id}")
+
+    def renew_claim(self, ticket_id: str) -> bool:
+        """Renew our claim on a ticket. Returns True on success."""
+        try:
+            with httpx.Client(timeout=10.0, headers=self._auth_headers()) as client:
+                r = client.post(
+                    f"{self.store_url}/api/v1/tickets/{ticket_id}/claim/renew",
+                    json={
+                        "owner": self._instance_name,
+                        "duration_seconds": self.lease_seconds,
+                    },
+                )
+                return r.status_code == 200
+        except Exception:
+            logger.exception(f"Failed to renew claim on {ticket_id}")
+            return False
+
+    async def _renewal_loop(self, ticket_id: str) -> None:
+        """Background task that renews the claim at half the lease interval."""
+        interval = self.lease_seconds / 2
+        try:
+            while True:
+                await asyncio.sleep(interval)
+                if not self.renew_claim(ticket_id):
+                    logger.warning(f"Claim renewal failed for {ticket_id}")
+                    break
+        except asyncio.CancelledError:
+            pass
+
+    def start_renewal(self, ticket_id: str) -> None:
+        """Start the background claim renewal task for a ticket."""
+        task = asyncio.ensure_future(self._renewal_loop(ticket_id))
+        self._renewal_tasks[ticket_id] = task
+
+    def stop_renewal(self, ticket_id: str) -> None:
+        """Cancel the background claim renewal task for a ticket."""
+        task = self._renewal_tasks.pop(ticket_id, None)
+        if task is not None and not task.done():
+            task.cancel()
 
     def set_task(self, ticket_id: str, task: asyncio.Task) -> None:
         self._tasks[ticket_id] = task
@@ -86,12 +162,6 @@ class Dispatcher:
 
     def clear_agent(self, ticket_id: str) -> None:
         self._agents.pop(ticket_id, None)
-
-    def mark_dispatched(self, ticket_id: str, status: str) -> None:
-        self._dispatched.add((ticket_id, status))
-
-    def clear_dispatched(self, ticket_id: str) -> None:
-        self._dispatched = {(t, s) for t, s in self._dispatched if t != ticket_id}
 
     def is_handoff_blocked(self, ticket_id: str, status: str) -> bool:
         return (ticket_id, status) in self._handoff_blocked
@@ -130,7 +200,8 @@ class Dispatcher:
     def mark_done(self, ticket_id: str) -> None:
         self._tasks.pop(ticket_id, None)
         self._agents.pop(ticket_id, None)
-        self._dispatched = {(t, s) for t, s in self._dispatched if t != ticket_id}
+        self.stop_renewal(ticket_id)
+        self.release_claim(ticket_id)
         self.clear_handoff_blocked(ticket_id)
 
     def _get_llm(self, agent_type: str) -> LLMProvider:

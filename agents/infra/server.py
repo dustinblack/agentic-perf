@@ -31,10 +31,11 @@ from fastmcp import FastMCP
 from agents.infra.command_policy import (
     CommandPolicy,
     check_command,
+    extract_binary,
     load_policy,
 )
 from agents.server_utils import build_secrets_provider as _build_secrets
-from providers.ssh import SSHExecutor, SSHResult
+from providers.ssh import SSHExecutor, SSHResult, _PID_SENTINEL, parse_pid_sentinel
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +94,8 @@ def _emit_approval_event(
         path = LOG_DIR / f"{_ticket_id}.jsonl"
         with open(path, "a", encoding="utf-8") as f:
             f.write(_json.dumps(event, default=str) + "\n")
-    except Exception:
-        pass
+    except OSError:
+        logger.warning("Failed to write approval audit event for %s", _ticket_id, exc_info=True)
 
 
 def _get_ssh() -> SSHExecutor:
@@ -337,21 +338,6 @@ async def transfer_file(
     )
 
 
-def _extract_binary(command: str) -> str:
-    """Extract the primary binary name from a command string."""
-    import shlex
-
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        tokens = command.split()
-    for token in tokens:
-        if "=" in token and not token.startswith("-"):
-            continue
-        return Path(token).name
-    return ""
-
-
 async def _get_ticket_approvals() -> list[dict]:
     """Read the per-ticket command_approvals list from custom_fields.
 
@@ -375,7 +361,22 @@ async def _get_ticket_approvals() -> list[dict]:
                 elif isinstance(entry, dict):
                     result.append(entry)
             return result
+    except httpx.HTTPStatusError:
+        logger.warning(
+            "State store returned error fetching approvals for %s",
+            _ticket_id,
+            exc_info=True,
+        )
+        return []
+    except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        logger.error(
+            "State store unreachable fetching approvals for %s: %s",
+            _ticket_id,
+            exc,
+        )
+        return []
     except Exception:
+        logger.exception("Unexpected error fetching approvals for %s", _ticket_id)
         return []
 
 
@@ -458,8 +459,8 @@ async def _request_approval(command: str, binary: str, host: str) -> str:
                         status,
                     )
                     return status
-            except Exception:
-                logger.exception("Error polling for approval")
+            except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException):
+                logger.warning("Error polling for approval of %s", command[:80], exc_info=True)
 
     logger.warning("Approval timeout for: %s", command[:120])
     return "denied"
@@ -479,11 +480,12 @@ async def execute_command(
     If the binary is not in the allowlist but is otherwise safe, the user
     will be prompted for approval.
 
-    Set background=True (or end the command with &) to run the command in
-    the background. The response will include a bg_id and pid. You MUST
-    call stop_background_command(bg_id) when you no longer need the
-    background process — for example, after using nc to test port
-    connectivity, stop the listener before the benchmark needs that port.
+    Set background=True to run the command in the background. The response
+    will include a bg_id and pid. You MUST call stop_background_command(bg_id)
+    when you no longer need the background process — for example, after
+    using nc to test port connectivity, stop the listener before the
+    benchmark needs that port. Do NOT append '&' to the command string;
+    use this parameter instead.
 
     Call set_ssh_context() with agent_name to load the policy.
     """
@@ -494,16 +496,11 @@ async def execute_command(
     # and validates exactly what will be executed.
     command = html.unescape(command)
 
-    stripped = command.rstrip()
-    if stripped.endswith("&"):
-        background = True
-        command = stripped[:-1].rstrip()
-
     if _policy is not None:
         allowed, reason = check_command(command, _policy)
         if not allowed:
             if "not in allowlist" in reason:
-                binary = _extract_binary(command)
+                binary = extract_binary(command)
                 ticket_approvals = await _get_ticket_approvals()
                 if _approval_matches(ticket_approvals, binary, host):
                     logger.info(
@@ -556,15 +553,28 @@ async def execute_command(
 
     if background:
         bg_id = f"bg-{uuid.uuid4().hex[:8]}"
-        bg_cmd = f"nohup {command} > /tmp/{bg_id}.out 2>&1 & echo $!"
-        result = await ssh.run(host, bg_cmd, timeout=10)
-        pid_str = result.stdout.strip().splitlines()[-1] if result.stdout else ""
-        if result.exit_code == 0 and pid_str.isdigit():
-            pid = int(pid_str)
+        mkd = await ssh.run(host, "mktemp -d /tmp/bg-XXXXXXXX", timeout=10)
+        if mkd.exit_code != 0 or not mkd.stdout.strip():
+            return json.dumps(
+                {
+                    "status": "failed",
+                    "exit_code": mkd.exit_code,
+                    "stdout": mkd.stdout or "",
+                    "stderr": mkd.stderr or "Failed to create temp directory",
+                }
+            )
+        bg_dir = mkd.stdout.strip()
+        out_file = f"{bg_dir}/out"
+        bg_cmd = f"nohup {command} > {out_file} 2>&1 & echo {_PID_SENTINEL}$!"
+        result = await ssh.run(host, bg_cmd, timeout=30)
+        pid = parse_pid_sentinel(result.stdout or "")
+        if result.exit_code == 0 and pid is not None:
             _background_pids[bg_id] = {
                 "host": host,
                 "pid": pid,
                 "command": command,
+                "dir": bg_dir,
+                "out_file": out_file,
             }
             return json.dumps(
                 {
@@ -609,6 +619,10 @@ async def stop_background_command(bg_id: str) -> str:
     if check.exit_code == 0:
         await ssh.run(host, f"kill -9 {pid} 2>/dev/null", timeout=5)
 
+    bg_dir = entry.get("dir")
+    if bg_dir:
+        await ssh.run(host, f"rm -rf {bg_dir}", timeout=5)
+
     return json.dumps({"status": "stopped", "bg_id": bg_id, "pid": pid})
 
 
@@ -629,7 +643,8 @@ async def check_background_command(bg_id: str) -> str:
     check = await ssh.run(host, f"kill -0 {pid} 2>/dev/null", timeout=5)
     running = check.exit_code == 0
 
-    tail = await ssh.run(host, f"tail -20 /tmp/{bg_id}.out 2>/dev/null", timeout=5)
+    out_file = entry.get("out_file", f"/tmp/{bg_id}.out")
+    tail = await ssh.run(host, f"tail -20 {out_file} 2>/dev/null", timeout=5)
     output = tail.stdout.strip() if tail.stdout else ""
 
     return json.dumps(
@@ -734,19 +749,17 @@ async def test_port_connectivity(
         listen_ip: str,
         label: str,
     ) -> dict[str, Any]:
-        bg_cmd = f"nohup nc -l {listen_ip} {port} > /dev/null 2>&1 & echo $!"
-        start = await ssh.run(listener_ssh, bg_cmd, timeout=5)
-        pid_str = start.stdout.strip().splitlines()[-1] if start.stdout else ""
+        bg_cmd = f"nohup nc -l {listen_ip} {port} > /dev/null 2>&1 & echo {_PID_SENTINEL}$!"
+        start = await ssh.run(listener_ssh, bg_cmd, timeout=10)
+        pid = parse_pid_sentinel(start.stdout or "")
 
-        if not pid_str.isdigit():
+        if pid is None:
             return {
                 "direction": label,
                 "port": port,
                 "reachable": False,
                 "error": "Failed to start nc listener",
             }
-
-        pid = int(pid_str)
         try:
             test_cmd = f"nc -z -w {timeout} {listen_ip} {port}"
             test = await ssh.run(connector_ssh, test_cmd, timeout=timeout + 5)

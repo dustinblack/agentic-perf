@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from paths import TICKET_DIR as DEFAULT_PERSIST_DIR
@@ -164,6 +164,73 @@ class TicketStore:
                 for t in self._tickets.values()
                 if t.transition_seq > since_seq
             ]
+
+    def claim_ticket(
+        self, ticket_id: str, owner: str, duration_seconds: int = 300
+    ) -> dict | None:
+        """Atomically claim a ticket for dispatch.
+
+        Returns the claim dict on success, None if already claimed by
+        another owner with an unexpired lease.
+        """
+        with self._lock:
+            ticket = self._tickets.get(ticket_id)
+            if ticket is None:
+                raise TicketNotFound(f"Ticket {ticket_id} not found")
+
+            now = datetime.now(timezone.utc)
+            existing = ticket.custom_fields.get("claim")
+            if existing:
+                expires = datetime.fromisoformat(existing["expires"])
+                if expires > now and existing["owner"] != owner:
+                    return None
+
+            expires = now + timedelta(seconds=duration_seconds)
+            claim = {
+                "owner": owner,
+                "expires": expires.isoformat(),
+                "status": ticket.status.value,
+            }
+            ticket.custom_fields["claim"] = claim
+            ticket.updated_at = now
+            self._persist_ticket(ticket)
+            return claim
+
+    def release_claim(self, ticket_id: str, owner: str) -> bool:
+        """Release a claim if owned by the given owner."""
+        with self._lock:
+            ticket = self._tickets.get(ticket_id)
+            if ticket is None:
+                raise TicketNotFound(f"Ticket {ticket_id} not found")
+
+            existing = ticket.custom_fields.get("claim")
+            if not existing or existing["owner"] != owner:
+                return False
+
+            ticket.custom_fields.pop("claim", None)
+            ticket.updated_at = datetime.now(timezone.utc)
+            self._persist_ticket(ticket)
+            return True
+
+    def renew_claim(
+        self, ticket_id: str, owner: str, duration_seconds: int = 300
+    ) -> dict | None:
+        """Extend an existing claim's expiry. Returns updated claim or None."""
+        with self._lock:
+            ticket = self._tickets.get(ticket_id)
+            if ticket is None:
+                raise TicketNotFound(f"Ticket {ticket_id} not found")
+
+            existing = ticket.custom_fields.get("claim")
+            if not existing or existing["owner"] != owner:
+                return None
+
+            now = datetime.now(timezone.utc)
+            expires = now + timedelta(seconds=duration_seconds)
+            existing["expires"] = expires.isoformat()
+            ticket.updated_at = now
+            self._persist_ticket(ticket)
+            return existing
 
     def _persist_ticket(self, ticket: Ticket) -> None:
         path = self._persist_dir / f"{ticket.id}.json"

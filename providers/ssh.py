@@ -2,11 +2,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
+
+_PID_SENTINEL = "__PID:"
+_PID_RE = re.compile(r"__PID:(\d+)$", re.MULTILINE)
+
+
+def parse_pid_sentinel(stdout: str) -> int | None:
+    """Extract the PID from a sentinel line like ``__PID:12345``."""
+    m = _PID_RE.search(stdout)
+    return int(m.group(1)) if m else None
 
 
 @dataclass
@@ -120,23 +130,32 @@ class SSHExecutor:
 
         Returns the same SSHResult as run() with the full output.
         """
-        run_id = uuid.uuid4().hex[:8]
-        out_file = f"/tmp/run-{run_id}.out"
-        rc_file = f"/tmp/run-{run_id}.rc"
+        mkd = await self.run(
+            host, "mktemp -d /tmp/run-XXXXXXXX", timeout=10, key_path=key_path
+        )
+        if mkd.exit_code != 0 or not mkd.stdout.strip():
+            return SSHResult(
+                stdout=mkd.stdout or "",
+                stderr=mkd.stderr or "Failed to create temp directory",
+                exit_code=mkd.exit_code or 1,
+            )
+        run_dir = mkd.stdout.strip()
+        out_file = f"{run_dir}/out"
+        rc_file = f"{run_dir}/rc"
 
         escaped = command.replace("'", "'\\''")
         bg_cmd = (
-            f"nohup sh -c '{escaped}; echo $? > {rc_file}' > {out_file} 2>&1 & echo $!"
+            f"nohup sh -c '{escaped}; echo $? > {rc_file}'"
+            f" > {out_file} 2>&1 & echo {_PID_SENTINEL}$!"
         )
-        launch = await self.run(host, bg_cmd, timeout=15, key_path=key_path)
-        pid_str = launch.stdout.strip().splitlines()[-1] if launch.stdout else ""
-        if launch.exit_code != 0 or not pid_str.isdigit():
+        launch = await self.run(host, bg_cmd, timeout=30, key_path=key_path)
+        pid = parse_pid_sentinel(launch.stdout or "")
+        if launch.exit_code != 0 or pid is None:
             return SSHResult(
                 stdout=launch.stdout or "",
                 stderr=launch.stderr or "Failed to launch background command",
                 exit_code=launch.exit_code or 1,
             )
-        pid = int(pid_str)
         logger.info(f"[ssh] {host}: background pid={pid} for: {command[:120]}")
 
         last_reported = ""
@@ -189,7 +208,7 @@ class SSHExecutor:
 
         await self.run(
             host,
-            f"rm -f {out_file} {rc_file}",
+            f"rm -rf {run_dir}",
             timeout=5,
             key_path=key_path,
         )

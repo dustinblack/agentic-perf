@@ -804,9 +804,6 @@ async def poll_loop(config: OrchestratorConfig) -> None:
                 if dispatcher.is_active(tid):
                     logger.info(f"Skipping {tid} at {status}: is_active")
                     continue
-                if dispatcher.was_dispatched(tid, status):
-                    logger.info(f"Skipping {tid} at {status}: was_dispatched")
-                    continue
 
                 if status == "awaiting_hardware" and ticket.get(
                     "custom_fields", {}
@@ -814,7 +811,6 @@ async def poll_loop(config: OrchestratorConfig) -> None:
                     logger.warning(
                         f"Ticket {tid} has absent_suite=True, pausing for human input"
                     )
-                    dispatcher.mark_dispatched(tid, status)
                     await _block_absent_suite(
                         config.state_store_url, tid, event_bus=dispatcher.events
                     )
@@ -836,7 +832,10 @@ async def poll_loop(config: OrchestratorConfig) -> None:
                         )
                     continue
 
-                dispatcher.mark_dispatched(tid, status)
+                if not dispatcher.try_claim(tid, status):
+                    logger.info(f"Skipping {tid} at {status}: claim held")
+                    continue
+                dispatcher.start_renewal(tid)
                 logger.info(f"Dispatching {status} agent for ticket {tid}")
                 task = asyncio.create_task(
                     run_agent_task(

@@ -7,10 +7,13 @@ This module centralizes that setup to avoid duplication.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def setup_project_path() -> str:
@@ -82,11 +85,9 @@ def build_secrets_provider():
 def build_repo_cache():
     """Construct a RepoCache with harness repos from environment variables."""
     import json
-    import logging
 
     from providers.skills.repo_cache import RepoCache
 
-    logger = logging.getLogger(__name__)
     cache = RepoCache()
 
     default_repos = {
@@ -114,7 +115,7 @@ def build_repo_cache():
         try:
             cache.ensure_repo(name, url)
         except Exception:
-            logger.debug("Failed to cache repo %s", name)
+            logger.warning("Failed to cache repo %s from %s", name, url, exc_info=True)
 
     return cache
 
@@ -206,7 +207,7 @@ async def tool_progress(
                 json={"author": author, "body": message},
             )
     except Exception:
-        pass
+        logger.debug("Failed to post progress comment for %s", ticket_id, exc_info=True)
 
     _emit_tool_progress_event(ticket_id, author, message)
 
@@ -235,8 +236,8 @@ def _emit_tool_progress_event(
         }
         with open(path, "a", encoding="utf-8") as f:
             f.write(_json.dumps(event, default=str) + "\n")
-    except Exception:
-        pass
+    except OSError:
+        logger.debug("Failed to write tool_progress event for %s", ticket_id, exc_info=True)
 
 
 def build_investigation_provider():

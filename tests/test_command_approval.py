@@ -11,7 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agents.infra.server import _approval_matches, _extract_binary
+from agents.infra.command_policy import extract_binary
+from agents.infra.server import _approval_matches
 
 
 class TestApprovalMatches:
@@ -45,16 +46,25 @@ class TestApprovalMatches:
 
 class TestExtractBinary:
     def test_simple_command(self):
-        assert _extract_binary("ls /tmp") == "ls"
+        assert extract_binary("ls /tmp") == "ls"
 
     def test_absolute_path(self):
-        assert _extract_binary("/usr/bin/python3 script.py") == "python3"
+        assert extract_binary("/usr/bin/python3 script.py") == "python3"
 
     def test_env_prefix(self):
-        assert _extract_binary("FOO=bar python3 script.py") == "python3"
+        assert extract_binary("FOO=bar python3 script.py") == "python3"
 
     def test_empty_command(self):
-        assert _extract_binary("") == ""
+        assert extract_binary("") == ""
+
+    def test_multiple_env_prefixes(self):
+        assert extract_binary("A=1 B=2 grep foo") == "grep"
+
+    def test_quoted_args(self):
+        assert extract_binary("echo 'hello world'") == "echo"
+
+    def test_cd_chain(self):
+        assert extract_binary("cd /tmp") == "cd"
 
 
 class TestGetTicketApprovals:

@@ -37,47 +37,26 @@ class TestHtmlUnescape:
         assert html.unescape(cmd) == 'nc -l 30002 & sleep 1; echo "done"'
 
 
-class TestTrailingAmpDetection:
-    """Verify trailing & detection and stripping logic."""
+class TestBackgroundModeDetection:
+    """Verify that background mode requires explicit background=True."""
 
-    def _detect_background(self, command):
-        command = html.unescape(command)
-        stripped = command.rstrip()
-        background = False
-        if stripped.endswith("&"):
-            background = True
-            command = stripped[:-1].rstrip()
-        return background, command
+    def test_trailing_amp_not_treated_as_background(self):
+        """A trailing & in the command is NOT auto-detected as background."""
+        cmd = "nc -l 30002 &"
+        unescaped = html.unescape(cmd)
+        assert unescaped == "nc -l 30002 &"
 
-    def test_trailing_amp(self):
-        bg, cmd = self._detect_background("nc -l 30002 &")
-        assert bg is True
-        assert cmd == "nc -l 30002"
+    def test_double_amp_preserved(self):
+        """&& chains are not mangled by removing one &."""
+        cmd = "echo ok &amp;&amp; echo done"
+        unescaped = html.unescape(cmd)
+        assert unescaped == "echo ok && echo done"
 
-    def test_trailing_amp_entity(self):
-        bg, cmd = self._detect_background("nc -l 30002 &amp;")
-        assert bg is True
-        assert cmd == "nc -l 30002"
-
-    def test_no_trailing_amp(self):
-        bg, cmd = self._detect_background("hostname -f")
-        assert bg is False
-        assert cmd == "hostname -f"
-
-    def test_mid_command_amp_not_detected(self):
-        bg, cmd = self._detect_background("echo a & echo b")
-        assert bg is False
-        assert cmd == "echo a & echo b"
-
-    def test_amp_in_middle_entity(self):
-        bg, cmd = self._detect_background("echo a &amp;&amp; echo b")
-        assert bg is False
-        assert cmd == "echo a && echo b"
-
-    def test_trailing_whitespace(self):
-        bg, cmd = self._detect_background("nc -l 30002 &  ")
-        assert bg is True
-        assert cmd == "nc -l 30002"
+    def test_mid_command_amp_preserved(self):
+        """Internal & (job control) is preserved."""
+        cmd = "echo a & echo b"
+        unescaped = html.unescape(cmd)
+        assert unescaped == "echo a & echo b"
 
 
 @pytest.mark.asyncio
@@ -103,32 +82,29 @@ async def test_execute_command_unescapes_html():
 
 
 @pytest.mark.asyncio
-async def test_execute_command_background_trailing_amp():
-    """Trailing & triggers background mode."""
+async def test_execute_command_trailing_amp_not_backgrounded():
+    """Trailing & does NOT auto-trigger background mode."""
     import agents.infra.server as infra
 
     mock_ssh = AsyncMock()
-    mock_ssh.run = AsyncMock(return_value=_make_ssh_result(stdout="12345\n"))
+    mock_ssh.run = AsyncMock(return_value=_make_ssh_result(stdout="ok\n"))
 
     with (
         patch.object(infra, "_ssh", mock_ssh),
         patch.object(infra, "_policy", None),
-        patch.object(infra, "_background_pids", {}),
     ):
         result = await infra.execute_command(
             host="10.0.0.1",
             command="nc -l 30002 &",
         )
         data = json.loads(result)
-        assert data["status"] == "backgrounded"
-        assert data["pid"] == 12345
-        assert "bg_id" in data
-        assert data["host"] == "10.0.0.1"
+        assert "status" not in data or data.get("status") != "backgrounded"
+        assert data["exit_code"] == 0
 
         call_args = mock_ssh.run.call_args
         actual_cmd = call_args[0][1]
-        assert "nohup" in actual_cmd
-        assert "echo $!" in actual_cmd
+        assert "nc -l 30002 &" == actual_cmd
+        assert "nohup" not in actual_cmd
 
 
 @pytest.mark.asyncio
@@ -136,8 +112,13 @@ async def test_execute_command_background_explicit():
     """background=True parameter triggers background mode."""
     import agents.infra.server as infra
 
+    async def _mock_run(host, cmd, timeout=300):
+        if "mktemp -d" in cmd:
+            return _make_ssh_result(stdout="/tmp/bg-test1234\n")
+        return _make_ssh_result(stdout="__PID:99999\n")
+
     mock_ssh = AsyncMock()
-    mock_ssh.run = AsyncMock(return_value=_make_ssh_result(stdout="99999\n"))
+    mock_ssh.run = _mock_run
 
     with (
         patch.object(infra, "_ssh", mock_ssh),
@@ -155,25 +136,48 @@ async def test_execute_command_background_explicit():
 
 
 @pytest.mark.asyncio
-async def test_execute_command_background_amp_entity():
-    """Trailing &amp; (HTML entity) triggers background mode."""
+async def test_execute_command_amp_entity_not_backgrounded():
+    """Trailing &amp; (HTML entity) does NOT auto-trigger background mode."""
     import agents.infra.server as infra
 
     mock_ssh = AsyncMock()
-    mock_ssh.run = AsyncMock(return_value=_make_ssh_result(stdout="55555\n"))
+    mock_ssh.run = AsyncMock(return_value=_make_ssh_result(stdout="ok\n"))
 
     with (
         patch.object(infra, "_ssh", mock_ssh),
         patch.object(infra, "_policy", None),
-        patch.object(infra, "_background_pids", {}),
     ):
         result = await infra.execute_command(
             host="10.0.0.1",
             command="nc -l 30002 &amp;",
         )
         data = json.loads(result)
-        assert data["status"] == "backgrounded"
-        assert data["pid"] == 55555
+        assert "status" not in data or data.get("status") != "backgrounded"
+
+        call_args = mock_ssh.run.call_args
+        actual_cmd = call_args[0][1]
+        assert "nc -l 30002 &" == actual_cmd
+
+
+@pytest.mark.asyncio
+async def test_execute_command_double_amp_preserved():
+    """A && chain is not mangled by background detection."""
+    import agents.infra.server as infra
+
+    mock_ssh = AsyncMock()
+    mock_ssh.run = AsyncMock(return_value=_make_ssh_result(stdout="ok\n"))
+
+    with (
+        patch.object(infra, "_ssh", mock_ssh),
+        patch.object(infra, "_policy", None),
+    ):
+        result = await infra.execute_command(
+            host="10.0.0.1",
+            command="echo ok &amp;&amp; echo done",
+        )
+        call_args = mock_ssh.run.call_args
+        actual_cmd = call_args[0][1]
+        assert actual_cmd == "echo ok && echo done"
 
 
 @pytest.mark.asyncio
@@ -185,7 +189,8 @@ async def test_stop_background_command():
     mock_ssh.run = AsyncMock(return_value=_make_ssh_result(exit_code=1))
 
     bg_id = "bg-test1234"
-    pids = {bg_id: {"host": "10.0.0.1", "pid": 12345, "command": "nc -l"}}
+    pids = {bg_id: {"host": "10.0.0.1", "pid": 12345, "command": "nc -l",
+                     "dir": "/tmp/bg-test1234", "out_file": "/tmp/bg-test1234/out"}}
 
     with (
         patch.object(infra, "_ssh", mock_ssh),
@@ -229,7 +234,8 @@ async def test_check_background_command():
     )
 
     bg_id = "bg-check123"
-    pids = {bg_id: {"host": "10.0.0.1", "pid": 67890, "command": "nc -l"}}
+    pids = {bg_id: {"host": "10.0.0.1", "pid": 67890, "command": "nc -l",
+                     "dir": "/tmp/bg-check123", "out_file": "/tmp/bg-check123/out"}}
 
     with (
         patch.object(infra, "_ssh", mock_ssh),
@@ -256,7 +262,8 @@ async def test_check_background_command_not_running():
     )
 
     bg_id = "bg-dead1234"
-    pids = {bg_id: {"host": "10.0.0.1", "pid": 11111, "command": "nc -l"}}
+    pids = {bg_id: {"host": "10.0.0.1", "pid": 11111, "command": "nc -l",
+                     "dir": "/tmp/bg-dead1234", "out_file": "/tmp/bg-dead1234/out"}}
 
     with (
         patch.object(infra, "_ssh", mock_ssh),
@@ -453,7 +460,7 @@ async def test_port_connectivity_forward_only():
     async def _mock_run(host, cmd, timeout=300):
         call_log.append((host, cmd))
         if "nc -l" in cmd:
-            return _make_ssh_result(stdout="12345\n")
+            return _make_ssh_result(stdout="__PID:12345\n")
         if "nc -z" in cmd:
             return _make_ssh_result(exit_code=0)
         if "kill" in cmd:
@@ -490,7 +497,7 @@ async def test_port_connectivity_bidirectional():
 
     async def _mock_run(host, cmd, timeout=300):
         if "nc -l" in cmd:
-            return _make_ssh_result(stdout="99999\n")
+            return _make_ssh_result(stdout="__PID:99999\n")
         if "nc -z" in cmd:
             return _make_ssh_result(exit_code=0)
         if "kill" in cmd:
@@ -522,7 +529,7 @@ async def test_port_connectivity_failure():
 
     async def _mock_run(host, cmd, timeout=300):
         if "nc -l" in cmd:
-            return _make_ssh_result(stdout="12345\n")
+            return _make_ssh_result(stdout="__PID:12345\n")
         if "nc -z" in cmd:
             return _make_ssh_result(exit_code=1, stderr="Connection refused")
         if "kill" in cmd:

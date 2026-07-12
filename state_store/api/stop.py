@@ -4,10 +4,15 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 
-from ..models import AddCommentRequest, StopRequest, TicketStatus, TransitionRequest
+from ..models import (
+    NON_DISPATCHABLE_STATUSES,
+    TERMINAL_STATUSES,
+    AddCommentRequest,
+    StopRequest,
+    TicketStatus,
+    TransitionRequest,
+)
 from ..store import TicketNotFound
-
-TERMINAL_STATUSES = {TicketStatus.CLOSED, TicketStatus.AWAITING_CUSTOMER_GUIDANCE}
 
 router = APIRouter(tags=["stop"])
 
@@ -20,12 +25,13 @@ def stop_ticket(ticket_id: str, body: StopRequest, request: Request):
     except TicketNotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-    if ticket.status in TERMINAL_STATUSES:
+    if ticket.status in NON_DISPATCHABLE_STATUSES:
+        kind = "terminal" if ticket.status in TERMINAL_STATUSES else "paused"
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Ticket {ticket_id} is already in terminal state"
-                f" '{ticket.status.value}'"
+                f"Ticket {ticket_id} is in {kind} state"
+                f" '{ticket.status.value}' — nothing to stop"
             ),
         )
 
@@ -81,7 +87,7 @@ def stop_all(body: StopRequest, request: Request):
     tickets = store.list_tickets()
     affected = []
     for ticket in tickets:
-        if ticket.status in TERMINAL_STATUSES:
+        if ticket.status in NON_DISPATCHABLE_STATUSES:
             continue
         updated = store.update_fields(
             ticket.id,
