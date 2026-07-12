@@ -218,3 +218,39 @@ a guardrail. Existing examples to follow:
 - PID lock files against duplicate orchestrators
 - `submit_*` structured tool calls as the mandatory agent output
   format (never parse free-text for structured results)
+
+### Security Model & Current Limitations
+
+The system uses defense-in-depth, but several controls are not yet
+hardened to the level of a full sandbox. Contributors (human and AI)
+should understand what is enforced today and what is not.
+
+**What is enforced:**
+
+- **Command policy** (`agents/infra/command_policy.py`) — per-agent
+  binary allowlists, blocked patterns, and shell-bypass detection
+  (chaining, subshells, interpreter payloads). This catches
+  accidental LLM hallucinations and trivial evasion attempts.
+- **Bearer token auth** (`state_store/auth.py`) — every API request
+  requires a token generated on first run and shared via env var.
+- **Dispatch claims** — ticket-level leases prevent duplicate agent
+  dispatch on orchestrator restart.
+- **Secrets isolation** — secrets live in `~/.agentic-perf/secrets/`
+  and are served to agents via the infra MCP server; the LLM never
+  sees raw credentials.
+
+**What is NOT enforced (known limitations):**
+
+- **The command policy is advisory, not a sandbox.** It cannot catch
+  base64-encoded payloads, obfuscated commands, or commands that are
+  individually safe but dangerous in combination. Container/seccomp
+  isolation is planned but not yet implemented.
+- **The state store binds to 0.0.0.0.** While bearer-token-protected,
+  it should be bound to localhost or placed behind a firewall on
+  untrusted networks. The token is a shared deployment secret, not
+  per-user auth.
+- **Background command output** is written to per-run private temp
+  directories (mode 0700 via `mktemp -d`), but the remote commands
+  themselves run as root over SSH with no additional confinement.
+- **Audit logging** (JSONL event files) is best-effort — a disk-full
+  condition will log a warning but not block execution.
