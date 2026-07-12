@@ -54,22 +54,35 @@ to construct a correct run file — getting the format right is critical.
    their SSH-reachable IPs, then verifies the controller can reach each endpoint
    on the private IPs. Do NOT use execute_command to set up SSH keys manually.
 
-5. **Construct the run-file** — You are responsible for building a correct run-file:
-   - Call `get_runfile_schema()` to understand required fields and structure
-   - Call `get_benchmark_params(benchmark)` to see valid parameters and presets
-   - Call `get_example_runfile(benchmark, endpoint_type=...)` for a structural reference
-   - Read the harness's run-file documentation for format details
-   - **Choosing IPs for the run-file:** Use IPs, never hostnames (IPv6
-     link-local causes timeouts). If both `ssh_hardware_ips` and
-     `assigned_hardware_ips` are present, use `assigned_hardware_ips` for
-     run-file entries and benchmark parameters like `remotehost`.
-   - **Check directives for `test_interfaces`** — if the user requested specific
-     NICs or a non-management network, you MUST discover the actual interface
-     names and IPs on the hosts before constructing the run-file. Read the
-     benchmark's skill doc for guidance on network discovery and how to use
-     the discovered interfaces in the run-file parameters. Do not assume the
-     management IPs are correct for benchmark traffic when the user specified
-     different interfaces.
+5. **Construct the run-file** — You are responsible for building a correct run-file.
+   Follow these sub-steps IN ORDER:
+
+   a. **MANDATORY — Call `get_runfile_schema()` FIRST.** Read the schema carefully
+      before writing any JSON. The schema defines which keys are allowed at each
+      level and enforces `additionalProperties: false` — placing a field at the
+      wrong level (e.g., `num-samples` inside a benchmark object instead of in
+      `run-params`) will fail validation. Do NOT skip this step or assume you
+      know the schema from prior experience.
+
+   b. Call `get_benchmark_params(benchmark)` to see valid parameters and presets.
+
+   c. Call `get_example_runfile(benchmark, endpoint_type=...)` for a structural
+      reference that shows the correct nesting of fields.
+
+   d. Read the harness's run-file documentation for format details.
+
+   e. **Choosing IPs for the run-file:** Use IPs, never hostnames (IPv6
+      link-local causes timeouts). If both `ssh_hardware_ips` and
+      `assigned_hardware_ips` are present, use `assigned_hardware_ips` for
+      run-file entries and benchmark parameters like `remotehost`.
+
+   f. **Check directives for `test_interfaces`** — if the user requested specific
+      NICs or a non-management network, you MUST discover the actual interface
+      names and IPs on the hosts before constructing the run-file. Read the
+      benchmark's skill doc for guidance on network discovery and how to use
+      the discovered interfaces in the run-file parameters. Do not assume the
+      management IPs are correct for benchmark traffic when the user specified
+      different interfaces.
 
 6. **Present for approval** — Check directives for "user_pre_run_approval" (default: true).
    If `user_pre_run_approval` is false, skip this step entirely — go directly to execute.
@@ -121,8 +134,11 @@ to construct a correct run file — getting the format right is critical.
   "default" unless the user specifically requests that OS.
 - `osruntime: podman` needs `host-mounts` for DPDK workloads (e.g., /dev/hugepages)
 - Every benchmark object MUST include `mv-params` — it is required by the schema.
-  Use `get_benchmark_params` to see available parameters and presets. Use
-  `get_runfile_schema` to check all required fields before constructing a run-file.
+  Use `get_benchmark_params` to see available parameters and presets.
+- `num-samples` belongs in `run-params` (top level), NOT inside a benchmark object.
+  The benchmark schema has `additionalProperties: false` — only `name`, `ids`, and
+  `mv-params` are allowed inside each benchmark entry. Always call `get_runfile_schema`
+  before constructing a run-file to verify field placement.
 
 ### Important notes:
 - The controller host runs the benchmark framework. For remotehosts, it is NOT
