@@ -196,8 +196,16 @@ def _has_unquoted_subshell(command: str) -> bool:
     return False
 
 
-def _extract_binary(tokens: list[str]) -> str:
-    """Extract the binary name from parsed tokens, skipping env var prefixes."""
+def extract_binary(command: str) -> str:
+    """Extract the primary binary name from a command string.
+
+    Skips leading env-var assignments (FOO=bar) and returns
+    the basename of the first real token.
+    """
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        tokens = command.split()
     for token in tokens:
         if "=" in token and not token.startswith("-"):
             continue
@@ -287,7 +295,7 @@ def check_command(
     if not tokens:
         return False, "Empty command after parsing"
 
-    binary = _extract_binary(tokens)
+    binary = extract_binary(command)
 
     if not policy.allowed_binaries:
         return False, f"No binaries allowed for agent {policy.agent_name}"

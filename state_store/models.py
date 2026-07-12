@@ -26,6 +26,10 @@ class TicketStatus(str, Enum):
     SYNTHESIZING_RESULTS = "synthesizing_results"
 
 
+TERMINAL_STATUSES: set[TicketStatus] = {TicketStatus.CLOSED}
+PAUSED_STATUSES: set[TicketStatus] = {TicketStatus.AWAITING_CUSTOMER_GUIDANCE}
+NON_DISPATCHABLE_STATUSES: set[TicketStatus] = TERMINAL_STATUSES | PAUSED_STATUSES
+
 VALID_TRANSITIONS: dict[TicketStatus, list[TicketStatus]] = {
     # --- Original linear pipeline ---
     TicketStatus.NEW: [TicketStatus.TRIAGE_PENDING],
@@ -157,3 +161,8 @@ class StopMode(str, Enum):
 
 class StopRequest(BaseModel):
     mode: StopMode = StopMode.GRACEFUL
+
+
+class ClaimRequest(BaseModel):
+    owner: str
+    duration_seconds: int = 300

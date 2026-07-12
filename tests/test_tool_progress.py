@@ -6,6 +6,30 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from providers.ssh import parse_pid_sentinel
+
+
+class TestParsePidSentinel:
+    def test_clean_output(self):
+        assert parse_pid_sentinel("__PID:12345\n") == 12345
+
+    def test_noisy_output(self):
+        assert parse_pid_sentinel(
+            "nohup: ignoring input\nsome motd\n__PID:42\n"
+        ) == 42
+
+    def test_trailing_text_after_pid(self):
+        assert parse_pid_sentinel("__PID:99\nsome trailing line\n") == 99
+
+    def test_no_sentinel(self):
+        assert parse_pid_sentinel("12345\n") is None
+
+    def test_empty(self):
+        assert parse_pid_sentinel("") is None
+
+    def test_partial_sentinel(self):
+        assert parse_pid_sentinel("PID:12345\n") is None
+
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
@@ -135,7 +159,7 @@ class TestRunWithProgress:
             call_count += 1
             # 1: launch — return PID
             if "nohup" in cmd:
-                return SSHResult(stdout="12345\n", stderr="", exit_code=0)
+                return SSHResult(stdout="__PID:12345\n", stderr="", exit_code=0)
             # 2: first poll — rc file not yet present
             if "test -f" in cmd and call_count <= 4:
                 return SSHResult(stdout="", stderr="", exit_code=1)
@@ -194,7 +218,7 @@ class TestRunWithProgress:
 
         async def mock_run(host, cmd, **kwargs):
             if "nohup" in cmd:
-                return SSHResult(stdout="99\n", stderr="", exit_code=0)
+                return SSHResult(stdout="__PID:99\n", stderr="", exit_code=0)
             if "test -f" in cmd:
                 return SSHResult(stdout="", stderr="", exit_code=0)
             if "cat" in cmd and ".out" in cmd:
@@ -233,7 +257,7 @@ class TestRunWithProgress:
         async def mock_run(host, cmd, **kwargs):
             nonlocal poll_count
             if "nohup" in cmd:
-                return SSHResult(stdout="1\n", stderr="", exit_code=0)
+                return SSHResult(stdout="__PID:1\n", stderr="", exit_code=0)
             if "test -f" in cmd:
                 poll_count += 1
                 # Finish after 3 polls
@@ -285,3 +309,36 @@ class TestRunWithProgress:
         result = await ssh.run_with_progress("10.0.0.1", "cmd")
         assert result.exit_code == 255
         assert "Permission denied" in result.stderr
+
+    async def test_pid_parsed_despite_noisy_stdout(self, ssh):
+        """PID is extracted even when shell rc/nohup emits extra output."""
+        from providers.ssh import SSHResult
+
+        async def mock_run(host, cmd, **kwargs):
+            if "nohup" in cmd:
+                return SSHResult(
+                    stdout="nohup: ignoring input\nsome motd line\n__PID:42\n",
+                    stderr="",
+                    exit_code=0,
+                )
+            if "test -f" in cmd:
+                return SSHResult(stdout="", stderr="", exit_code=0)
+            if "cat" in cmd and ".out" in cmd:
+                return SSHResult(stdout="done\n", stderr="", exit_code=0)
+            if "cat" in cmd and ".rc" in cmd:
+                return SSHResult(stdout="0\n", stderr="", exit_code=0)
+            if "rm -f" in cmd:
+                return SSHResult(stdout="", stderr="", exit_code=0)
+            return SSHResult(stdout="", stderr="", exit_code=0)
+
+        ssh.run = mock_run
+
+        async def noop_sleep(_):
+            pass
+
+        with patch("asyncio.sleep", noop_sleep):
+            result = await ssh.run_with_progress(
+                "10.0.0.1", "cmd", poll_interval=1
+            )
+
+        assert result.exit_code == 0
