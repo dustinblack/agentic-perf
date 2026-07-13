@@ -1010,8 +1010,6 @@ async def _check_async_wait_tickets(
                 )
 
 
-LOCK_FILE = Path.home() / ".agentic-perf" / "orchestrator.pid"
-
 _lock_fd: int | None = None
 
 
