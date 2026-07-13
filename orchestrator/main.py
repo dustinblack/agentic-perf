@@ -680,7 +680,7 @@ async def _resolve_jumpstarter_images(
     import httpx
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, headers=_auth_headers()) as client:
             r = await client.get(f"{store_url}/api/v1/tickets/{ticket_id}")
             if r.status_code != 200:
                 return
@@ -724,7 +724,9 @@ async def _resolve_jumpstarter_images(
                 f"for {ticket_id} — provisioning agent "
                 f"will need to ask the user"
             )
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(
+                timeout=10.0, headers=_auth_headers()
+            ) as client:
                 await client.patch(
                     f"{store_url}/api/v1/tickets/{ticket_id}/fields",
                     json={
@@ -813,7 +815,7 @@ async def _resolve_jumpstarter_images(
             pass
 
         # Store on ticket (after adding SSH key)
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, headers=_auth_headers()) as client:
             await client.patch(
                 f"{store_url}/api/v1/tickets/{ticket_id}/fields",
                 json={
@@ -855,7 +857,7 @@ async def _redirect_to_investigation(
     """
     import httpx
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(timeout=10.0, headers=_auth_headers()) as client:
         await client.post(
             f"{store_url}/api/v1/tickets/{ticket_id}/comments",
             json={
@@ -1231,7 +1233,7 @@ async def _check_async_wait_tickets(
 
     from datetime import datetime, timezone
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_auth_headers()) as client:
         for ticket in tickets:
             tid = ticket["id"]
             cf = ticket.get("custom_fields", {})
@@ -1339,7 +1341,7 @@ async def _cleanup_jumpstarter_lease(
 
     owns_client = client is None
     if owns_client:
-        client = httpx.AsyncClient(timeout=30.0)
+        client = httpx.AsyncClient(timeout=30.0, headers=_auth_headers())
 
     try:
         r = await client.get(f"{store_url}/api/v1/tickets/{ticket_id}")
