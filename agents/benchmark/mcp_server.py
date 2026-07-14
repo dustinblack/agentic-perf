@@ -4,6 +4,8 @@ import hashlib
 import json
 import logging
 import os
+import re
+import shlex
 import shutil
 import tempfile
 import uuid
@@ -18,6 +20,56 @@ from providers.ssh import SSHExecutor
 logger = logging.getLogger(__name__)
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent.parent / "skills"
+
+_HARNESS_ALLOWED_BINARIES: dict[str, frozenset[str]] = {
+    "crucible": frozenset({"crucible"}),
+    "zathras": frozenset({"burden"}),
+    "kube-burner": frozenset({"kube-burner"}),
+    "vstorm": frozenset({"vstorm"}),
+    "forge": frozenset({"run_cli"}),
+    "clusterbuster": frozenset({"clusterbuster"}),
+    "k8s-netperf": frozenset({"k8s-netperf"}),
+}
+
+_SHELL_INJECTION_RE = re.compile(
+    r";|&&|\|\||`|\$\(|\|",
+)
+
+
+def _validate_run_command(
+    run_command: str,
+    harness: str,
+) -> tuple[bool, str]:
+    """Validate that run_command is a known harness binary, not arbitrary shell."""
+    allowed = _HARNESS_ALLOWED_BINARIES.get(harness)
+    if allowed is None:
+        return False, f"Unknown harness {harness!r}"
+
+    if _SHELL_INJECTION_RE.search(run_command):
+        return False, (f"run_command contains shell metacharacters: {run_command!r}")
+
+    try:
+        tokens = shlex.split(run_command)
+    except ValueError:
+        tokens = run_command.split()
+
+    binary = ""
+    for token in tokens:
+        if "=" in token and not token.startswith("-"):
+            continue
+        binary = Path(token).name
+        break
+
+    if not binary:
+        return False, "run_command is empty after parsing"
+
+    if binary not in allowed:
+        return False, (
+            f"Binary {binary!r} not allowed for harness {harness!r} "
+            f"(allowed: {', '.join(sorted(allowed))})"
+        )
+
+    return True, "OK"
 
 
 def _compute_params_fingerprint(cf: dict[str, Any]) -> str:
@@ -464,8 +516,6 @@ def create_benchmark_tool_handlers(
         harness: str | None = None,
         run_command: str | None = None,
     ) -> dict:
-        import re
-
         run_uuid = uuid.uuid4().hex[:8]
         harness_name = harness or "crucible"
 
@@ -478,6 +528,19 @@ def create_benchmark_tool_handlers(
                     f"Run-file failed schema validation: {validation.get('errors', [])}"
                 ),
             }
+
+        if run_command is not None:
+            valid, reason = _validate_run_command(run_command, harness_name)
+            if not valid:
+                logger.warning("[benchmark] run_command rejected: %s", reason)
+                return {
+                    "status": "rejected",
+                    "harness": harness_name,
+                    "message": (
+                        f"run_command rejected: {reason}. "
+                        f"Only known harness binaries are allowed."
+                    ),
+                }
 
         ticket_cf = {}
         ticket_id = os.environ.get("TICKET_ID", "")
@@ -1054,7 +1117,7 @@ def create_benchmark_tool_handlers(
             )
             kubeconfig = run_file.get("kubeconfig", "/root/.kube/config")
 
-            forge_cmd = run_command or "cd /opt/forge && ./bin/run_cli"
+            forge_cmd = run_command or "/opt/forge/bin/run_cli"
             preset_flags = " ".join(f"--preset {p}" for p in presets)
             args_str = " ".join(cli_args)
 
@@ -1062,7 +1125,7 @@ def create_benchmark_tool_handlers(
 
             await ssh.run(controller, f"mkdir -p {artifacts_dir}")
 
-            prep_cmd = f"{env_prefix} {forge_cmd} {project} {preset_flags} prepare 2>&1"
+            prep_cmd = f"cd /opt/forge && {env_prefix} {forge_cmd} {project} {preset_flags} prepare 2>&1"
             logger.info(f"[benchmark] Forge prepare: {prep_cmd}")
             prep_result = await ssh.run_with_progress(
                 controller,
@@ -1084,7 +1147,7 @@ def create_benchmark_tool_handlers(
                 }
 
             test_cmd = (
-                f"{env_prefix} {forge_cmd} {project} {preset_flags} test"
+                f"cd /opt/forge && {env_prefix} {forge_cmd} {project} {preset_flags} test"
                 f"{' ' + args_str if args_str else ''} 2>&1"
             )
             logger.info(f"[benchmark] Forge test: {test_cmd}")
