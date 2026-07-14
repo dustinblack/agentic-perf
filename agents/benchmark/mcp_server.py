@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import os
 import shutil
 import tempfile
 import uuid
@@ -16,6 +18,72 @@ from providers.ssh import SSHExecutor
 logger = logging.getLogger(__name__)
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent.parent / "skills"
+
+
+def _compute_params_fingerprint(cf: dict[str, Any]) -> str:
+    """SHA-256 fingerprint of the current execution plan step's mv_params."""
+    plan = cf.get("execution_plan")
+    if not plan:
+        return "no-plan"
+    steps = plan.get("steps", [])
+    idx = plan.get("current_step", 0)
+    if idx >= len(steps):
+        return "no-plan"
+    mv_params = steps[idx].get("params", {}).get("mv_params")
+    if not mv_params:
+        return "no-mv-params"
+    return hashlib.sha256(json.dumps(mv_params, sort_keys=True).encode()).hexdigest()
+
+
+async def _persist_validated_runfile(
+    run_file: dict[str, Any],
+    harness: str,
+    params_fingerprint: str,
+) -> None:
+    """PATCH validated_run_file onto the ticket's custom_fields.
+
+    Silently no-ops when TICKET_ID is absent (test mode).
+    """
+    import httpx
+
+    ticket_id = os.environ.get("TICKET_ID", "")
+    state_store_url = os.environ.get(
+        "STATE_STORE_URL",
+        "http://localhost:8090",
+    )
+    if not ticket_id:
+        return
+
+    payload = {
+        "run_file": run_file,
+        "harness": harness,
+        "params_fingerprint": params_fingerprint,
+    }
+
+    try:
+        headers = {}
+        api_token = os.environ.get("AGENTIC_PERF_API_TOKEN", "")
+        if api_token:
+            headers["Authorization"] = f"Bearer {api_token}"
+        async with httpx.AsyncClient(
+            timeout=10.0,
+            headers=headers,
+        ) as client:
+            await client.patch(
+                f"{state_store_url}/api/v1/tickets/{ticket_id}/fields",
+                json={"fields": {"validated_run_file": payload}},
+            )
+        logger.info(
+            "[benchmark] Persisted validated_run_file for %s (%s)",
+            ticket_id,
+            harness,
+        )
+    except Exception:
+        logger.debug(
+            "Failed to persist validated_run_file for %s",
+            ticket_id,
+            exc_info=True,
+        )
 
 
 def get_benchmark_tools(
@@ -400,6 +468,42 @@ def create_benchmark_tool_handlers(
 
         run_uuid = uuid.uuid4().hex[:8]
         harness_name = harness or "crucible"
+
+        validation = await skill_provider.validate_runfile(run_file, harness_name)
+        if not validation.get("valid", True):
+            return {
+                "status": "rejected",
+                "harness": harness_name,
+                "message": (
+                    f"Run-file failed schema validation: {validation.get('errors', [])}"
+                ),
+            }
+
+        ticket_cf = {}
+        ticket_id = os.environ.get("TICKET_ID", "")
+        state_store_url = os.environ.get("STATE_STORE_URL", "http://localhost:8090")
+        if ticket_id:
+            try:
+                import httpx
+
+                headers = {}
+                api_token = os.environ.get("AGENTIC_PERF_API_TOKEN", "")
+                if api_token:
+                    headers["Authorization"] = f"Bearer {api_token}"
+                async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
+                    r = await client.get(
+                        f"{state_store_url}/api/v1/tickets/{ticket_id}"
+                    )
+                    r.raise_for_status()
+                    ticket_cf = r.json().get("custom_fields", {})
+            except Exception:
+                logger.debug(
+                    "Could not fetch ticket for fingerprint",
+                    exc_info=True,
+                )
+
+        fingerprint = _compute_params_fingerprint(ticket_cf)
+        await _persist_validated_runfile(run_file, harness_name, fingerprint)
 
         async def _benchmark_progress(output_line: str, elapsed: int) -> None:
             minutes = elapsed // 60
