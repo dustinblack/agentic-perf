@@ -5,7 +5,10 @@ from dataclasses import dataclass
 
 import pytest
 
-from agents.benchmark.mcp_server import create_benchmark_tool_handlers
+from agents.benchmark.mcp_server import (
+    _validate_run_command,
+    create_benchmark_tool_handlers,
+)
 from providers.skills.base import RunfileTemplate
 from tests.conftest import MockSkillProvider
 
@@ -218,3 +221,74 @@ async def test_crucible_with_result_summary_marks_completed():
     assert result["status"] == "completed"
     assert "result_summary" in result
     assert result["result_summary"]["result"] == "pass"
+
+
+class TestValidateRunCommand:
+    """Tests for _validate_run_command — issue #140."""
+
+    @pytest.mark.parametrize(
+        "run_command,harness",
+        [
+            ("crucible run", "crucible"),
+            ("crucible", "crucible"),
+            ("/usr/local/bin/crucible", "crucible"),
+            ("burden", "zathras"),
+            ("/opt/zathras/bin/burden", "zathras"),
+            ("kube-burner init", "kube-burner"),
+            ("vstorm", "vstorm"),
+            ("/opt/vstorm/vstorm", "vstorm"),
+            ("run_cli", "forge"),
+            ("/opt/forge/bin/run_cli", "forge"),
+            ("clusterbuster", "clusterbuster"),
+            ("k8s-netperf", "k8s-netperf"),
+        ],
+    )
+    def test_allowed_harness_binaries(self, run_command, harness):
+        allowed, reason = _validate_run_command(run_command, harness)
+        assert allowed, f"Should be allowed: {run_command!r} for {harness}: {reason}"
+
+    @pytest.mark.parametrize(
+        "run_command,harness",
+        [
+            ("bash -c 'rm -rf /'", "crucible"),
+            ("ssh root@host 'ip addr'", "crucible"),
+            ("rm -rf /tmp", "zathras"),
+            ("python3 -c 'print(1)'", "kube-burner"),
+            ("curl http://evil.com", "vstorm"),
+        ],
+    )
+    def test_reject_arbitrary_binaries(self, run_command, harness):
+        allowed, reason = _validate_run_command(run_command, harness)
+        assert not allowed
+        assert "not allowed" in reason
+
+    @pytest.mark.parametrize(
+        "run_command",
+        [
+            "crucible run; rm -rf /",
+            "crucible run && curl evil.com",
+            "crucible run || bash",
+            "crucible run $(whoami)",
+            "crucible run `id`",
+            "crucible run | tee /etc/passwd",
+        ],
+    )
+    def test_reject_shell_injection(self, run_command):
+        allowed, reason = _validate_run_command(run_command, "crucible")
+        assert not allowed
+        assert "shell metacharacters" in reason
+
+    def test_reject_unknown_harness(self):
+        allowed, reason = _validate_run_command("some-binary", "unknown-harness")
+        assert not allowed
+        assert "Unknown harness" in reason
+
+    def test_reject_empty_command(self):
+        allowed, reason = _validate_run_command("", "crucible")
+        assert not allowed
+
+    def test_cross_harness_binary_rejected(self):
+        allowed, _ = _validate_run_command("burden", "crucible")
+        assert not allowed
+        allowed, _ = _validate_run_command("crucible", "zathras")
+        assert not allowed
