@@ -1715,6 +1715,7 @@ async function refreshResultSection(ticketId) {
         var newDetails = introContent.querySelector('#introspection-narrative-details');
         if (newDetails) newDetails.open = true;
       }
+      _scrollIntrospectionNarrative(introContent);
     }
   } catch {}
 }
@@ -1758,6 +1759,7 @@ function updateIntrospectionCard(ticketId) {
       var newDetails = content.querySelector('#introspection-narrative-details');
       if (newDetails) newDetails.open = true;
     }
+    _scrollIntrospectionNarrative(content);
   }).catch(function() {});
 }
 
@@ -1810,7 +1812,7 @@ function renderIntrospectionContent(intro) {
     html += '<details id="introspection-narrative-details" style="margin-top:8px; border:none;">' +
       '<summary style="font-size:12px; color:var(--text-muted); background:none; padding:4px 0;">' +
         'Narrative (' + narrativeLines.length + ' entries)</summary>' +
-      '<div class="introspection-narrative">' + narrativeHtml + '</div>' +
+      '<div class="introspection-narrative" id="introspection-narrative-scroll">' + narrativeHtml + '</div>' +
     '</details>';
   }
 
@@ -1820,6 +1822,30 @@ function renderIntrospectionContent(intro) {
   }
 
   return html;
+}
+
+function _scrollIntrospectionNarrative(container) {
+  var details = container.querySelector('#introspection-narrative-details');
+  if (!details) return;
+  var scrollEl = details.querySelector('#introspection-narrative-scroll');
+  if (!scrollEl) return;
+
+  // Scroll to bottom when open and autoScroll is active,
+  // following the same flag as the main event stream.
+  if (details.open && autoScroll) {
+    scrollEl.scrollTop = scrollEl.scrollHeight;
+  }
+
+  // On first render, attach a toggle listener so opening
+  // the narrative always scrolls to the bottom.
+  if (!details.dataset.listenersAttached) {
+    details.dataset.listenersAttached = '1';
+    details.addEventListener('toggle', function() {
+      if (details.open && scrollEl) {
+        scrollEl.scrollTop = scrollEl.scrollHeight;
+      }
+    });
+  }
 }
 
 async function updateUsageSidebar(ticketId) {
