@@ -1708,7 +1708,13 @@ async function refreshResultSection(ticketId) {
     var introContent = document.getElementById('introspection-content');
     if (card && introContent && cf.introspection) {
       card.classList.remove('introspection-hidden');
+      var narrativeDetails = introContent.querySelector('#introspection-narrative-details');
+      var wasOpen = narrativeDetails ? narrativeDetails.open : false;
       introContent.innerHTML = renderIntrospectionContent(cf.introspection);
+      if (wasOpen) {
+        var newDetails = introContent.querySelector('#introspection-narrative-details');
+        if (newDetails) newDetails.open = true;
+      }
     }
   } catch {}
 }
@@ -1733,7 +1739,6 @@ function updateIntrospectionCard(ticketId) {
   var content = document.getElementById('introspection-content');
   if (!card || !content) return;
 
-  // Fetch from refreshResultSection's cached ticket or re-fetch
   api('/tickets/' + ticketId).then(function(ticket) {
     var cf = ticket.custom_fields || {};
     var intro = cf.introspection;
@@ -1742,7 +1747,17 @@ function updateIntrospectionCard(ticketId) {
       return;
     }
     card.classList.remove('introspection-hidden');
+
+    // Preserve <details> open state across re-renders.
+    var narrativeDetails = content.querySelector('#introspection-narrative-details');
+    var wasOpen = narrativeDetails ? narrativeDetails.open : false;
+
     content.innerHTML = renderIntrospectionContent(intro);
+
+    if (wasOpen) {
+      var newDetails = content.querySelector('#introspection-narrative-details');
+      if (newDetails) newDetails.open = true;
+    }
   }).catch(function() {});
 }
 
@@ -1780,11 +1795,22 @@ function renderIntrospectionContent(intro) {
     html += '<div style="font-size:13px; color:var(--green)">No anomalies detected</div>';
   }
 
-  // Narrative (collapsible)
-  if (intro.narrative) {
-    html += '<details style="margin-top:8px; border:none;">' +
-      '<summary style="font-size:12px; color:var(--text-muted); background:none; padding:4px 0;">Narrative</summary>' +
-      '<div class="introspection-narrative">' + escHtml(intro.narrative) + '</div>' +
+  // Narrative (collapsible, scrollable log)
+  var narrativeLines = intro.narrative || [];
+  if (typeof narrativeLines === 'string') {
+    // Backward compat: old format was a single string.
+    narrativeLines = narrativeLines ? [narrativeLines] : [];
+  }
+  if (narrativeLines.length > 0) {
+    var narrativeHtml = '';
+    for (var ni = 0; ni < narrativeLines.length; ni++) {
+      narrativeHtml += '<div style="padding:2px 0; border-bottom:1px solid var(--border);">' +
+        escHtml(narrativeLines[ni]) + '</div>';
+    }
+    html += '<details id="introspection-narrative-details" style="margin-top:8px; border:none;">' +
+      '<summary style="font-size:12px; color:var(--text-muted); background:none; padding:4px 0;">' +
+        'Narrative (' + narrativeLines.length + ' entries)</summary>' +
+      '<div class="introspection-narrative">' + narrativeHtml + '</div>' +
     '</details>';
   }
 

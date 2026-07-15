@@ -63,6 +63,7 @@ class IntrospectionAgent:
         self._events = event_bus
         self._last_seq = 0
         self._all_events: list[dict[str, Any]] = []
+        self._narrative_log: list[str] = []
         self._stop_requested = False
         headers: dict[str, str] = {}
         api_token = os.environ.get("AGENTIC_PERF_API_TOKEN", "")
@@ -202,35 +203,44 @@ class IntrospectionAgent:
                 f" ({high} high, {med} medium)."
             )
 
-        # Build narrative from recent events (last batch).
-        narrative_parts: list[str] = []
+        # Append narrative entries from new events to the
+        # running log. Each significant event becomes one
+        # line in the narrative history.
         for evt in new_events:
             trimmed = _truncate_event(evt)
             etype = trimmed.get("event_type", "")
             agent = trimmed.get("agent", "")
             data = trimmed.get("data", {})
+            entry = None
 
             if etype == "agent_started":
-                narrative_parts.append(f"{agent} started")
+                entry = f"{agent} started"
             elif etype == "agent_finished":
-                narrative_parts.append(f"{agent} finished")
+                entry = f"{agent} finished"
             elif etype == "transition":
                 to = data.get("to", "?")
-                narrative_parts.append(f"Transitioned to {to}")
+                entry = f"Transitioned to {to}"
             elif etype == "tool_called":
                 tool = data.get("tool", "?")
-                narrative_parts.append(f"{agent} called {tool}")
+                entry = f"{agent} called {tool}"
             elif etype == "tool_result" and data.get("is_error"):
                 tool = data.get("tool", "?")
-                narrative_parts.append(f"{agent}: {tool} returned error")
+                entry = f"{agent}: {tool} returned error"
             elif etype == "agent_error":
                 reason = data.get("reason", "unknown")
-                narrative_parts.append(f"{agent} error: {reason}")
+                entry = f"{agent} error: {reason}"
 
-        narrative = "; ".join(narrative_parts) if narrative_parts else ""
+            if entry:
+                self._narrative_log.append(entry)
+
+        # Cap the log to avoid unbounded growth. Keep the
+        # most recent entries — older history is in the JSONL.
+        max_entries = 200
+        if len(self._narrative_log) > max_entries:
+            self._narrative_log = self._narrative_log[-max_entries:]
 
         return {
-            "narrative": narrative,
+            "narrative": list(self._narrative_log),
             "anomalies": anomalies,
             "status_summary": status_summary,
             "total_events": len(self._all_events),

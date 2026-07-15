@@ -346,7 +346,8 @@ class TestIntrospectionAgent:
         assert obs["total_events"] == 4
         assert len(obs["anomalies"]) == 1
         assert "1 anomaly" in obs["status_summary"]
-        assert "benchmark-agent finished" in obs["narrative"]
+        assert isinstance(obs["narrative"], list)
+        assert any("benchmark-agent finished" in e for e in obs["narrative"])
 
     def test_builds_observation_clean(self) -> None:
         agent = IntrospectionAgent(
@@ -360,7 +361,7 @@ class TestIntrospectionAgent:
         obs = agent._build_observation(ticket, [], [])
         assert obs["anomalies"] == []
         assert "0 tool errors" in obs["status_summary"]
-        assert obs["narrative"] == ""
+        assert obs["narrative"] == []
 
     def test_narrative_includes_transitions(self) -> None:
         agent = IntrospectionAgent(
@@ -377,7 +378,41 @@ class TestIntrospectionAgent:
             ),
         ]
         obs = agent._build_observation(ticket, new_events, [])
-        assert "Transitioned to awaiting_hardware" in obs["narrative"]
+        assert any("Transitioned to awaiting_hardware" in e for e in obs["narrative"])
+
+    def test_narrative_accumulates_across_calls(self) -> None:
+        agent = IntrospectionAgent(
+            state_store_url="http://localhost:8090",
+        )
+        agent._all_events = []
+        ticket = {"status": "executing_benchmark"}
+
+        # First batch.
+        events1 = [_make_event(1, "agent_started")]
+        agent._build_observation(ticket, events1, [])
+
+        # Second batch.
+        events2 = [_make_event(2, "agent_finished")]
+        obs = agent._build_observation(ticket, events2, [])
+
+        # Both entries should be in the narrative.
+        assert len(obs["narrative"]) == 2
+        assert "benchmark-agent started" in obs["narrative"][0]
+        assert "benchmark-agent finished" in obs["narrative"][1]
+
+    def test_narrative_caps_at_max_entries(self) -> None:
+        agent = IntrospectionAgent(
+            state_store_url="http://localhost:8090",
+        )
+        agent._all_events = []
+        ticket = {"status": "executing_benchmark"}
+
+        # Feed 250 events (cap is 200).
+        events = [_make_event(i, "agent_started") for i in range(1, 251)]
+        obs = agent._build_observation(ticket, events, [])
+        assert len(obs["narrative"]) == 200
+        # Should keep the most recent entries.
+        assert "benchmark-agent started" in obs["narrative"][-1]
 
     async def test_stops_on_terminal_status(self) -> None:
         agent = IntrospectionAgent(
