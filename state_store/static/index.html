@@ -893,7 +893,7 @@ th.col-right { text-align: right; }
   color: var(--text);
   line-height: 1.5;
   margin-top: 6px;
-  max-height: 120px;
+  max-height: 180px;
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-word;
@@ -1710,12 +1710,14 @@ async function refreshResultSection(ticketId) {
       card.classList.remove('introspection-hidden');
       var narrativeDetails = introContent.querySelector('#introspection-narrative-details');
       var wasOpen = narrativeDetails ? narrativeDetails.open : false;
+      var savedScroll = _saveNarrativeScroll(introContent);
       introContent.innerHTML = renderIntrospectionContent(cf.introspection);
       if (wasOpen) {
         var newDetails = introContent.querySelector('#introspection-narrative-details');
         if (newDetails) newDetails.open = true;
       }
-      _scrollIntrospectionNarrative(introContent);
+      _restoreNarrativeScroll(introContent, savedScroll);
+      _attachNarrativeOpenClick(introContent);
     }
   } catch {}
 }
@@ -1758,9 +1760,10 @@ function updateIntrospectionCard(ticketId) {
     }
     card.classList.remove('introspection-hidden');
 
-    // Preserve <details> open state across re-renders.
+    // Preserve <details> open state and scroll position across re-renders.
     var narrativeDetails = content.querySelector('#introspection-narrative-details');
     var wasOpen = narrativeDetails ? narrativeDetails.open : false;
+    var savedScroll = _saveNarrativeScroll(content);
 
     content.innerHTML = renderIntrospectionContent(intro);
 
@@ -1768,7 +1771,8 @@ function updateIntrospectionCard(ticketId) {
       var newDetails = content.querySelector('#introspection-narrative-details');
       if (newDetails) newDetails.open = true;
     }
-    _scrollIntrospectionNarrative(content);
+    _restoreNarrativeScroll(content, savedScroll);
+    _attachNarrativeOpenClick(content);
   }).catch(function() {});
 }
 
@@ -1930,28 +1934,38 @@ function renderIntrospectionSummary(summary) {
   return html;
 }
 
-function _scrollIntrospectionNarrative(container) {
+function _saveNarrativeScroll(container) {
+  var scrollEl = container.querySelector('#introspection-narrative-scroll');
+  if (!scrollEl) return null;
+  return scrollEl.scrollTop;
+}
+
+function _restoreNarrativeScroll(container, savedScroll) {
+  if (savedScroll == null) return;
+  var scrollEl = container.querySelector('#introspection-narrative-scroll');
+  if (scrollEl) scrollEl.scrollTop = savedScroll;
+}
+
+function _attachNarrativeOpenClick(container) {
+  // Listen for clicks on the <summary> element to detect
+  // user-initiated opens. Unlike the 'toggle' event, 'click'
+  // only fires on user interaction — never on programmatic
+  // .open = true — so we don't need guard flags.
   var details = container.querySelector('#introspection-narrative-details');
   if (!details) return;
-  var scrollEl = details.querySelector('#introspection-narrative-scroll');
-  if (!scrollEl) return;
-
-  // Scroll to bottom when open and autoScroll is active,
-  // following the same flag as the main event stream.
-  if (details.open && autoScroll) {
-    scrollEl.scrollTop = scrollEl.scrollHeight;
-  }
-
-  // On first render, attach a toggle listener so opening
-  // the narrative always scrolls to the bottom.
-  if (!details.dataset.listenersAttached) {
-    details.dataset.listenersAttached = '1';
-    details.addEventListener('toggle', function() {
-      if (details.open && scrollEl) {
-        scrollEl.scrollTop = scrollEl.scrollHeight;
-      }
-    });
-  }
+  var summary = details.querySelector('summary');
+  if (!summary || summary.dataset.listenersAttached) return;
+  summary.dataset.listenersAttached = '1';
+  summary.addEventListener('click', function() {
+    // At click time, details.open reflects the state BEFORE
+    // the toggle, so !details.open means it's about to open.
+    if (!details.open) {
+      requestAnimationFrame(function() {
+        var scrollEl = details.querySelector('#introspection-narrative-scroll');
+        if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
+      });
+    }
+  });
 }
 
 async function updateUsageSidebar(ticketId) {
