@@ -35,6 +35,11 @@ Agentic-perf has four major subsystems:
    └───────┘ └────────┘ └──────────┘ └────────┘ └────────┘
 ```
 
+A sixth agent, the **Introspection Agent**, runs as an optional companion
+alongside the pipeline agents. It does not participate in the state machine
+— it continuously watches the event stream and writes observations to
+`custom_fields.introspection` for the web dashboard to display.
+
 All communication between components goes through the state store's REST API.
 Agents never talk to each other directly — they read and write the shared
 ticket document.
@@ -164,6 +169,15 @@ Terminal statuses (`closed`, `awaiting_customer_guidance`) do not dispatch
 agents. `awaiting_customer_guidance` resumes to the previous status when the
 user replies. The `planning_investigation` agent is a stub that auto-advances;
 all other investigation loop agents are fully implemented.
+
+### Introspection Agent (Out-of-Band)
+
+The introspection agent is a continuous background observer that runs
+alongside the pipeline agents. It does NOT participate in the status-to-agent
+mapping or the state machine — it is started by the orchestrator as a
+companion task before the first pipeline agent dispatches.
+
+See [Introspection](#introspection-agent) for details.
 
 ### Special Transitions
 
@@ -441,6 +455,35 @@ harness schema. Handles both remotehosts and Kubernetes endpoint types.
 metrics, and produces a verdict (hypothesis confirmed/refuted/inconclusive)
 with key metrics and recommendations. Harness-agnostic: discovers how to
 retrieve results through skill providers.
+
+**Introspection Agent** — Continuous passive observer that runs alongside
+the pipeline agents without participating in the state machine. Unlike
+other agents, it does not extend `AgentBase` or use an LLM loop — it is
+a simple async poll loop that reads the JSONL event stream, detects
+anomalies, and writes structured observations to
+`custom_fields.introspection`. The web dashboard renders these
+observations in a dedicated card below the LLM Usage section.
+
+The introspection agent:
+- Is started by the orchestrator BEFORE the first pipeline agent to
+  avoid missing early events
+- Polls the event stream every 5 seconds with incremental reads
+- Accumulates full event history for pattern detection
+- Detects: repeated tool errors (3+), retry loops (same tool/input 3+
+  times), and max iteration exhaustion
+- Stops automatically when the ticket reaches a terminal status
+- Never transitions ticket state or modifies agent behavior (Phase 1)
+
+Enabling introspection:
+- Globally: `introspection.enabled = true` in config.json or
+  `INTROSPECTION_ENABLED=true` env var
+- Per-ticket: `custom_fields.introspection_enabled = true` (overrides
+  global setting in either direction)
+- Disabled by default
+
+Future phases will add active monitoring (Phase 2: soft-stop signals
+when anomalies are detected) and corralling (Phase 3: guidance
+injection to redirect off-track agents).
 
 ## Provider System
 

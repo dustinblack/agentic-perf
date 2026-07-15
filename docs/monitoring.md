@@ -66,6 +66,58 @@ Agentic-perf is a complex system with multiple agents, external integrations, an
 
 ---
 
+## Introspection Agent
+
+The introspection agent provides automated, continuous monitoring of
+individual tickets. When enabled, it runs alongside the pipeline agents
+and detects anomalous patterns in real time without requiring manual
+log review.
+
+### What It Detects
+
+| Anomaly | Severity | Description |
+|---|---|---|
+| Repeated tool errors | medium/high | Same tool failing 3+ times (high at 5+) |
+| Retry loops | medium/high | Same tool called with identical input 3+ times |
+| Max iterations | high | Agent exhausted its iteration budget |
+
+### Enabling
+
+Globally in `~/.agentic-perf/config.json`:
+```json
+{
+    "introspection": {
+        "enabled": true
+    }
+}
+```
+
+Or per-ticket via `custom_fields.introspection_enabled: true` at
+submission time.
+
+### Viewing Results
+
+The web dashboard shows introspection observations in a dedicated card
+below the LLM Usage section in the ticket detail view. The card updates
+every poll cycle and shows:
+- Anomaly count with severity breakdown
+- Individual anomaly descriptions
+- Status summary (events, LLM calls, tool errors)
+- Collapsible narrative of recent activity
+
+### Relationship to Other Monitoring
+
+Introspection complements the other monitoring tools:
+- **Retrospective agent** analyzes tickets *after* completion;
+  introspection watches *during* execution
+- **Budget guardrails** enforce cost limits; introspection detects
+  *behavioral* waste (retry loops, repeated errors) that may not
+  trigger budget alerts
+- **Stale task watchdog** catches agents with no events;
+  introspection catches agents that are *active but unproductive*
+
+---
+
 ## Monitoring Dashboard Setup
 
 ### Real-Time Web UI Metrics
@@ -74,6 +126,7 @@ The web dashboard at `http://localhost:8090` shows:
 - **System health** (orchestrator uptime, LLM API status)
 - **Cost summary** (total spend, remaining budget)
 - **Agent activity** (current active agents, recent completions)
+- **Introspection** (anomaly detection, when enabled)
 
 View on a persistent monitor in your NOC/war room:
 ```bash

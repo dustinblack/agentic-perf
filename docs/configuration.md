@@ -61,6 +61,9 @@ environment variable (defaults to `~/.agentic-perf`).
     "llm_budget": {
         "session_cost_usd": 50.00
     },
+    "introspection": {
+        "enabled": false
+    },
     "compress_closed_after_days": 7,
     "manual_purge_enabled": true,
     "telemetry": {
@@ -212,6 +215,48 @@ individual tickets — see [Architecture](architecture.md) for details.
 
 ---
 
+### `introspection` — Introspection Agent
+
+The introspection agent is a continuous passive observer that runs
+alongside the pipeline agents, watching the event stream for anomalies
+and writing observations to `custom_fields.introspection`.
+
+```json
+{
+    "introspection": {
+        "enabled": true
+    }
+}
+```
+
+| Field | Type | Default | Env override | Description |
+|---|---|---|---|---|
+| `enabled` | bool | `false` | `INTROSPECTION_ENABLED` | Enable introspection for all tickets globally |
+
+#### Per-Ticket Override
+
+Individual tickets can enable or disable introspection regardless of
+the global setting via `custom_fields.introspection_enabled`:
+
+```json
+{
+    "custom_fields": {
+        "introspection_enabled": true
+    }
+}
+```
+
+- `true` — enables introspection even when globally disabled
+- `false` — disables introspection even when globally enabled
+- absent — follows the global setting
+
+The introspection agent is started by the orchestrator before the first
+pipeline agent dispatches for a ticket, so no events are missed. It
+stops automatically when the ticket reaches a terminal status. See
+[Architecture](architecture.md) for details on what it detects.
+
+---
+
 ### Timeouts
 
 | Field | Type | Default | Env override | Description |
@@ -309,3 +354,4 @@ variable overrides, which take precedence over the file.
 | `HARNESS_REPOS` | `harness_repos` (JSON string) |
 | `AGENT_TASK_TIMEOUT` | `agent_task_timeout` |
 | `STALE_TASK_TIMEOUT` | `stale_task_timeout` |
+| `INTROSPECTION_ENABLED` | `introspection.enabled` |

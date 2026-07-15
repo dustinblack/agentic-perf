@@ -51,6 +51,7 @@ to the investigation context.
   agent's section in the event stream
 - Event counter
 - LLM usage summary with per-agent cost breakdown
+- Introspection card (when enabled) — see below
 
 **Transaction log event types:**
 - `agent_started` — collapsible section header with agent name; contains collapsible system prompt and initial messages
@@ -59,6 +60,19 @@ to the investigation context.
 - `transition` — highlighted banner showing the new status
 - `comment` — comment body with author
 - `agent_finished` / `agent_error` — completion or error markers
+
+**Introspection card:** Appears below the LLM Usage section when
+introspection is enabled for the ticket (globally or per-ticket).
+Displays the introspection agent's continuous observations:
+- Anomaly count with severity breakdown (high/medium/low, color-coded)
+- Individual anomaly descriptions with severity badges
+- Collapsible narrative of recent agent activity
+- Status summary (event count, LLM calls, tool errors)
+
+The card is hidden until the introspection agent writes its first
+observation to `custom_fields.introspection`, then updates on every
+poll cycle. The `introspection` field is excluded from the generic
+Custom Fields section to avoid duplication.
 
 **Live polling:** fetches `/api/v1/tickets/{id}/events?since={lastSeq}` every 2 seconds. New events are appended to the event stream container. Auto-scroll keeps the event stream at the bottom unless the user disables it. The context header remains fixed regardless of scroll position.
 
