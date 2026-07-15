@@ -885,6 +885,61 @@ th.col-right { text-align: right; }
   font-family: var(--font-mono);
 }
 
+/* Introspection card */
+.introspection-hidden { display: none; }
+
+.introspection-narrative {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.5;
+  margin-top: 6px;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.introspection-anomaly {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 4px 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.anomaly-severity {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+.anomaly-severity.sev-high { background: rgba(247, 118, 142, 0.2); color: var(--red); }
+.anomaly-severity.sev-medium { background: rgba(224, 175, 104, 0.2); color: var(--yellow); }
+.anomaly-severity.sev-low { background: rgba(192, 202, 245, 0.1); color: var(--text-muted); }
+
+.anomaly-desc { color: var(--text); }
+
+.introspection-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-style: italic;
+}
+
+.introspection-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 @media (max-width: 900px) {
   .container { padding: 0 12px; }
   .ticket-summary { max-width: 250px; }
@@ -1412,6 +1467,10 @@ async function renderDetail(ticketId) {
                 'Waiting for data...' +
               '</div>' +
             '</div>' +
+            '<div class="left-panel-section introspection-hidden" id="introspection-card">' +
+              '<h4 style="color:var(--purple)">Introspection</h4>' +
+              '<div id="introspection-content"></div>' +
+            '</div>' +
           '</div>' +
           '<div class="panel-divider" id="panel-divider"></div>' +
           '<div class="detail-right-panel">' +
@@ -1610,7 +1669,7 @@ function renderCustomFields(ticket) {
   var fields = ticket.custom_fields;
   if (!fields || Object.keys(fields).length === 0) return '';
 
-  var promoted = ['verdict', 'review_summary', 'detailed_analysis', 'chart_data', 'results_url', 'hypothesis', 'evaluation_result', 'synthesis_result', 'dedup_result'];
+  var promoted = ['verdict', 'review_summary', 'detailed_analysis', 'chart_data', 'results_url', 'hypothesis', 'evaluation_result', 'synthesis_result', 'dedup_result', 'introspection'];
   var items = '';
   for (var k in fields) {
     if (promoted.indexOf(k) !== -1) continue;
@@ -1643,6 +1702,14 @@ async function refreshResultSection(ticketId) {
     if (hypo) {
       hypo.innerHTML = renderHypothesisCard(ticket);
     }
+    // Also refresh introspection on transitions
+    var cf = ticket.custom_fields || {};
+    var card = document.getElementById('introspection-card');
+    var introContent = document.getElementById('introspection-content');
+    if (card && introContent && cf.introspection) {
+      card.classList.remove('introspection-hidden');
+      introContent.innerHTML = renderIntrospectionContent(cf.introspection);
+    }
   } catch {}
 }
 
@@ -1656,7 +1723,77 @@ async function pollEvents(ticketId) {
       renderNewEvents(newEvents);
     }
     updateUsageSidebar(ticketId);
+    updateIntrospectionCard(ticketId);
   } catch {}
+}
+
+function updateIntrospectionCard(ticketId) {
+  if (!ticketId) return;
+  var card = document.getElementById('introspection-card');
+  var content = document.getElementById('introspection-content');
+  if (!card || !content) return;
+
+  // Fetch from refreshResultSection's cached ticket or re-fetch
+  api('/tickets/' + ticketId).then(function(ticket) {
+    var cf = ticket.custom_fields || {};
+    var intro = cf.introspection;
+    if (!intro) {
+      card.classList.add('introspection-hidden');
+      return;
+    }
+    card.classList.remove('introspection-hidden');
+    content.innerHTML = renderIntrospectionContent(intro);
+  }).catch(function() {});
+}
+
+function renderIntrospectionContent(intro) {
+  var html = '';
+  var anomalies = intro.anomalies || [];
+
+  // Anomaly summary
+  if (anomalies.length > 0) {
+    var high = 0, med = 0, low = 0;
+    for (var i = 0; i < anomalies.length; i++) {
+      var s = (anomalies[i].severity || '').toLowerCase();
+      if (s === 'high') high++;
+      else if (s === 'medium') med++;
+      else low++;
+    }
+    var countParts = [];
+    if (high) countParts.push('<span style="color:var(--red)">' + high + ' high</span>');
+    if (med) countParts.push('<span style="color:var(--yellow)">' + med + ' medium</span>');
+    if (low) countParts.push('<span style="color:var(--text-muted)">' + low + ' low</span>');
+    html += '<div style="font-size:13px; margin-bottom:6px">' +
+      '<span style="color:var(--text-bright); font-weight:600">' + anomalies.length + '</span>' +
+      ' anomal' + (anomalies.length === 1 ? 'y' : 'ies') +
+      ' <span style="font-size:11px">(' + countParts.join(', ') + ')</span></div>';
+
+    for (var i = 0; i < anomalies.length; i++) {
+      var a = anomalies[i];
+      var sevCls = 'sev-' + (a.severity || 'low').toLowerCase();
+      html += '<div class="introspection-anomaly">' +
+        '<span class="anomaly-severity ' + sevCls + '">' + escHtml(a.severity || '?') + '</span>' +
+        '<span class="anomaly-desc">' + escHtml(a.description || '') + '</span>' +
+      '</div>';
+    }
+  } else {
+    html += '<div style="font-size:13px; color:var(--green)">No anomalies detected</div>';
+  }
+
+  // Narrative (collapsible)
+  if (intro.narrative) {
+    html += '<details style="margin-top:8px; border:none;">' +
+      '<summary style="font-size:12px; color:var(--text-muted); background:none; padding:4px 0;">Narrative</summary>' +
+      '<div class="introspection-narrative">' + escHtml(intro.narrative) + '</div>' +
+    '</details>';
+  }
+
+  // Status summary
+  if (intro.status_summary) {
+    html += '<div class="introspection-status">' + escHtml(intro.status_summary) + '</div>';
+  }
+
+  return html;
 }
 
 async function updateUsageSidebar(ticketId) {
