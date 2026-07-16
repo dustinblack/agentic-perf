@@ -112,6 +112,32 @@ The uperf benchmark in crucible supports a `cpu-pin` parameter:
   the test NIC (recommended for single-stream tests)
 - `cpu-pin: cpu:192-383` — pin to a specific CPU range
 
+**CRITICAL: params default to role=client only.** If you do
+not specify `"role": "server"`, the server uperf process will
+NOT be pinned. For single-stream TCP tests, the server is
+typically the bottleneck — pinning only the client is useless.
+Always specify cpu-pin for BOTH roles:
+
+```json
+{"arg": "cpu-pin", "vals": ["numa"], "role": "client"},
+{"arg": "cpu-pin", "vals": ["numa"], "role": "server"}
+```
+
 Use `cpu-pin: numa` to eliminate cross-NUMA overhead when
 investigating single-stream TCP performance. Compare results
 with and without pinning to quantify the NUMA penalty.
+
+## When no CPU hits 100%
+
+If single-stream throughput is lower than expected but no CPU
+is near 100%, the bottleneck may not be where you think:
+
+- **Check both client AND server** — the client may be the
+  bottleneck, not just the server
+- **Scheduler migration** — CFS may be moving the process
+  between CPUs mid-test, causing cache cold-starts. Use
+  time-resolved per-CPU data (resolution=30) to detect this.
+- **External factors** — flaky physical link, switch in the
+  path, NIC firmware issue, RX ring drops
+- **rx_out_of_buffer drops** — check `ethtool -S` for ring
+  exhaustion forcing TCP retransmits

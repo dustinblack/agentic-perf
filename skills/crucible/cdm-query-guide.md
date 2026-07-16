@@ -123,6 +123,57 @@ Always use filters when querying per-CPU or per-IRQ data
 on many-core systems. Without filtering, a 768-CPU system
 returns ~768 entries per metric, most of which are noise.
 
+## Understanding per-CPU metric values
+
+When `cpu` is in the breakout, metric values are **per that
+single CPU**, NOT system-wide percentages:
+
+- A Busy-CPU value of **0.48** means that CPU is at **48%**
+  utilization, not 0.48%.
+- A value of **0.73** means **73%** of that single CPU.
+- A value of **1.0** means **100%** — fully saturated.
+
+This is the most common misinterpretation. On a 768-CPU
+system, system-wide Busy-CPU might be 0.86%, but individual
+CPUs handling network traffic may be at 48-97%. Always check
+per-CPU values — system-wide averages hide single-core
+bottlenecks.
+
+## Time-resolved per-CPU analysis
+
+To investigate CPU behavior over time:
+
+**Step 1:** Find active CPUs with resolution=1 and a filter:
+```json
+{
+  "source": "procstat",
+  "type": "Busy-CPU",
+  "breakout": ["hostname", "cpu"],
+  "filter": ["gt:0.05"]
+}
+```
+This returns only CPUs above 5% utilization.
+
+**Step 2:** For each busy CPU, query with resolution=30 to
+see time variation:
+```json
+{
+  "source": "procstat",
+  "type": "Busy-CPU",
+  "breakout": ["hostname", "cpu"],
+  "resolution": 30,
+  "filter": ["cpu=766"]
+}
+```
+Look for: CPUs hitting 100% at any point, irqbalance
+moving IRQ destinations mid-sample, saturation that
+averages hide.
+
+Note: filter and resolution may not work together in all
+cases. If they don't, get the active CPU list first with
+resolution=1, then re-query with resolution=30 for those
+specific CPUs.
+
 ## Per-CPU and interrupt analysis
 
 For network performance investigation, key query patterns:

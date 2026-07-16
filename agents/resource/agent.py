@@ -127,6 +127,26 @@ class ResourceAgent(AgentBase):
         ticket = await self._get_ticket(ticket_id)
         fields = ticket.get("custom_fields", {})
         directives = fields.get("directives", {})
+
+        if directives.get("skip_teardown"):
+            logger.info(
+                f"[resource-agent] skip_teardown directive set,"
+                f" skipping cleanup for {ticket_id}"
+            )
+            await self._add_comment(
+                ticket_id,
+                "Teardown skipped per skip_teardown directive."
+                " Hosts and data preserved.",
+            )
+            if await self._plan_controls_next_transition(ticket_id):
+                return
+            await self._transition_ticket(
+                ticket_id,
+                "retrospective_pending",
+                comment="Teardown skipped, starting retrospective",
+            )
+            return
+
         host_cleanup = directives.get(
             "host_cleanup", fields.get("host_cleanup", "required")
         )

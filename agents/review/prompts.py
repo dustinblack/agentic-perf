@@ -104,6 +104,22 @@ Follow this order unless the user directs otherwise:
 6. **Measure actual transfer rate vs theoretical** — calculate what the current
    bottleneck allows and compare to what the link supports.
 
+### Understanding per-CPU metric values
+
+When `cpu` is in the CDM breakout, values are **per that single CPU**:
+- A Busy-CPU value of 0.48 = **48%** of that CPU, NOT 0.48% system-wide
+- A value of 0.73 = **73%** of that CPU
+- A value of 1.0 = **100%** — fully saturated
+
+System-wide averages hide single-core bottlenecks. On a 768-CPU system,
+system-wide Busy-CPU of 0.86% can mean individual CPUs are at 48-97%.
+Always report per-CPU values as percentages (multiply by 100 if needed).
+
+When using sar-net, packet counts reflect **wire-level packets** which are
+always MTU-sized (~1500 bytes). These counts tell you NOTHING about GRO
+coalescing — GRO assembles packets into larger skb chains inside the kernel,
+after the NIC counters.
+
 ### Data-driven analysis — prove it, don't speculate
 
 Every claim must be backed by queried data. If a tool can answer the
