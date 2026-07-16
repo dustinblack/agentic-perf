@@ -933,6 +933,40 @@ class TestIntrospectionAgent:
             timeout=3.0,
         )
 
+    async def test_seeds_narrative_from_ticket(self) -> None:
+        """On restart, narrative history is seeded from the ticket."""
+        agent = IntrospectionAgent(
+            state_store_url="http://localhost:8090",
+        )
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "executing_benchmark",
+            "custom_fields": {
+                "introspection": {
+                    "narrative": [
+                        "triage-agent started",
+                        "Transitioned to awaiting_hardware",
+                        "[observation] Pipeline progressing.",
+                    ],
+                    "anomalies": [
+                        {"type": "repeated_error", "severity": "medium"},
+                    ],
+                },
+            },
+        }
+        mock_response.raise_for_status = MagicMock()
+        agent._client = AsyncMock()
+        agent._client.get = AsyncMock(return_value=mock_response)
+        agent._client.aclose = AsyncMock()
+
+        await agent._seed_from_ticket("PERF-SEED")
+
+        assert len(agent._narrative_log) == 3
+        assert agent._narrative_log[0] == "triage-agent started"
+        assert agent._prev_status == "executing_benchmark"
+        assert agent._prev_anomaly_count == 1
+
 
 # --- Orchestrator integration ---
 

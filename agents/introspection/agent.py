@@ -149,6 +149,10 @@ class IntrospectionAgent:
             f" (llm={'yes' if self._llm else 'no'})"
         )
 
+        # Seed from existing ticket state so restarts don't
+        # lose narrative history or fire spurious LLM triggers.
+        await self._seed_from_ticket(ticket_id)
+
         if self._events:
             self._events.emit(
                 ticket_id,
@@ -714,6 +718,49 @@ class IntrospectionAgent:
             "total_events": len(self._all_events),
             "agents_seen": agent_counts,
         }
+
+    # --- Startup seeding ---
+
+    async def _seed_from_ticket(
+        self,
+        ticket_id: str,
+    ) -> None:
+        """Seed in-memory state from existing ticket data.
+
+        On restart (e.g., after mark_done stops the previous
+        instance), the new agent instance starts with empty
+        state. This method restores:
+        - _narrative_log from the ticket's existing narrative
+          so history is not lost
+        - _prev_status so status-change triggers don't fire
+          spuriously on the first poll
+        - _prev_anomaly_count so existing anomalies don't
+          re-trigger LLM narrative calls
+        """
+        try:
+            ticket = await self._get_ticket(ticket_id)
+        except Exception:
+            return
+
+        status = ticket.get("status", "")
+        if status:
+            self._prev_status = status
+
+        cf = ticket.get("custom_fields", {})
+        intro = cf.get("introspection", {})
+
+        # Restore narrative history.
+        existing = intro.get("narrative", [])
+        if isinstance(existing, list) and existing:
+            self._narrative_log = list(existing)
+            logger.debug(
+                f"[introspection] Seeded {len(existing)} narrative entries from ticket"
+            )
+
+        # Seed anomaly count from existing observations.
+        anomalies = intro.get("anomalies", [])
+        if isinstance(anomalies, list):
+            self._prev_anomaly_count = len(anomalies)
 
     # --- HTTP helpers ---
 
