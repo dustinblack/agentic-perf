@@ -34,20 +34,21 @@ const (
 )
 
 type Model struct {
-	client      *api.Client
-	source      stream.Source
-	viewport    viewport.Model
-	input       textinput.Model
-	width       int
-	height      int
-	lines       []events.Line
-	mode        Mode
-	conn        connState
-	ticketID    string
-	verbose     bool
-	quitting    bool
-	confirmQuit bool
-	err         error
+	client          *api.Client
+	source          stream.Source
+	viewport        viewport.Model
+	input           textinput.Model
+	width           int
+	height          int
+	lines           []events.Line
+	mode            Mode
+	conn            connState
+	ticketID        string
+	verbose         bool
+	quitting        bool
+	confirmQuit     bool
+	pendingApproval *pendingApproval
+	err             error
 }
 
 type tickMsg time.Time
@@ -120,15 +121,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		line := events.Line(msg)
 		m.lines = append(m.lines, line)
 		m.updateViewportContent()
+		if line.Type == "transition" {
+			to := strData(line.Data, "to")
+			m.checkHITLTrigger(line.TicketID, to)
+		}
+		if line.Type == "comment" {
+			m.checkHITLFromEvent(strData(line.Data, "body"))
+		}
 
 	case connMsg:
 		m.conn = connState(msg)
 		if m.conn == connConnected && m.source == nil {
-			m.source = stream.NewSSE(m.client, m.ticketID)
+			if m.ticketID == "" {
+				cmds = append(cmds, m.autoFollowCmd())
+			} else {
+				m.source = stream.NewSSE(m.client, m.ticketID)
+			}
 		}
 
 	case errMsg:
 		m.err = msg.err
+
+	case sysMsg:
+		m.addSystemLine(string(msg))
+
+	case followMsg:
+		m.switchFollow(string(msg))
+		if m.conn == connConnected {
+			m.source = stream.NewSSE(m.client, m.ticketID)
+		}
 	}
 
 	return m, tea.Batch(cmds...)
@@ -171,6 +192,12 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+	case "a", "t", "d":
+		if m.mode == ModeApproval {
+			cmd := m.handleApprovalKey(msg.String())
+			return m, cmd
+		}
+
 	case "enter":
 		if m.mode == ModeInterject {
 			text := m.input.Value()
@@ -184,11 +211,24 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.mode == ModeHITL {
+			text := m.input.Value()
+			if text != "" {
+				cmd := m.sendHITLReply(text)
+				m.input.SetValue("")
+				m.mode = ModeNormal
+				m.input.Blur()
+				m.input.Placeholder = "Type / for commands, Esc to interject..."
+				return m, cmd
+			}
+			return m, nil
+		}
 		if m.input.Focused() {
 			text := m.input.Value()
 			if strings.HasPrefix(text, "/") {
-				cmd := m.handleCommand(text)
+				cmd := m.dispatchCommand(text)
 				m.input.SetValue("")
+				m.input.Blur()
 				return m, cmd
 			}
 		}
@@ -246,53 +286,26 @@ func (m Model) sendInterject(message string) tea.Cmd {
 	}
 }
 
-func (m *Model) handleCommand(text string) tea.Cmd {
-	parts := strings.Fields(text)
-	if len(parts) == 0 {
-		return nil
-	}
-
-	switch parts[0] {
-	case "/quit", "/q":
-		m.quitting = true
-		if m.source != nil {
-			m.source.Close()
+func (m *Model) autoFollowCmd() tea.Cmd {
+	return func() tea.Msg {
+		tickets, err := m.client.ListTickets("")
+		if err != nil {
+			return sysMsg("Connected — use /submit or /follow to get started")
 		}
-		return tea.Quit
-
-	case "/verbose":
-		m.verbose = !m.verbose
-		m.updateViewportContent()
-
-	case "/help":
-		m.addSystemLine("Commands: /quit /verbose /tickets /ticket ID /follow ID /help")
-
-	case "/tickets":
-		return m.listTicketsCmd()
-
-	case "/ticket":
-		if len(parts) > 1 {
-			return m.showTicketCmd(parts[1])
-		}
-		m.addSystemLine("Usage: /ticket <id>")
-
-	case "/follow":
-		if len(parts) > 1 {
-			m.ticketID = parts[1]
-			if m.source != nil {
-				m.source.Close()
+		var latest api.Ticket
+		for _, t := range tickets {
+			if t.Status == "closed" {
+				continue
 			}
-			m.source = stream.NewSSE(m.client, m.ticketID)
-			m.addSystemLine(fmt.Sprintf("Following %s", m.ticketID))
-		} else {
-			m.addSystemLine("Usage: /follow <ticket_id>")
+			if latest.ID == "" || t.UpdatedAt > latest.UpdatedAt {
+				latest = t
+			}
 		}
-
-	default:
-		m.addSystemLine(fmt.Sprintf("Unknown command: %s", parts[0]))
+		if latest.ID != "" {
+			return followMsg(latest.ID)
+		}
+		return sysMsg("Connected — no active tickets. Use /submit to create one")
 	}
-
-	return nil
 }
 
 func (m *Model) addSystemLine(text string) {
@@ -301,35 +314,6 @@ func (m *Model) addSystemLine(text string) {
 		Text: text,
 	})
 	m.updateViewportContent()
-}
-
-func (m Model) listTicketsCmd() tea.Cmd {
-	return func() tea.Msg {
-		tickets, err := m.client.ListTickets("")
-		if err != nil {
-			return errMsg{err}
-		}
-		var lines []string
-		for _, t := range tickets {
-			lines = append(lines, fmt.Sprintf("  %s  %-30s  %s", t.ID, t.Status, t.Summary))
-		}
-		if len(lines) == 0 {
-			return eventMsg(events.Line{Type: "system", Text: "No tickets found"})
-		}
-		text := "Tickets:\n" + strings.Join(lines, "\n")
-		return eventMsg(events.Line{Type: "system", Text: text})
-	}
-}
-
-func (m Model) showTicketCmd(id string) tea.Cmd {
-	return func() tea.Msg {
-		t, err := m.client.GetTicket(id)
-		if err != nil {
-			return errMsg{err}
-		}
-		text := fmt.Sprintf("Ticket %s [%s]\n  %s\n  %s", t.ID, t.Status, t.Summary, t.Description)
-		return eventMsg(events.Line{Type: "system", Text: text})
-	}
 }
 
 func (m *Model) drainEvents() tea.Cmd {
