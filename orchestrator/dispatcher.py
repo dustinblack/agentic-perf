@@ -146,7 +146,7 @@ class Dispatcher:
 
     def start_renewal(self, ticket_id: str) -> None:
         """Start the background claim renewal task for a ticket."""
-        task = asyncio.ensure_future(self._renewal_loop(ticket_id))
+        task = asyncio.create_task(self._renewal_loop(ticket_id))
         self._renewal_tasks[ticket_id] = task
 
     def stop_renewal(self, ticket_id: str) -> None:
@@ -176,6 +176,7 @@ class Dispatcher:
         }
 
     def stop_agent(self, ticket_id: str, mode: str = "graceful") -> bool:
+        self.stop_introspection(ticket_id)
         if mode == "graceful":
             agent = self._agents.get(ticket_id)
             if agent is not None and hasattr(agent, "request_stop"):
@@ -204,6 +205,7 @@ class Dispatcher:
         self.stop_renewal(ticket_id)
         self.release_claim(ticket_id)
         self.clear_handoff_blocked(ticket_id)
+        self.stop_introspection(ticket_id)
 
     def start_introspection(
         self,
@@ -230,7 +232,7 @@ class Dispatcher:
         )
         self._introspection_agents[ticket_id] = agent
 
-        task = asyncio.ensure_future(
+        task = asyncio.create_task(
             self._run_introspection(
                 ticket_id,
                 agent,
@@ -246,7 +248,8 @@ class Dispatcher:
     ) -> None:
         """Run the introspection agent and clean up on exit."""
         try:
-            await agent.run(ticket_id)
+            async with agent:
+                await agent.run(ticket_id)
         except asyncio.CancelledError:
             logger.info(f"Introspection cancelled for {ticket_id}")
         except Exception:
@@ -254,10 +257,6 @@ class Dispatcher:
         finally:
             self._introspection_agents.pop(ticket_id, None)
             self._introspection_tasks.pop(ticket_id, None)
-            try:
-                await agent.close()
-            except Exception:
-                pass
 
     def stop_introspection(self, ticket_id: str) -> None:
         """Stop the introspection agent for a ticket."""

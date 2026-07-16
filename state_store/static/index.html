@@ -1706,7 +1706,14 @@ async function refreshResultSection(ticketId) {
     var cf = ticket.custom_fields || {};
     var card = document.getElementById('introspection-card');
     var introContent = document.getElementById('introspection-content');
-    if (card && introContent && cf.introspection) {
+    if (card && introContent && cf.introspection_summary) {
+      // Final summary: render once, then stop.
+      card.classList.remove('introspection-hidden');
+      if (!introContent.dataset.summaryRendered) {
+        introContent.innerHTML = renderIntrospectionSummary(cf.introspection_summary);
+        introContent.dataset.summaryRendered = '1';
+      }
+    } else if (card && introContent && cf.introspection) {
       card.classList.remove('introspection-hidden');
       var narrativeDetails = introContent.querySelector('#introspection-narrative-details');
       var wasOpen = narrativeDetails ? narrativeDetails.open : false;
@@ -1748,9 +1755,14 @@ function updateIntrospectionCard(ticketId) {
     var intro = cf.introspection;
 
     // Final summary takes precedence when present.
+    // Once rendered, skip re-renders — closed tickets are
+    // static and re-rendering collapses open <details>.
     if (summary) {
       card.classList.remove('introspection-hidden');
-      content.innerHTML = renderIntrospectionSummary(summary);
+      if (!content.dataset.summaryRendered) {
+        content.innerHTML = renderIntrospectionSummary(summary);
+        content.dataset.summaryRendered = '1';
+      }
       return;
     }
 

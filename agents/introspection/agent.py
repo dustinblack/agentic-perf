@@ -25,6 +25,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,7 @@ import httpx
 
 from providers.events import EventBus
 from providers.llm.base import LLMProvider
+from state_store.models import TERMINAL_STATUSES as _MODEL_TERMINAL
 
 from .server import (
     _detect_anomalies_from_events,
@@ -39,11 +41,14 @@ from .server import (
     _read_events,
     _truncate_event,
 )
+from .skills import load_error_patterns, load_thresholds
 
 logger = logging.getLogger(__name__)
 
 # Statuses where the ticket is done — stop watching.
-_TERMINAL_STATUSES = frozenset({"closed"})
+# Derive from the state machine's canonical set so the
+# introspection agent stays consistent if new terminals are added.
+_TERMINAL_STATUSES = frozenset(s.value for s in _MODEL_TERMINAL)
 
 # How often to poll for new events (seconds).
 _POLL_INTERVAL = 5.0
@@ -89,6 +94,17 @@ class IntrospectionAgent:
     durable state is lost.
     """
 
+    async def __aenter__(self) -> IntrospectionAgent:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> None:
+        await self.close()
+
     def __init__(
         self,
         state_store_url: str,
@@ -105,6 +121,8 @@ class IntrospectionAgent:
         self._prev_status = ""
         self._llm_call_count = 0
         self._stop_requested = False
+        self._error_patterns = load_error_patterns()
+        self._thresholds = load_thresholds()
         headers: dict[str, str] = {}
         api_token = os.environ.get("AGENTIC_PERF_API_TOKEN", "")
         if api_token:
@@ -161,10 +179,13 @@ class IntrospectionAgent:
                     continue
 
                 # Fetch new events since last poll.
-                new_events = _read_events(
+                # Run in a thread to avoid blocking the
+                # event loop on file I/O.
+                new_events = await asyncio.to_thread(
+                    _read_events,
                     ticket_id,
-                    since=self._last_seq,
-                    limit=_POLL_BATCH_SIZE,
+                    self._last_seq,
+                    _POLL_BATCH_SIZE,
                 )
 
                 if new_events:
@@ -177,6 +198,8 @@ class IntrospectionAgent:
                     # Deterministic anomaly detection.
                     anomalies = _detect_anomalies_from_events(
                         self._all_events,
+                        error_patterns=self._error_patterns,
+                        thresholds=self._thresholds,
                     )
 
                     # Check if LLM narrative is warranted.
@@ -216,10 +239,11 @@ class IntrospectionAgent:
                     ticket = {"status": "closed"}
 
                 # Catch trailing events.
-                trailing = _read_events(
+                trailing = await asyncio.to_thread(
+                    _read_events,
                     ticket_id,
-                    since=self._last_seq,
-                    limit=_POLL_BATCH_SIZE,
+                    self._last_seq,
+                    _POLL_BATCH_SIZE,
                 )
                 if trailing:
                     self._all_events.extend(trailing)
@@ -260,19 +284,25 @@ class IntrospectionAgent:
         status = ticket.get("status", "")
         status_changed = status != self._prev_status and self._prev_status
 
-        self._prev_anomaly_count = len(anomalies)
-        self._prev_status = status
-
         if not new_anomaly and not status_changed:
             return None
 
-        return await self._llm_narrate(
+        narrative = await self._llm_narrate(
             ticket_id,
             ticket,
             new_events,
             anomalies,
             trigger="anomaly" if new_anomaly else "transition",
         )
+
+        # Only update state trackers after successful narration
+        # so transient LLM failures don't permanently lose the
+        # trigger.
+        if narrative is not None:
+            self._prev_anomaly_count = len(anomalies)
+            self._prev_status = status
+
+        return narrative
 
     def _record_usage(
         self,
@@ -283,6 +313,19 @@ class IntrospectionAgent:
         if not response.usage or not self._events:
             return
         usage = response.usage
+        # Normalize to dict — some providers may return an
+        # object with attributes instead of a plain dict.
+        if not isinstance(usage, dict):
+            usage = {
+                k: getattr(usage, k, 0)
+                for k in (
+                    "input_tokens",
+                    "output_tokens",
+                    "model",
+                    "cache_read_input_tokens",
+                    "cache_creation_input_tokens",
+                )
+            }
         self._events.record_llm_usage(
             ticket_id=ticket_id,
             input_tokens=usage.get("input_tokens", 0),
@@ -377,7 +420,11 @@ class IntrospectionAgent:
         with verdict, observations, and recommendations. Falls back
         to deterministic stats if no LLM is configured.
         """
-        anomalies = _detect_anomalies_from_events(self._all_events)
+        anomalies = _detect_anomalies_from_events(
+            self._all_events,
+            error_patterns=self._error_patterns,
+            thresholds=self._thresholds,
+        )
         stats = self._compute_stats()
 
         if self._llm:
@@ -497,8 +544,6 @@ class IntrospectionAgent:
         except json.JSONDecodeError:
             pass
         # Extract from code fence.
-        import re
-
         fence = re.search(
             r"```(?:json)?\s*\n(.*?)\n```",
             text,

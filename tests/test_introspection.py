@@ -270,6 +270,45 @@ class TestToolFailureDetection:
         evt = _make_event(1, "tool_called", data={"tool": "x"})
         assert _is_tool_failure(evt) is False
 
+    def test_error_field_none_string_not_failure(self) -> None:
+        """error: 'none' should not be treated as a failure."""
+        evt = _make_event(
+            1,
+            "tool_result",
+            data={
+                "tool": "run_cmd",
+                "is_error": False,
+                "content": json.dumps({"error": "none"}),
+            },
+        )
+        assert _is_tool_failure(evt) is False
+
+    def test_error_field_na_not_failure(self) -> None:
+        """error: 'N/A' should not be treated as a failure."""
+        evt = _make_event(
+            1,
+            "tool_result",
+            data={
+                "tool": "run_cmd",
+                "is_error": False,
+                "content": json.dumps({"error": "N/A"}),
+            },
+        )
+        assert _is_tool_failure(evt) is False
+
+    def test_error_field_real_error_still_detected(self) -> None:
+        """A real error string should still be detected."""
+        evt = _make_event(
+            1,
+            "tool_result",
+            data={
+                "tool": "run_cmd",
+                "is_error": False,
+                "content": json.dumps({"error": "connection refused"}),
+            },
+        )
+        assert _is_tool_failure(evt) is True
+
 
 class TestErrorClassification:
     """Tests for _classify_error and _error_similarity."""
@@ -305,6 +344,35 @@ class TestErrorClassification:
         a = "[Errno 98] address already in use on port 8080"
         b = "[Errno 98] address already in use on port 9090"
         assert _error_similarity(a, b) > 0.5
+
+    def test_similarity_strips_hex_addresses(self) -> None:
+        a = "segfault at 0xDEADBEEF in libfoo.so"
+        b = "segfault at 0x12345678 in libfoo.so"
+        assert _error_similarity(a, b) > 0.8
+
+    def test_similarity_strips_timestamps(self) -> None:
+        a = "2026-07-15T10:30:00 connection refused"
+        b = "2026-07-15T11:45:22 connection refused"
+        assert _error_similarity(a, b) > 0.8
+
+    def test_similarity_strips_uuids(self) -> None:
+        a = "task abc12345-1234-5678-9abc-def012345678 failed: OOM"
+        b = "task 99999999-aaaa-bbbb-cccc-dddddddddddd failed: OOM"
+        assert _error_similarity(a, b) > 0.8
+
+    def test_similarity_traceback_noise(self) -> None:
+        """Long traceback with same root cause should still match."""
+        a = (
+            "File /app/foo.py line 42 in bar\n"
+            "  raise ConnectionError('refused')\n"
+            "ConnectionError: connection refused"
+        )
+        b = (
+            "File /app/foo.py line 99 in baz\n"
+            "  raise ConnectionError('refused')\n"
+            "ConnectionError: connection refused"
+        )
+        assert _error_similarity(a, b) > 0.7
 
     def test_extract_error_from_json(self) -> None:
         evt = _make_event(
@@ -1015,6 +1083,42 @@ class TestLLMIntegration:
         agent_usage = bus.get_agent_usage("PERF-1")
         assert "introspection-agent" in agent_usage
 
+    async def test_usage_recording_object_usage(self) -> None:
+        """_record_usage handles usage as an object with attributes."""
+        from providers.events import EventBus
+
+        bus = EventBus()
+        agent = IntrospectionAgent(
+            state_store_url="http://localhost:8090",
+            event_bus=bus,
+        )
+
+        # Simulate a provider that returns an object, not a dict.
+        class UsageObj:
+            input_tokens = 200
+            output_tokens = 75
+            model = "some-model"
+            cache_read_input_tokens = 0
+            cache_creation_input_tokens = 0
+
+        mock_response = MagicMock()
+        mock_response.usage = UsageObj()
+        agent._record_usage("PERF-2", mock_response)
+
+        usage = bus.get_cumulative_usage("PERF-2")
+        assert usage["input_tokens"] == 200
+        assert usage["output_tokens"] == 75
+
+    async def test_async_context_manager(self) -> None:
+        """IntrospectionAgent works as an async context manager."""
+        agent = IntrospectionAgent(
+            state_store_url="http://localhost:8090",
+        )
+        async with agent:
+            assert agent._client is not None
+        # After exit, client should be closed.
+        assert agent._client.is_closed
+
 
 class TestIntrospectionConfig:
     def test_default_disabled(self) -> None:
@@ -1125,3 +1229,386 @@ class TestMaybeStartIntrospection:
         _maybe_start_introspection(dispatcher, config, ticket, "PERF-1")
 
         dispatcher.start_introspection.assert_not_called()
+
+
+# --- Interleaved tool detection ---
+
+
+class TestInterleavedDetection:
+    """Tests for detection that survives interleaved diagnostic tools."""
+
+    def test_consecutive_failure_survives_interleaved_success(self) -> None:
+        """A successful diagnostic tool between retries of a failing
+        tool should NOT reset the failing tool's streak."""
+        events = [
+            _make_event(
+                1,
+                "tool_result",
+                data={
+                    "tool": "jmp_run",
+                    "is_error": False,
+                    "content": json.dumps({"exit_code": 1, "error": "port in use"}),
+                },
+            ),
+            # Diagnostic tool succeeds — should NOT reset jmp_run streak.
+            _make_event(
+                2,
+                "tool_result",
+                data={
+                    "tool": "get_status",
+                    "is_error": False,
+                    "content": json.dumps({"exit_code": 0}),
+                },
+            ),
+            _make_event(
+                3,
+                "tool_result",
+                data={
+                    "tool": "jmp_run",
+                    "is_error": False,
+                    "content": json.dumps({"exit_code": 1, "error": "port in use"}),
+                },
+            ),
+            _make_event(
+                4,
+                "tool_result",
+                data={
+                    "tool": "check_os",
+                    "is_error": False,
+                    "content": json.dumps({"exit_code": 0}),
+                },
+            ),
+            _make_event(
+                5,
+                "tool_result",
+                data={
+                    "tool": "jmp_run",
+                    "is_error": False,
+                    "content": json.dumps({"exit_code": 1, "error": "port in use"}),
+                },
+            ),
+        ]
+        anomalies = _detect_anomalies_from_events(
+            events,
+            error_patterns=_EMPTY_PATTERNS,
+            thresholds=_DEFAULT_THRESHOLDS,
+        )
+        consec = [a for a in anomalies if a["type"] == "consecutive_failure"]
+        assert len(consec) == 1
+        assert "jmp_run" in consec[0]["description"]
+        assert "3 times" in consec[0]["description"]
+
+    def test_same_tool_success_resets_streak(self) -> None:
+        """A success of the SAME tool should still reset its streak."""
+        events = [
+            _make_event(
+                1,
+                "tool_result",
+                data={
+                    "tool": "jmp_run",
+                    "is_error": True,
+                    "content": "fail",
+                },
+            ),
+            _make_event(
+                2,
+                "tool_result",
+                data={
+                    "tool": "jmp_run",
+                    "is_error": True,
+                    "content": "fail",
+                },
+            ),
+            # Same tool succeeds — resets the streak.
+            _make_event(
+                3,
+                "tool_result",
+                data={
+                    "tool": "jmp_run",
+                    "is_error": False,
+                    "content": json.dumps({"exit_code": 0}),
+                },
+            ),
+            _make_event(
+                4,
+                "tool_result",
+                data={
+                    "tool": "jmp_run",
+                    "is_error": True,
+                    "content": "fail",
+                },
+            ),
+        ]
+        anomalies = _detect_anomalies_from_events(
+            events,
+            error_patterns=_EMPTY_PATTERNS,
+            thresholds=_DEFAULT_THRESHOLDS,
+        )
+        consec = [a for a in anomalies if a["type"] == "consecutive_failure"]
+        # 2 before success + 1 after = two separate streaks,
+        # but each is below the default min of 2 for the second.
+        # First streak is exactly 2 → detected.
+        assert len(consec) == 1
+        assert "2 times" in consec[0]["description"]
+
+    def test_retry_loop_survives_interleaved_tool(self) -> None:
+        """Identical retries of a tool should be detected even when
+        a different tool is called in between."""
+        events = [
+            _make_event(
+                1,
+                "tool_called",
+                data={
+                    "tool": "execute_command",
+                    "input": {"command": "ls /tmp"},
+                },
+            ),
+            # Different tool in between.
+            _make_event(
+                2,
+                "tool_called",
+                data={
+                    "tool": "get_status",
+                    "input": {"id": "PERF-1"},
+                },
+            ),
+            _make_event(
+                3,
+                "tool_called",
+                data={
+                    "tool": "execute_command",
+                    "input": {"command": "ls /tmp"},
+                },
+            ),
+            _make_event(
+                4,
+                "tool_called",
+                data={
+                    "tool": "get_status",
+                    "input": {"id": "PERF-1"},
+                },
+            ),
+            _make_event(
+                5,
+                "tool_called",
+                data={
+                    "tool": "execute_command",
+                    "input": {"command": "ls /tmp"},
+                },
+            ),
+        ]
+        anomalies = _detect_anomalies_from_events(
+            events,
+            error_patterns=_EMPTY_PATTERNS,
+            thresholds=_DEFAULT_THRESHOLDS,
+        )
+        loops = [a for a in anomalies if a["type"] == "retry_loop"]
+        assert len(loops) >= 1
+        exec_loops = [a for a in loops if "execute_command" in a["description"]]
+        assert len(exec_loops) == 1
+        assert "3 times" in exec_loops[0]["description"]
+
+    def test_retry_loop_different_input_no_detection(self) -> None:
+        """Same tool with different input should not be a retry loop."""
+        events = [
+            _make_event(
+                1,
+                "tool_called",
+                data={
+                    "tool": "execute_command",
+                    "input": {"command": "ls /tmp"},
+                },
+            ),
+            _make_event(
+                2,
+                "tool_called",
+                data={
+                    "tool": "execute_command",
+                    "input": {"command": "ls /var"},
+                },
+            ),
+            _make_event(
+                3,
+                "tool_called",
+                data={
+                    "tool": "execute_command",
+                    "input": {"command": "ls /home"},
+                },
+            ),
+        ]
+        anomalies = _detect_anomalies_from_events(
+            events,
+            error_patterns=_EMPTY_PATTERNS,
+            thresholds=_DEFAULT_THRESHOLDS,
+        )
+        loops = [a for a in anomalies if a["type"] == "retry_loop"]
+        assert len(loops) == 0
+
+
+# --- LLM summary parsing ---
+
+
+class TestParseSummaryResponse:
+    """Tests for _parse_summary_response edge cases."""
+
+    def test_direct_json(self) -> None:
+        text = json.dumps(
+            {
+                "verdict": "clean",
+                "observations": ["all good"],
+                "recommendations": [],
+            }
+        )
+        result = IntrospectionAgent._parse_summary_response(text)
+        assert result["verdict"] == "clean"
+        assert result["observations"] == ["all good"]
+
+    def test_code_fenced_json(self) -> None:
+        text = (
+            "Here is the summary:\n\n"
+            "```json\n"
+            '{"verdict": "minor_issues", '
+            '"observations": ["one issue"], '
+            '"recommendations": []}\n'
+            "```\n"
+        )
+        result = IntrospectionAgent._parse_summary_response(text)
+        assert result["verdict"] == "minor_issues"
+
+    def test_code_fence_without_json_tag(self) -> None:
+        text = (
+            "Summary:\n\n"
+            "```\n"
+            '{"verdict": "needs_attention", '
+            '"observations": [], '
+            '"recommendations": []}\n'
+            "```\n"
+        )
+        result = IntrospectionAgent._parse_summary_response(text)
+        assert result["verdict"] == "needs_attention"
+
+    def test_malformed_falls_back_to_narrative(self) -> None:
+        text = "The pipeline ran cleanly with no issues."
+        result = IntrospectionAgent._parse_summary_response(text)
+        assert result["verdict"] == "unknown"
+        assert len(result["observations"]) == 1
+        assert "cleanly" in result["observations"][0]
+        assert result["recommendations"] == []
+
+    def test_none_input(self) -> None:
+        result = IntrospectionAgent._parse_summary_response(None)
+        assert result == {}
+
+    def test_empty_string(self) -> None:
+        result = IntrospectionAgent._parse_summary_response("")
+        assert result == {}
+
+
+class TestLLMFinalSummary:
+    """Tests for the LLM final summary path."""
+
+    async def test_llm_final_summary_happy_path(self) -> None:
+        from providers.llm.base import LLMResponse
+
+        mock_llm = AsyncMock()
+        mock_llm.complete = AsyncMock(
+            return_value=LLMResponse(
+                text=json.dumps(
+                    {
+                        "verdict": "minor_issues",
+                        "observations": ["Agent retried 3 times"],
+                        "recommendations": [
+                            {
+                                "area": "infrastructure",
+                                "suggestion": "Check port conflicts",
+                            }
+                        ],
+                    }
+                ),
+                tool_calls=[],
+                stop_reason="end_turn",
+                raw_content="",
+                usage=None,
+            )
+        )
+        agent = IntrospectionAgent(
+            state_store_url="http://localhost:8090",
+            llm_provider=mock_llm,
+        )
+        agent._all_events = [
+            _make_event(1, "agent_started"),
+            _make_event(2, "agent_finished"),
+        ]
+
+        summary = await agent._llm_final_summary(
+            "PERF-1",
+            {"id": "PERF-1", "summary": "test"},
+            [],
+            agent._compute_stats(),
+        )
+        assert summary["verdict"] == "minor_issues"
+        assert "stats" in summary
+        assert summary["stats"]["total_events"] == 2
+        mock_llm.complete.assert_called_once()
+
+    async def test_llm_final_summary_falls_back_on_error(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.complete = AsyncMock(
+            side_effect=Exception("API timeout"),
+        )
+        agent = IntrospectionAgent(
+            state_store_url="http://localhost:8090",
+            llm_provider=mock_llm,
+        )
+        agent._all_events = [
+            _make_event(1, "agent_started"),
+            _make_event(2, "agent_finished"),
+        ]
+
+        summary = await agent._llm_final_summary(
+            "PERF-1",
+            {"id": "PERF-1", "summary": "test"},
+            [],
+            agent._compute_stats(),
+        )
+        # Should fall back to deterministic summary.
+        assert summary["verdict"] == "clean"
+        assert "stats" in summary
+        assert summary["anomalies"] == []
+
+    async def test_llm_final_summary_with_code_fence(self) -> None:
+        from providers.llm.base import LLMResponse
+
+        mock_llm = AsyncMock()
+        mock_llm.complete = AsyncMock(
+            return_value=LLMResponse(
+                text=(
+                    "Here is my analysis:\n\n"
+                    "```json\n"
+                    '{"verdict": "needs_attention", '
+                    '"observations": ["High error rate"], '
+                    '"recommendations": []}\n'
+                    "```\n"
+                ),
+                tool_calls=[],
+                stop_reason="end_turn",
+                raw_content="",
+                usage=None,
+            )
+        )
+        agent = IntrospectionAgent(
+            state_store_url="http://localhost:8090",
+            llm_provider=mock_llm,
+        )
+        agent._all_events = [
+            _make_event(1, "agent_started"),
+        ]
+
+        summary = await agent._llm_final_summary(
+            "PERF-1",
+            {"id": "PERF-1", "summary": "test"},
+            [{"type": "consecutive_failure", "severity": "high"}],
+            agent._compute_stats(),
+        )
+        assert summary["verdict"] == "needs_attention"
+        assert summary["stats"]["total_events"] == 1

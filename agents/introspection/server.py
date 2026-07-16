@@ -28,6 +28,9 @@ def _read_events(
     line_num = 0
     with open(path, encoding="utf-8") as f:
         for line in f:
+            line_num += 1
+            if line_num <= since:
+                continue
             line = line.strip()
             if not line:
                 continue
@@ -35,12 +38,10 @@ def _read_events(
                 evt = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            line_num += 1
             evt["seq"] = line_num
-            if line_num > since:
-                results.append(evt)
-                if len(results) >= limit:
-                    break
+            results.append(evt)
+            if len(results) >= limit:
+                break
     return results
 
 
@@ -114,7 +115,13 @@ def _is_tool_failure(evt: dict[str, Any]) -> bool:
                 "error",
             ):
                 return True
-            if parsed.get("error"):
+            err_val = parsed.get("error")
+            if err_val and str(err_val).lower() not in (
+                "none",
+                "null",
+                "n/a",
+                "false",
+            ):
                 return True
     except (json.JSONDecodeError, TypeError, ValueError):
         pass
@@ -159,12 +166,37 @@ def _classify_error(
     return "logic"
 
 
+# Noise patterns stripped before Jaccard similarity comparison.
+# Hex addresses, line numbers, timestamps, and UUIDs vary between
+# otherwise-identical errors and dilute the word overlap score.
+_SIMILARITY_NOISE = re.compile(
+    r"0x[0-9a-fA-F]+"  # hex addresses
+    r"|\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}[:\d.]*\b"  # timestamps
+    r"|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b"  # UUIDs
+    r"|\bline \d+\b"  # line references
+    r"|:\d+:"  # file:lineno: patterns
+    r"|\b\d{5,}\b",  # large numbers (PIDs, ports above 9999)
+)
+
+
+def _sanitize_for_similarity(msg: str) -> str:
+    """Strip noise tokens that vary between same-cause errors."""
+    return _SIMILARITY_NOISE.sub("", msg)
+
+
 def _error_similarity(msg_a: str, msg_b: str) -> float:
-    """Rough similarity between two error messages (Jaccard on words)."""
+    """Rough similarity between two error messages (Jaccard on words).
+
+    Strips hex addresses, timestamps, UUIDs, line numbers, and
+    large numeric values before comparison so that long
+    tracebacks with varying context don't dilute the score.
+    """
     if not msg_a or not msg_b:
         return 0.0
-    words_a = set(msg_a.lower().split())
-    words_b = set(msg_b.lower().split())
+    clean_a = _sanitize_for_similarity(msg_a)
+    clean_b = _sanitize_for_similarity(msg_b)
+    words_a = set(clean_a.lower().split())
+    words_b = set(clean_b.lower().split())
     if not words_a or not words_b:
         return 0.0
     intersection = words_a & words_b
@@ -214,21 +246,24 @@ def _detect_anomalies_from_events(
     anomalies: list[dict[str, Any]] = []
 
     # --- Consecutive tool failures with similar errors ---
-    streak_tool: str = ""
-    streak_errors: list[dict[str, Any]] = []
-    streak_msgs: list[str] = []
+    # Track per-tool so interleaved diagnostic tools (get_status,
+    # check_os) don't reset streaks for the failing tool.
+    tool_streaks: dict[str, list[dict[str, Any]]] = {}
+    tool_streak_msgs: dict[str, list[str]] = {}
 
-    def _flush_streak() -> None:
-        if len(streak_errors) < consec_min:
+    def _flush_streak(tool: str) -> None:
+        errors = tool_streaks.get(tool, [])
+        msgs = tool_streak_msgs.get(tool, [])
+        if len(errors) < consec_min:
             return
-        classifications = [_classify_error(m, error_patterns) for m in streak_msgs]
+        classifications = [_classify_error(m, error_patterns) for m in msgs]
         primary_class = max(
             set(classifications),
             key=classifications.count,
         )
-        severity = "high" if len(streak_errors) >= consec_high else "medium"
-        sample_msg = streak_msgs[0][:120] if streak_msgs else ""
-        desc = f"Tool '{streak_tool}' failed {len(streak_errors)} times consecutively"
+        severity = "high" if len(errors) >= consec_high else "medium"
+        sample_msg = msgs[0][:120] if msgs else ""
+        desc = f"Tool '{tool}' failed {len(errors)} times consecutively"
         if primary_class == "infrastructure":
             desc += " (infrastructure issue \u2014 retrying won't help)"
         elif primary_class == "transient":
@@ -244,8 +279,8 @@ def _detect_anomalies_from_events(
                 "description": desc,
                 "error_class": primary_class,
                 "seq_range": [
-                    streak_errors[0].get("seq", 0),
-                    streak_errors[-1].get("seq", 0),
+                    errors[0].get("seq", 0),
+                    errors[-1].get("seq", 0),
                 ],
             }
         )
@@ -256,26 +291,35 @@ def _detect_anomalies_from_events(
         tool = evt.get("data", {}).get("tool", "unknown")
         failed = _is_tool_failure(evt)
 
-        if failed and tool == streak_tool:
-            msg = _extract_error_message(evt)
-            if (
-                not streak_msgs
-                or _error_similarity(msg, streak_msgs[-1]) > sim_threshold
-            ):
-                streak_errors.append(evt)
-                streak_msgs.append(msg)
-                continue
-        _flush_streak()
         if failed:
-            streak_tool = tool
-            streak_errors = [evt]
-            streak_msgs = [_extract_error_message(evt)]
+            msg = _extract_error_message(evt)
+            existing_msgs = tool_streak_msgs.get(tool, [])
+            if (
+                not existing_msgs
+                or _error_similarity(
+                    msg,
+                    existing_msgs[-1],
+                )
+                > sim_threshold
+            ):
+                tool_streaks.setdefault(tool, []).append(evt)
+                tool_streak_msgs.setdefault(tool, []).append(
+                    msg,
+                )
+            else:
+                # Error changed character — flush old streak,
+                # start new one for this tool.
+                _flush_streak(tool)
+                tool_streaks[tool] = [evt]
+                tool_streak_msgs[tool] = [msg]
         else:
-            streak_tool = ""
-            streak_errors = []
-            streak_msgs = []
+            # Success for this tool resets its streak only.
+            _flush_streak(tool)
+            tool_streaks.pop(tool, None)
+            tool_streak_msgs.pop(tool, None)
 
-    _flush_streak()
+    for tool in list(tool_streaks):
+        _flush_streak(tool)
 
     # --- Total tool errors (including content-based failures) ---
     error_counts: dict[str, list[int]] = {}
@@ -303,58 +347,54 @@ def _detect_anomalies_from_events(
                 )
 
     # --- Retry loops (same tool + identical input) ---
-    prev_call: dict[str, Any] | None = None
-    loop_count = 1
-    loop_start_seq = 0
+    # Track per-tool so interleaved diagnostic tools don't
+    # reset loop counters for the retried tool.
+    tool_prev_input: dict[str, str] = {}
+    tool_loop_count: dict[str, int] = {}
+    tool_loop_start: dict[str, int] = {}
+    tool_loop_end: dict[str, int] = {}
+
+    def _flush_loop(tool: str) -> None:
+        count = tool_loop_count.get(tool, 0)
+        if count >= loop_min:
+            anomalies.append(
+                {
+                    "type": "retry_loop",
+                    "severity": ("high" if count >= loop_high else "medium"),
+                    "description": (
+                        f"Tool '{tool}' called {count} times with identical input"
+                    ),
+                    "seq_range": [
+                        tool_loop_start.get(tool, 0),
+                        tool_loop_end.get(tool, 0),
+                    ],
+                }
+            )
+
     for evt in events:
         if evt.get("event_type") != "tool_called":
             continue
         data = evt.get("data", {})
-        current = {
-            "tool": data.get("tool"),
-            "input": json.dumps(
-                data.get("input", {}),
-                sort_keys=True,
-            ),
-        }
-        if prev_call and current == prev_call:
-            loop_count += 1
-        else:
-            if loop_count >= loop_min and prev_call:
-                anomalies.append(
-                    {
-                        "type": "retry_loop",
-                        "severity": ("high" if loop_count >= loop_high else "medium"),
-                        "description": (
-                            f"Tool '{prev_call['tool']}' called "
-                            f"{loop_count} times with identical"
-                            f" input"
-                        ),
-                        "seq_range": [
-                            loop_start_seq,
-                            evt.get("seq", 0) - 1,
-                        ],
-                    }
-                )
-            loop_count = 1
-            loop_start_seq = evt.get("seq", 0)
-        prev_call = current
-
-    if loop_count >= loop_min and prev_call:
-        anomalies.append(
-            {
-                "type": "retry_loop",
-                "severity": ("high" if loop_count >= loop_high else "medium"),
-                "description": (
-                    f"Tool '{prev_call['tool']}' called "
-                    f"{loop_count} times with identical input"
-                ),
-                "seq_range": [
-                    loop_start_seq,
-                    events[-1].get("seq", 0),
-                ],
-            }
+        tool = data.get("tool", "unknown")
+        input_key = json.dumps(
+            data.get("input", {}),
+            sort_keys=True,
         )
+        seq = evt.get("seq", 0)
+
+        prev_input = tool_prev_input.get(tool)
+        if prev_input is not None and input_key == prev_input:
+            tool_loop_count[tool] = tool_loop_count.get(tool, 1) + 1
+            tool_loop_end[tool] = seq
+        else:
+            _flush_loop(tool)
+            tool_prev_input[tool] = input_key
+            tool_loop_count[tool] = 1
+            tool_loop_start[tool] = seq
+            tool_loop_end[tool] = seq
+
+    for tool in list(tool_loop_count):
+        _flush_loop(tool)
 
     # --- Max iterations ---
     for evt in events:
