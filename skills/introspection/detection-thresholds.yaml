@@ -46,3 +46,8 @@ wasted_iterations_pct: 25
 
 # Severity escalation percentage.
 wasted_iterations_high_pct: 50
+
+# --- Tool bypass ---
+# Minimum calls to a generic tool (with zero calls to the
+# specialized tool) before flagging as a bypass.
+tool_bypass_min_calls: 3

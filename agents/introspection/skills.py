@@ -1,7 +1,7 @@
 """Skill loader for the introspection agent.
 
-Loads error classification patterns and detection thresholds from
-skill files, with private-skills overrides for org-specific tuning.
+Loads error classification patterns, detection thresholds, and tool
+bypass patterns from skill files, with private-skills overrides.
 
 Public skills:  skills/introspection/*.yaml    (shipped with repo)
 Private skills: ~/.agentic-perf/private-skills/introspection.json
@@ -109,3 +109,59 @@ def load_thresholds() -> dict[str, Any]:
     defaults.update(private_thresholds)
 
     return defaults
+
+
+def load_tool_bypass_patterns() -> dict[str, Any]:
+    """Load tool bypass detection patterns from skills.
+
+    Returns a dict with:
+    - tool_mappings: list of {agent, generic_tool, specialized_tool,
+      description} for generic-vs-specialized detection
+    - command_patterns: list of {agent, tool, pattern (compiled),
+      description, severity} for content-based detection
+
+    Private overrides append to both lists.
+    """
+    raw = _load_yaml(
+        _INTROSPECTION_SKILLS / "tool-bypass-patterns.yaml",
+    )
+
+    # Merge private overrides.
+    private = _load_private_overrides()
+    private_bypass = private.get("tool_bypass", {})
+    for key in ("tool_mappings", "command_patterns"):
+        extra = private_bypass.get(key, [])
+        if isinstance(extra, list):
+            existing = raw.get(key, [])
+            if isinstance(existing, list):
+                existing.extend(extra)
+                raw[key] = existing
+
+    # Compile command pattern regexes.
+    compiled_patterns = []
+    for entry in raw.get("command_patterns", []):
+        if not isinstance(entry, dict):
+            continue
+        p = entry.get("pattern", "")
+        if not p:
+            continue
+        try:
+            compiled_patterns.append(
+                {
+                    "agent": entry.get("agent", ""),
+                    "tool": entry.get("tool", ""),
+                    "pattern": re.compile(p, re.IGNORECASE),
+                    "description": entry.get("description", "tool bypass"),
+                    "severity": entry.get("severity", "medium"),
+                }
+            )
+        except re.error:
+            logger.warning(
+                f"Invalid bypass pattern regex: {p}",
+                exc_info=True,
+            )
+
+    return {
+        "tool_mappings": raw.get("tool_mappings", []),
+        "command_patterns": compiled_patterns,
+    }

@@ -41,7 +41,7 @@ from .server import (
     _read_events,
     _truncate_event,
 )
-from .skills import load_error_patterns, load_thresholds
+from .skills import load_error_patterns, load_thresholds, load_tool_bypass_patterns
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +123,7 @@ class IntrospectionAgent:
         self._stop_requested = False
         self._error_patterns = load_error_patterns()
         self._thresholds = load_thresholds()
+        self._bypass_patterns = load_tool_bypass_patterns()
         headers: dict[str, str] = {}
         api_token = os.environ.get("AGENTIC_PERF_API_TOKEN", "")
         if api_token:
@@ -204,6 +205,7 @@ class IntrospectionAgent:
                         self._all_events,
                         error_patterns=self._error_patterns,
                         thresholds=self._thresholds,
+                        bypass_patterns=self._bypass_patterns,
                     )
 
                     # Check if LLM narrative is warranted.
@@ -437,6 +439,7 @@ class IntrospectionAgent:
             self._all_events,
             error_patterns=self._error_patterns,
             thresholds=self._thresholds,
+            bypass_patterns=self._bypass_patterns,
         )
         stats = self._compute_stats()
 

@@ -208,13 +208,14 @@ def _detect_anomalies_from_events(
     events: list[dict[str, Any]],
     error_patterns: dict[str, list[re.Pattern[str]]] | None = None,
     thresholds: dict[str, Any] | None = None,
+    bypass_patterns: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Analyze events for anomalous patterns.
 
     All detection parameters are loaded from introspection skill
     files (skills/introspection/) with private-skills overrides.
-    Pass error_patterns and thresholds explicitly for testing;
-    None loads from skills at call time.
+    Pass error_patterns, thresholds, and bypass_patterns explicitly
+    for testing; None loads from skills at call time.
 
     Detects:
     - Consecutive tool failures (same tool, similar errors)
@@ -222,11 +223,16 @@ def _detect_anomalies_from_events(
     - Retry loops (same tool + identical input)
     - Max iteration exhaustion
     - Wasted iteration ratio per agent
+    - Tool bypass patterns (generic tool used instead of
+      specialized tool, manual schema exploration, manual
+      container orchestration)
     """
-    from .skills import load_error_patterns, load_thresholds
+    from .skills import load_error_patterns, load_thresholds, load_tool_bypass_patterns
 
     if error_patterns is None:
         error_patterns = load_error_patterns()
+    if bypass_patterns is None:
+        bypass_patterns = load_tool_bypass_patterns()
     if thresholds is None:
         thresholds = load_thresholds()
 
@@ -458,6 +464,102 @@ def _detect_anomalies_from_events(
                         f" LLM calls ({pct}%) produced only"
                         f" failed tool results"
                     ),
+                }
+            )
+
+    # --- Tool bypass patterns ---
+    bypass_min = thresholds.get("tool_bypass_min_calls", 3)
+    tool_mappings = bypass_patterns.get("tool_mappings", [])
+    cmd_patterns = bypass_patterns.get("command_patterns", [])
+
+    # Per-agent tool call counts for generic-vs-specialized check.
+    agent_tool_counts: dict[str, dict[str, int]] = {}
+    # Per-agent command pattern matches.
+    agent_cmd_matches: dict[str, list[dict[str, Any]]] = {}
+
+    for evt in events:
+        if evt.get("event_type") != "tool_called":
+            continue
+        agent = evt.get("agent", "")
+        data = evt.get("data", {})
+        tool = data.get("tool", "")
+        if not agent or not tool:
+            continue
+
+        agent_tool_counts.setdefault(agent, {})
+        agent_tool_counts[agent][tool] = agent_tool_counts[agent].get(tool, 0) + 1
+
+        # Check command content patterns.
+        for cp in cmd_patterns:
+            if not agent.startswith(cp["agent"]):
+                continue
+            if tool != cp["tool"]:
+                continue
+            input_str = json.dumps(data.get("input", {}), default=str)
+            if cp["pattern"].search(input_str):
+                agent_cmd_matches.setdefault(agent, [])
+                agent_cmd_matches[agent].append(
+                    {
+                        "seq": evt.get("seq", 0),
+                        "description": cp["description"],
+                        "severity": cp["severity"],
+                    }
+                )
+
+    # Detect generic-tool-instead-of-specialized-tool.
+    for mapping in tool_mappings:
+        if not isinstance(mapping, dict):
+            continue
+        agent_prefix = mapping.get("agent", "")
+        generic = mapping.get("generic_tool", "")
+        specialized = mapping.get("specialized_tool", "")
+        if not agent_prefix or not generic or not specialized:
+            continue
+
+        for agent, counts in agent_tool_counts.items():
+            if not agent.startswith(agent_prefix):
+                continue
+            generic_count = counts.get(generic, 0)
+            specialized_count = counts.get(specialized, 0)
+            if generic_count >= bypass_min and specialized_count == 0:
+                anomalies.append(
+                    {
+                        "type": "tool_bypass",
+                        "severity": "high",
+                        "description": (
+                            f"Agent '{agent}' called"
+                            f" '{generic}' {generic_count}"
+                            f" times without calling"
+                            f" '{specialized}' \u2014"
+                            f" {mapping.get('description', 'possible tool bypass')}"
+                        ),
+                    }
+                )
+
+    # Aggregate command-pattern matches per description.
+    seen_descs: set[str] = set()
+    for agent, matches in agent_cmd_matches.items():
+        by_desc: dict[str, list[dict[str, Any]]] = {}
+        for m in matches:
+            by_desc.setdefault(m["description"], []).append(m)
+        for desc, group in by_desc.items():
+            key = f"{agent}:{desc}"
+            if key in seen_descs:
+                continue
+            seen_descs.add(key)
+            anomalies.append(
+                {
+                    "type": "tool_bypass",
+                    "severity": group[0]["severity"],
+                    "description": (
+                        f"Agent '{agent}': {desc}"
+                        f" ({len(group)} occurrence"
+                        f"{'s' if len(group) != 1 else ''})"
+                    ),
+                    "seq_range": [
+                        group[0]["seq"],
+                        group[-1]["seq"],
+                    ],
                 }
             )
 

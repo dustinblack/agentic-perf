@@ -82,6 +82,7 @@ log review.
 | Retry loops | medium/high | Same tool called with identical input 3+ times. Tracked per-tool — interleaved calls to other tools do not break loop detection. |
 | Wasted iterations | medium/high | 25%+ of an agent's LLM calls produced only failed tool results |
 | Max iterations | high | Agent exhausted its iteration budget |
+| Tool bypass | medium/high | Agent uses a generic tool (e.g., `execute_command`) for tasks a specialized tool handles (e.g., `execute_benchmark`). Includes detection of manual schema exploration (`--schema`, `--help` via SSH) and manual container orchestration (`podman run` via SSH). |
 
 The detection also classifies errors:
 - **Infrastructure** (port conflict, disk full, permission denied) — retrying won't help
@@ -118,7 +119,19 @@ or logic. Add org-specific patterns via private skills.
 
 **Detection thresholds** (`skills/introspection/detection-thresholds.yaml`):
 Consecutive failure count, similarity threshold, wasted iteration
-percentage, retry loop count, etc. Override via private skills.
+percentage, retry loop count, tool bypass minimum calls, etc.
+Override via private skills.
+
+**Tool bypass patterns** (`skills/introspection/tool-bypass-patterns.yaml`):
+Detects when agents use generic tools instead of purpose-built ones.
+Contains two sections:
+- `tool_mappings` — generic-to-specialized tool relationships per
+  agent (e.g., benchmark agent using `execute_command` instead of
+  `execute_benchmark`)
+- `command_patterns` — regex patterns matched against tool input
+  to detect specific bypass behaviors (e.g., manual schema
+  exploration via `podman run --schema`, manual container
+  orchestration via `podman run`)
 
 **Private overrides** (`~/.agentic-perf/private-skills/introspection.json`):
 ```json
@@ -129,12 +142,32 @@ percentage, retry loop count, etc. Override via private skills.
     "thresholds": {
         "consecutive_failure_min": 3,
         "wasted_iterations_pct": 40
+    },
+    "tool_bypass": {
+        "tool_mappings": [
+            {
+                "agent": "provisioning",
+                "generic_tool": "execute_command",
+                "specialized_tool": "jmp_run",
+                "description": "running commands directly instead of via Jumpstarter"
+            }
+        ],
+        "command_patterns": [
+            {
+                "agent": "benchmark",
+                "tool": "execute_command",
+                "pattern": "our-internal-tool --manual-mode",
+                "description": "manual invocation of internal tool",
+                "severity": "medium"
+            }
+        ]
     }
 }
 ```
 
-Private error patterns are *appended* to the shipped defaults.
-Private thresholds *replace* matching shipped defaults.
+Private error patterns and tool bypass patterns are *appended* to
+the shipped defaults. Private thresholds *replace* matching shipped
+defaults.
 
 **Observer prompt** (`skills/introspection/observer-prompt.md`):
 The system prompt that guides the LLM's narrative style, scope

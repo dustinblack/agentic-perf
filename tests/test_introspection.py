@@ -1479,6 +1479,200 @@ class TestInterleavedDetection:
         assert len(loops) == 0
 
 
+# --- Tool bypass detection ---
+
+
+class TestToolBypassDetection:
+    """Tests for tool bypass pattern detection."""
+
+    def _bypass_patterns(self) -> dict:
+        """Load real bypass patterns from skills."""
+        from agents.introspection.skills import load_tool_bypass_patterns
+
+        return load_tool_bypass_patterns()
+
+    def test_generic_tool_bypass_detected(self) -> None:
+        """Flags when benchmark-agent uses execute_command many
+        times without calling execute_benchmark."""
+        events = [
+            _make_event(
+                i,
+                "tool_called",
+                agent="benchmark-agent",
+                data={
+                    "tool": "execute_command",
+                    "input": {"command": f"cmd-{i}"},
+                },
+            )
+            for i in range(1, 6)
+        ]
+        anomalies = _detect_anomalies_from_events(
+            events,
+            error_patterns=_EMPTY_PATTERNS,
+            thresholds=_DEFAULT_THRESHOLDS,
+            bypass_patterns=self._bypass_patterns(),
+        )
+        bypass = [a for a in anomalies if a["type"] == "tool_bypass"]
+        assert len(bypass) >= 1
+        generic_bypass = [a for a in bypass if "execute_benchmark" in a["description"]]
+        assert len(generic_bypass) == 1
+        assert generic_bypass[0]["severity"] == "high"
+
+    def test_no_bypass_when_specialized_tool_used(self) -> None:
+        """No bypass flag when execute_benchmark is also called."""
+        events = [
+            _make_event(
+                i,
+                "tool_called",
+                agent="benchmark-agent",
+                data={
+                    "tool": "execute_command",
+                    "input": {"command": f"cmd-{i}"},
+                },
+            )
+            for i in range(1, 6)
+        ] + [
+            _make_event(
+                6,
+                "tool_called",
+                agent="benchmark-agent",
+                data={
+                    "tool": "execute_benchmark",
+                    "input": {"run_file": "test.yaml"},
+                },
+            ),
+        ]
+        anomalies = _detect_anomalies_from_events(
+            events,
+            error_patterns=_EMPTY_PATTERNS,
+            thresholds=_DEFAULT_THRESHOLDS,
+            bypass_patterns=self._bypass_patterns(),
+        )
+        generic_bypass = [
+            a
+            for a in anomalies
+            if a["type"] == "tool_bypass" and "execute_benchmark" in a["description"]
+        ]
+        assert len(generic_bypass) == 0
+
+    def test_no_bypass_below_threshold(self) -> None:
+        """No flag when generic tool count is below threshold."""
+        events = [
+            _make_event(
+                i,
+                "tool_called",
+                agent="benchmark-agent",
+                data={
+                    "tool": "execute_command",
+                    "input": {"command": f"cmd-{i}"},
+                },
+            )
+            for i in range(1, 3)  # Only 2, below default 3
+        ]
+        anomalies = _detect_anomalies_from_events(
+            events,
+            error_patterns=_EMPTY_PATTERNS,
+            thresholds=_DEFAULT_THRESHOLDS,
+            bypass_patterns=self._bypass_patterns(),
+        )
+        generic_bypass = [
+            a
+            for a in anomalies
+            if a["type"] == "tool_bypass" and "execute_benchmark" in a["description"]
+        ]
+        assert len(generic_bypass) == 0
+
+    def test_schema_exploration_detected(self) -> None:
+        """Flags podman run --schema via execute_command."""
+        events = [
+            _make_event(
+                1,
+                "tool_called",
+                agent="benchmark-agent",
+                data={
+                    "tool": "execute_command",
+                    "input": {
+                        "command": (
+                            "podman run --rm quay.io/plugin:latest --schema 2>/dev/null"
+                        ),
+                    },
+                },
+            ),
+        ]
+        anomalies = _detect_anomalies_from_events(
+            events,
+            error_patterns=_EMPTY_PATTERNS,
+            thresholds=_DEFAULT_THRESHOLDS,
+            bypass_patterns=self._bypass_patterns(),
+        )
+        schema_bypass = [
+            a
+            for a in anomalies
+            if a["type"] == "tool_bypass" and "schema" in a["description"].lower()
+        ]
+        assert len(schema_bypass) == 1
+        assert schema_bypass[0]["severity"] == "medium"
+
+    def test_container_orchestration_detected(self) -> None:
+        """Flags podman run (non-schema) via execute_command."""
+        events = [
+            _make_event(
+                1,
+                "tool_called",
+                agent="benchmark-agent",
+                data={
+                    "tool": "execute_command",
+                    "input": {
+                        "command": (
+                            "podman run -d --network=host quay.io/plugin:latest"
+                        ),
+                    },
+                },
+            ),
+        ]
+        anomalies = _detect_anomalies_from_events(
+            events,
+            error_patterns=_EMPTY_PATTERNS,
+            thresholds=_DEFAULT_THRESHOLDS,
+            bypass_patterns=self._bypass_patterns(),
+        )
+        container_bypass = [
+            a
+            for a in anomalies
+            if a["type"] == "tool_bypass"
+            and "container orchestration" in a["description"].lower()
+        ]
+        assert len(container_bypass) == 1
+        assert container_bypass[0]["severity"] == "high"
+
+    def test_non_benchmark_agent_not_flagged(self) -> None:
+        """Bypass patterns are agent-scoped."""
+        events = [
+            _make_event(
+                i,
+                "tool_called",
+                agent="provisioning-agent",
+                data={
+                    "tool": "execute_command",
+                    "input": {"command": f"cmd-{i}"},
+                },
+            )
+            for i in range(1, 6)
+        ]
+        anomalies = _detect_anomalies_from_events(
+            events,
+            error_patterns=_EMPTY_PATTERNS,
+            thresholds=_DEFAULT_THRESHOLDS,
+            bypass_patterns=self._bypass_patterns(),
+        )
+        bypass = [
+            a
+            for a in anomalies
+            if a["type"] == "tool_bypass" and "execute_benchmark" in a["description"]
+        ]
+        assert len(bypass) == 0
+
+
 # --- LLM summary parsing ---
 
 

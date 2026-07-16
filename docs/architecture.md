@@ -482,6 +482,10 @@ The introspection agent:
   only failed tool results)
 - Detects retry loops (per-tool, survives interleaved diagnostics)
   and max iteration exhaustion
+- Detects tool bypass patterns: agents using generic tools (e.g.,
+  `execute_command`) instead of purpose-built tools (e.g.,
+  `execute_benchmark`), manual schema exploration via SSH, and
+  manual container orchestration via SSH
 - Stops automatically when the ticket reaches a terminal status
 - Never transitions ticket state or modifies agent behavior (Phase 1)
 
@@ -953,6 +957,7 @@ skills/
     error-patterns.yaml         # Error classification regexes
     detection-thresholds.yaml   # Anomaly detection thresholds
     observer-prompt.md          # LLM system prompt for narrative
+    tool-bypass-patterns.yaml   # Tool misuse detection patterns
 ```
 
 This is the "skills" layer from the design philosophy: agents learn what a
