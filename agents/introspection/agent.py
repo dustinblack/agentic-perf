@@ -231,6 +231,15 @@ class IntrospectionAgent:
 
         except asyncio.CancelledError:
             logger.info(f"[introspection] Observation of {ticket_id} cancelled")
+            # Check if ticket reached terminal while we were
+            # cancelled (e.g., stop_agent during close).
+            if not reached_terminal:
+                try:
+                    t = await self._get_ticket(ticket_id)
+                    if t.get("status", "") in _TERMINAL_STATUSES:
+                        reached_terminal = True
+                except Exception:
+                    pass
         except Exception:
             logger.exception(f"[introspection] Error observing {ticket_id}")
         finally:

@@ -205,7 +205,12 @@ class Dispatcher:
         self.stop_renewal(ticket_id)
         self.release_claim(ticket_id)
         self.clear_handoff_blocked(ticket_id)
-        self.stop_introspection(ticket_id)
+        # Note: introspection is NOT stopped here. It runs
+        # across the full ticket lifecycle and self-stops on
+        # terminal status. Stopping it on every agent handoff
+        # would lose narrative history and prevent the final
+        # summary from being written. Only stop_agent (explicit
+        # user action) forces introspection shutdown.
 
     def start_introspection(
         self,
