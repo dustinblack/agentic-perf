@@ -127,6 +127,26 @@ class ResourceAgent(AgentBase):
         ticket = await self._get_ticket(ticket_id)
         fields = ticket.get("custom_fields", {})
         directives = fields.get("directives", {})
+
+        if directives.get("skip_teardown"):
+            logger.info(
+                f"[resource-agent] skip_teardown directive set,"
+                f" skipping cleanup for {ticket_id}"
+            )
+            await self._add_comment(
+                ticket_id,
+                "Teardown skipped per skip_teardown directive."
+                " Hosts and data preserved.",
+            )
+            if await self._plan_controls_next_transition(ticket_id):
+                return
+            await self._transition_ticket(
+                ticket_id,
+                "retrospective_pending",
+                comment="Teardown skipped, starting retrospective",
+            )
+            return
+
         host_cleanup = directives.get(
             "host_cleanup", fields.get("host_cleanup", "required")
         )
@@ -530,6 +550,15 @@ class ResourceAgent(AgentBase):
             fields["ssh_user"] = reservation_metadata["ssh_user"]
         if reservation_metadata.get("ssh_key_path"):
             fields["ssh_key_path"] = reservation_metadata["ssh_key_path"]
+
+        if self._mcp:
+            try:
+                raw = await self._mcp.call_tool("get_host_inventory", {})
+                host_inventory = json.loads(raw) if raw else {}
+                if host_inventory:
+                    fields["host_inventory"] = host_inventory
+            except Exception:
+                logger.debug("get_host_inventory unavailable, skipping")
 
         if result.get("fresh_host"):
             fields["fresh_host"] = True
