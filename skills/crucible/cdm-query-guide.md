@@ -2,12 +2,27 @@
 
 ## Discovering available breakouts
 
-When querying metric data from the CDM API, the response
-includes a `remainingBreakouts` field listing all breakout
-dimensions you can use to split the data further. Always
-query WITHOUT breakouts first, then inspect
-`remainingBreakouts` to see what's available before
-re-querying with the appropriate breakout.
+**CRITICAL: breakouts are per source:type combination.**
+The available breakouts for `mpstat::Busy-CPU` are DIFFERENT
+from `procstat::interrupts-sec`. You MUST NOT assume a
+breakout name from one source:type works for another.
+
+For example:
+- `mpstat::Busy-CPU` uses `num` for CPU number
+- `procstat::interrupts-sec` uses `cpu` for CPU number
+- Using `cpu` with mpstat will fail; using `num` with
+  procstat will fail
+
+**For every new source:type combination you query**, first
+query WITHOUT breakouts to discover what's available via
+`remainingBreakouts`. That list ONLY applies to that
+specific source:type — do not reuse it for other
+combinations.
+
+If a query fails, READ the error message — the CDM API
+returns the list of available breakouts and metric types
+in the error response. Adjust and retry. Do NOT fall back
+to reading raw files.
 
 Example response (no breakouts requested):
 ```json
