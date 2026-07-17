@@ -2454,6 +2454,15 @@ function initPanelDivider() {
 
   var MIN_WIDTH = 250;
 
+  var savedPct = localStorage.getItem('panelDividerPct');
+  if (savedPct) {
+    var pct = parseFloat(savedPct);
+    if (pct > 0 && pct < 100) {
+      left.style.flex = '0 0 ' + pct + '%';
+      right.style.flex = '0 0 ' + (100 - pct) + '%';
+    }
+  }
+
   divider.addEventListener('mousedown', function(e) {
     e.preventDefault();
     document.body.classList.add('panel-resizing');
@@ -2478,6 +2487,8 @@ function initPanelDivider() {
       divider.classList.remove('dragging');
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      var finalPct = (left.getBoundingClientRect().width / totalWidth) * 100;
+      localStorage.setItem('panelDividerPct', finalPct.toFixed(2));
     }
 
     document.addEventListener('mousemove', onMouseMove);
@@ -2510,6 +2521,8 @@ function initPanelDivider() {
       divider.classList.remove('dragging');
       document.removeEventListener('touchmove', onTouchMove);
       document.removeEventListener('touchend', onTouchEnd);
+      var finalPct = (left.getBoundingClientRect().width / totalWidth) * 100;
+      localStorage.setItem('panelDividerPct', finalPct.toFixed(2));
     }
 
     document.addEventListener('touchmove', onTouchMove);
