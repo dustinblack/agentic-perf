@@ -123,6 +123,36 @@ Always use filters when querying per-CPU or per-IRQ data
 on many-core systems. Without filtering, a 768-CPU system
 returns ~768 entries per metric, most of which are noise.
 
+## Filtering breakouts to specific values
+
+To query only specific CPUs, interfaces, or other breakout
+values, put the filter **inside the breakout array**:
+
+```json
+{
+  "source": "procstat",
+  "type": "Busy-CPU",
+  "breakout": ["hostname", "cpu=738"],
+  "resolution": 60
+}
+```
+
+This returns data for CPU 738 only. For multiple values,
+do separate queries (one per CPU).
+
+Other breakout filter examples:
+- `"breakout": ["hostname", "dev=eno16695np0"]` — specific NIC
+- `"breakout": ["hostname", "cpu=738,739"]` — multiple CPUs
+
+**Important:** The `filter` parameter (e.g., `gt:0.03`) is
+a different thing — it filters by metric VALUE (not by
+breakout dimension) and only works with `resolution=1`.
+Do not confuse the two:
+- Breakout filter: `"breakout": ["cpu=738"]` — select
+  which CPU to return
+- Value filter: `"filter": ["gt:0.03"]` — exclude values
+  below a threshold (resolution=1 only)
+
 ## Understanding per-CPU metric values
 
 When `cpu` is in the breakout, metric values are **per that
