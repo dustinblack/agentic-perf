@@ -334,6 +334,7 @@ which agents should auto-attach it.
 | `transport` | string | yes | `"sse"` or `"streamable_http"` |
 | `agents` | list | no | Agent types that auto-attach this server. If omitted, no auto-attach (manual connection only). |
 | `secret` | string | no | Path within `~/.agentic-perf/secrets/` to a file containing the auth token |
+| `trust` | bool | no | If `true`, disable SSL certificate verification (for self-signed certs) |
 
 The auth token (if configured) is sent as `Authorization: Bearer <token>`
 in the HTTP headers.

@@ -117,32 +117,44 @@ class AgentMCPClient:
         headers: dict[str, str] | None = None,
         timeout: float = 30,
         sse_read_timeout: float = 300,
+        trust: bool = False,
     ) -> None:
         """Connect to a remote MCP server via SSE transport.
 
         The server must expose an SSE endpoint (typically at
-        /sse). The client maintains a persistent connection
-        for server-to-client messages.
+        /sse or /mcp). The client maintains a persistent
+        connection for server-to-client messages.
 
         Args:
             url: SSE endpoint URL (e.g.,
-                "http://domain-mcp.lab:8080/sse").
+                "http://domain-mcp.lab:8080/mcp").
             name: Display name for logging and tool routing.
             headers: HTTP headers (e.g., Authorization).
             timeout: Connection timeout in seconds.
             sse_read_timeout: Read timeout for SSE stream.
+            trust: If True, disable SSL certificate
+                verification (for self-signed certs).
         """
         from mcp.client.sse import sse_client
 
         if name is None:
             name = url
 
-        transport_cm = sse_client(
-            url=url,
-            headers=headers,
-            timeout=timeout,
-            sse_read_timeout=sse_read_timeout,
-        )
+        kwargs: dict[str, Any] = {
+            "url": url,
+            "headers": headers,
+            "timeout": timeout,
+            "sse_read_timeout": sse_read_timeout,
+        }
+        if trust:
+            import httpx
+
+            def _insecure_factory(*args: Any, **kw: Any) -> httpx.AsyncClient:
+                return httpx.AsyncClient(verify=False, *args, **kw)
+
+            kwargs["httpx_client_factory"] = _insecure_factory
+
+        transport_cm = sse_client(**kwargs)
         await self._connect_transport(name, transport_cm)
 
     async def connect_streamable_http(
@@ -152,19 +164,22 @@ class AgentMCPClient:
         headers: dict[str, str] | None = None,
         timeout: float = 30,
         sse_read_timeout: float = 300,
+        trust: bool = False,
     ) -> None:
         """Connect to a remote MCP server via StreamableHTTP.
 
         The server must expose an MCP endpoint that supports
-        the StreamableHTTP protocol (typically at /mcp).
+        the StreamableHTTP protocol (typically at /mcp/http).
 
         Args:
             url: MCP endpoint URL (e.g.,
-                "http://domain-mcp.lab:8080/mcp").
+                "http://domain-mcp.lab:8080/mcp/http").
             name: Display name for logging and tool routing.
             headers: HTTP headers (e.g., Authorization).
             timeout: Request timeout in seconds.
             sse_read_timeout: Read timeout for streaming.
+            trust: If True, disable SSL certificate
+                verification (for self-signed certs).
         """
         from mcp.client.streamable_http import (
             streamablehttp_client,
@@ -173,12 +188,21 @@ class AgentMCPClient:
         if name is None:
             name = url
 
-        transport_cm = streamablehttp_client(
-            url=url,
-            headers=headers,
-            timeout=timeout,
-            sse_read_timeout=sse_read_timeout,
-        )
+        kwargs: dict[str, Any] = {
+            "url": url,
+            "headers": headers,
+            "timeout": timeout,
+            "sse_read_timeout": sse_read_timeout,
+        }
+        if trust:
+            import httpx
+
+            def _insecure_factory(*args: Any, **kw: Any) -> httpx.AsyncClient:
+                return httpx.AsyncClient(verify=False, *args, **kw)
+
+            kwargs["httpx_client_factory"] = _insecure_factory
+
+        transport_cm = streamablehttp_client(**kwargs)
         await self._connect_transport(name, transport_cm)
 
     async def _connect_transport(
@@ -418,17 +442,21 @@ async def connect_external_servers(
                 )
 
         try:
+            trust = entry.get("trust", False)
+
             if transport == "sse":
                 await client.connect_sse(
                     url=url,
                     name=name,
                     headers=headers or None,
+                    trust=trust,
                 )
             elif transport == "streamable_http":
                 await client.connect_streamable_http(
                     url=url,
                     name=name,
                     headers=headers or None,
+                    trust=trust,
                 )
             else:
                 logger.warning(
