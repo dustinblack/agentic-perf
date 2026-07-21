@@ -150,7 +150,7 @@ class AgentMCPClient:
             import httpx
 
             def _insecure_factory(*args: Any, **kw: Any) -> httpx.AsyncClient:
-                return httpx.AsyncClient(verify=False, *args, **kw)
+                return httpx.AsyncClient(verify=False, *args, **kw)  # nosec B501 — user explicitly set trust=True
 
             kwargs["httpx_client_factory"] = _insecure_factory
 
@@ -198,7 +198,7 @@ class AgentMCPClient:
             import httpx
 
             def _insecure_factory(*args: Any, **kw: Any) -> httpx.AsyncClient:
-                return httpx.AsyncClient(verify=False, *args, **kw)
+                return httpx.AsyncClient(verify=False, *args, **kw)  # nosec B501 — user explicitly set trust=True
 
             kwargs["httpx_client_factory"] = _insecure_factory
 
