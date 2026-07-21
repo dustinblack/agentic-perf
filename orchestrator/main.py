@@ -994,9 +994,12 @@ async def poll_loop(config: OrchestratorConfig) -> None:
                 # the ticket has anomaly_context, redirect
                 # to gathering_context (investigation path).
                 # LLM decides intent; code enforces invariants.
+                # Skip if gathering_context already ran —
+                # prevents loop when planning_investigation
+                # stub transitions back to awaiting_hardware.
                 if status == "awaiting_hardware":
                     cf = ticket.get("custom_fields", {})
-                    if cf.get("anomaly_context"):
+                    if cf.get("anomaly_context") and not cf.get("dedup_result"):
                         logger.info(
                             f"Redirecting {tid} to "
                             f"gathering_context "
