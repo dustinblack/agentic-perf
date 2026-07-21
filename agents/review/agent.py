@@ -109,6 +109,13 @@ class ReviewAgent(AgentBase):
             env={"TICKET_ID": ticket_id, "STATE_STORE_URL": self.store_url},
         )
         await mcp.connect(infra_server, name="infra")
+
+        # Connect any configured external MCP servers
+        # (e.g., historical baselines for comparison).
+        from agents.mcp_client import connect_external_servers
+
+        await connect_external_servers(mcp, "review")
+
         self._mcp = mcp
 
         mcp_tools = await mcp.list_tools()

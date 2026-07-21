@@ -265,6 +265,12 @@ class EvaluateAgent(AgentBase):
                 "— working with ticket data only"
             )
 
+        # Connect any configured external MCP servers
+        # (e.g., domain knowledge for baseline comparison).
+        from agents.mcp_client import connect_external_servers
+
+        await connect_external_servers(mcp, "evaluating_convergence")
+
         self._mcp = mcp
         mcp_tools = await mcp.list_tools()
         self.tools = mcp_tools

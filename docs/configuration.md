@@ -307,6 +307,39 @@ Jumpstarter also requires:
 
 ---
 
+### `external_mcp_servers` — Remote MCP Servers
+
+Connect agents to remote MCP servers via SSE or StreamableHTTP.
+Each entry defines a named server with URL, transport, and
+which agents should auto-attach it.
+
+```json
+{
+    "external_mcp_servers": [
+        {
+            "name": "domain-mcp",
+            "url": "http://domain-mcp.lab:8080/mcp",
+            "transport": "streamable_http",
+            "agents": ["gathering_context", "evaluating_convergence"],
+            "secret": "domain-mcp/token"
+        }
+    ]
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | yes | Display name for logging and tool routing |
+| `url` | string | yes | MCP server endpoint URL |
+| `transport` | string | yes | `"sse"` or `"streamable_http"` |
+| `agents` | list | no | Agent types that auto-attach this server. If omitted, no auto-attach (manual connection only). |
+| `secret` | string | no | Path within `~/.agentic-perf/secrets/` to a file containing the auth token |
+
+The auth token (if configured) is sent as `Authorization: Bearer <token>`
+in the HTTP headers.
+
+---
+
 ### `harness_repos` — Benchmark Harness Repositories
 
 Override or extend the default set of harness Git repositories used
