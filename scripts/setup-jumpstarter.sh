@@ -109,9 +109,16 @@ fi
 if [ -d "$JMP_SRC/python/packages" ]; then
     for pkg_dir in "$JMP_SRC"/python/packages/jumpstarter*; do
         if [ -d "$pkg_dir" ]; then
+            # Use --no-deps for most packages to avoid
+            # pulling unwanted transitive deps. Exception:
+            # jumpstarter-mcp needs the 'mcp' SDK.
+            _pip_flags="--no-deps"
+            if echo "$pkg_dir" | grep -q "jumpstarter-mcp"; then
+                _pip_flags=""
+            fi
             "$JMP_VENV/bin/pip" install \
                 "$pkg_dir/" \
-                --no-deps --quiet 2>/dev/null
+                $_pip_flags --quiet 2>/dev/null
         fi
     done
     echo "  All packages upgraded from $JMP_BRANCH"
