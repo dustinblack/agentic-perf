@@ -283,16 +283,24 @@ async def resolve_images(
         # (rcar_s4), labels may use hyphens and vendor
         # prefixes (renesas-rcar-s4).
         board_target = board_target.replace("-", "_")
-        # Strip common vendor prefixes added in the
-        # board-type label migration.
-        for prefix in ("renesas_", "nxp_", "ti_jacinto_"):
-            if board_target.startswith(prefix):
-                stripped = board_target[len(prefix) :]
-                # Only strip if the result is a known
-                # pattern (contains letters + numbers)
-                if stripped:
-                    board_target = stripped
-                    break
+        # Board-type labels don't always match manifest
+        # target names. Map known aliases before trying
+        # vendor prefix stripping.
+        _BOARD_ALIASES: dict[str, str] = {
+            "qc8775": "ride4_sa8775p_sx_r3",
+            "qc8650": "ride4_sa8650p_sx_r3",
+        }
+        if board_target in _BOARD_ALIASES:
+            board_target = _BOARD_ALIASES[board_target]
+        else:
+            # Strip common vendor prefixes added in the
+            # board-type label migration.
+            for prefix in ("renesas_", "nxp_", "ti_jacinto_"):
+                if board_target.startswith(prefix):
+                    stripped = board_target[len(prefix) :]
+                    if stripped:
+                        board_target = stripped
+                        break
 
         from providers.resource.jumpstarter_images import (
             resolve_image_urls,
