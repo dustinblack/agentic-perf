@@ -219,11 +219,7 @@ class TestConnectExternalServers:
                     "name": "domain-mcp",
                     "url": "http://test:8080/sse",
                     "transport": "sse",
-                    "agents": {
-                        "gathering_context": {
-                            "enabled_tools": "all"
-                        }
-                    },
+                    "agents": {"gathering_context": {"enabled_tools": "all"}},
                 }
             ]
         }
@@ -255,11 +251,7 @@ class TestConnectExternalServers:
                     "name": "domain-mcp",
                     "url": "http://test:8080/sse",
                     "transport": "sse",
-                    "agents": {
-                        "gathering_context": {
-                            "enabled_tools": "all"
-                        }
-                    },
+                    "agents": {"gathering_context": {"enabled_tools": "all"}},
                 }
             ]
         }
