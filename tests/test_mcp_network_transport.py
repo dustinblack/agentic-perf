@@ -429,7 +429,8 @@ class TestConnectExternalServers:
         ext_tools = {"ext_tool_allowed"}
 
         filtered_tools = [
-            t for t in mcp_tools
+            t
+            for t in mcp_tools
             if client._tool_routing.get(t.name) not in connected_ext
             or t.name in ext_tools
         ]

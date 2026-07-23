@@ -121,7 +121,8 @@ class ReviewAgent(AgentBase):
         mcp_tools = await mcp.list_tools()
         if ext_tools is not None:
             mcp_tools = [
-                t for t in mcp_tools
+                t
+                for t in mcp_tools
                 if mcp._tool_routing.get(t.name) not in connected_ext
                 or t.name in ext_tools
             ]
