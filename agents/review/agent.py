@@ -114,15 +114,16 @@ class ReviewAgent(AgentBase):
         # (e.g., historical baselines for comparison).
         from agents.mcp_client import connect_external_servers
 
-        _, ext_tools = await connect_external_servers(mcp, "review")
+        connected_ext, ext_tools = await connect_external_servers(mcp, "review")
 
         self._mcp = mcp
 
         mcp_tools = await mcp.list_tools()
         if ext_tools is not None:
-            builtin = {t.name for t in self.tools}
             mcp_tools = [
-                t for t in mcp_tools if t.name in ext_tools or t.name in builtin
+                t for t in mcp_tools
+                if mcp._tool_routing.get(t.name) not in connected_ext
+                or t.name in ext_tools
             ]
         self.tools = mcp_tools + self.tools
 

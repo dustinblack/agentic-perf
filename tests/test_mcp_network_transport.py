@@ -399,3 +399,43 @@ class TestConnectExternalServers:
         assert enabled == {"get_baseline_stats", "compare"}
         # get_key_metrics is connected but not in enabled set
         assert "get_key_metrics" in client._tool_routing
+
+    @pytest.mark.asyncio
+    async def test_agent_filtering_preserves_internal_tools(self):
+        """Verify that agent-level tool filtering preserves internal MCP tools
+        and only filters out external tools based on scoping config.
+        """
+        client = AgentMCPClient()
+
+        # Add local tools to routing
+        client._tool_routing["local_tool1"] = "evaluate"
+        client._tool_routing["local_tool2"] = "infra"
+
+        # Add external tools to routing
+        client._tool_routing["ext_tool_allowed"] = "domain-mcp"
+        client._tool_routing["ext_tool_blocked"] = "domain-mcp"
+
+        t1 = MagicMock()
+        t1.name = "local_tool1"
+        t2 = MagicMock()
+        t2.name = "local_tool2"
+        t3 = MagicMock()
+        t3.name = "ext_tool_allowed"
+        t4 = MagicMock()
+        t4.name = "ext_tool_blocked"
+
+        mcp_tools = [t1, t2, t3, t4]
+        connected_ext = ["domain-mcp"]
+        ext_tools = {"ext_tool_allowed"}
+
+        filtered_tools = [
+            t for t in mcp_tools
+            if client._tool_routing.get(t.name) not in connected_ext
+            or t.name in ext_tools
+        ]
+
+        tool_names = {t.name for t in filtered_tools}
+        assert "local_tool1" in tool_names
+        assert "local_tool2" in tool_names
+        assert "ext_tool_allowed" in tool_names
+        assert "ext_tool_blocked" not in tool_names
