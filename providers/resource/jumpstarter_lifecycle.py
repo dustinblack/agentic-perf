@@ -276,8 +276,6 @@ async def resolve_images(
             if not board_target:
                 board_target = selector.split(",")[0] if selector else ""
             # Device names include an instance suffix.
-            import re
-
             board_target = re.sub(r"-\d+$", "", board_target)
             # Normalize hyphens and vendor prefixes.
             board_target = board_target.replace("-", "_")

@@ -307,6 +307,17 @@ async def _preflight_check(
         )
 
         # Check for fatal patterns in the result.
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict) and data.get("FATAL"):
+                logger.error(
+                    "[jumpstarter] Pre-flight detected fatal error: %s",
+                    data.get("error", "Unknown fatal error"),
+                )
+                return False
+        except json.JSONDecodeError:
+            pass
+
         for pattern, _ in _FATAL_PATTERNS:
             if pattern in raw:
                 logger.error(
@@ -458,8 +469,8 @@ def trim_response(tool_name: str, content: str) -> str:
             # Check for fatal errors before trimming.
             # These indicate infrastructure problems
             # that retrying cannot fix.
-            stderr = data.get("stderr", "")
-            stdout = data.get("stdout", "")
+            stderr = str(data.get("stderr") or "")
+            stdout = str(data.get("stdout") or "")
             combined = f"{stdout} {stderr}"
             for pattern, explanation in _FATAL_PATTERNS:
                 if pattern in combined:
