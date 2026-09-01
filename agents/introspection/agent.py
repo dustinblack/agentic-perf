@@ -264,7 +264,6 @@ class IntrospectionAgent:
                     status == "awaiting_customer_guidance"
                     and not self._guidance_produced
                 ):
-                    self._guidance_produced = True
                     await self._produce_guidance_summary(
                         ticket_id,
                         ticket,
@@ -891,9 +890,11 @@ class IntrospectionAgent:
                     exc_info=True,
                 )
 
-        # Write to ticket
+        # Write to ticket — only mark as produced after
+        # successful persistence so transient failures
+        # allow retry on the next poll cycle.
         try:
-            await self._client.patch(
+            r = await self._client.patch(
                 f"{self.store_url}/api/v1/tickets/{ticket_id}/fields",
                 json={
                     "fields": {
@@ -901,6 +902,8 @@ class IntrospectionAgent:
                     }
                 },
             )
+            r.raise_for_status()
+            self._guidance_produced = True
         except Exception:
             logger.debug(
                 "[introspection] Failed to write guidance_summary for %s",
