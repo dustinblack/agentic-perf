@@ -984,5 +984,15 @@ async def _stop_ticket(
         headers=headers,
         json={"reason": reason},
     )
+    if r.status_code == 400 and "paused state" in r.text:
+        # Ticket is at awaiting_customer_guidance —
+        # /stop rejects paused tickets. Use force-close.
+        r = await client.post(
+            f"{store_url}/api/v1/tickets/{ticket_id}/force-close",
+            headers=headers,
+            json={"reason": reason},
+        )
+        r.raise_for_status()
+        return json.dumps({"status": "closed", "method": "force-close"})
     r.raise_for_status()
     return json.dumps({"status": "stopped"})

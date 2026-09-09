@@ -125,6 +125,22 @@ class TestGuidanceSummaryDeterministic:
         summary = agent._build_guidance_summary_deterministic(ticket, [])
         assert summary["reason"] == "rate_limit"
 
+    def test_context_window_reason(self):
+        agent = _make_agent()
+        ticket = _make_ticket(
+            comments=[
+                {
+                    "author": "review-agent",
+                    "body": "Agent review-agent paused: context window nearly full.",
+                },
+            ]
+        )
+        summary = agent._build_guidance_summary_deterministic(ticket, [])
+        assert summary["reason"] == "context_window"
+        assert any(
+            "follow-up" in a.lower() for a in summary["suggested_actions"]
+        )
+
     def test_unknown_with_no_comments(self):
         agent = _make_agent()
         ticket = _make_ticket(comments=[])

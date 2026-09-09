@@ -987,6 +987,8 @@ class IntrospectionAgent:
             reason = "handoff_blocked"
         elif "build failed" in lower_msg or "build_failure" in lower_msg:
             reason = "build_failure"
+        elif "context window" in lower_msg or "context_window" in lower_msg:
+            reason = "context_window"
         elif "no" in lower_msg and ("board" in lower_msg or "available" in lower_msg):
             reason = "resource_exhaustion"
         elif (
@@ -1009,6 +1011,14 @@ class IntrospectionAgent:
                 "Retry — the LLM call may succeed on a second attempt",
                 "Increase llm.timeout in config if this recurs",
                 "Abort if the ticket is no longer needed",
+            ]
+        elif reason == "context_window":
+            suggested_actions = [
+                "Stop this ticket and create a focused follow-up "
+                "referencing the existing results",
+                "The agent's conversation history is too large "
+                "for the model's context window",
+                "A fresh ticket resets the context and lets the agent work cleanly",
             ]
         elif reason == "rate_limit":
             suggested_actions = [
