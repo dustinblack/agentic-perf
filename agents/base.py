@@ -1919,6 +1919,48 @@ class AgentBase(ABC):
         r.raise_for_status()
         return r.json()
 
+    async def _resolve_referenced_artifacts(
+        self,
+        ticket: dict[str, Any],
+    ) -> None:
+        """Pre-fetch output_dirs for tickets referenced in the description.
+
+        Extracts PERF-XXXXXXXX IDs from the ticket's description
+        and hypothesis, fetches each referenced ticket's output_dir
+        and run_id, and stores them in ``self._referenced_artifacts``
+        for use in ``_build_messages``.
+        """
+        from agents.server_utils import extract_ticket_references
+
+        cf = ticket.get("custom_fields", {})
+        ref_text = ticket.get("description", "") + " " + cf.get("hypothesis", "")
+        text_ids = set(extract_ticket_references(ref_text))
+        # Also include structured references stored by triage.
+        structured_ids = set(cf.get("reference_tickets", []))
+        ref_ids = [
+            rid
+            for rid in sorted(text_ids | structured_ids)
+            if rid != ticket.get("id", "")
+        ]
+        refs: dict[str, dict[str, str]] = {}
+        for rid in ref_ids:
+            try:
+                t = await self._get_ticket(rid)
+                rcf = t.get("custom_fields", {})
+                output_dir = rcf.get("output_dir", "")
+                if output_dir:
+                    refs[rid] = {
+                        "output_dir": output_dir,
+                        "run_id": rcf.get("run_id", ""),
+                    }
+            except Exception:
+                logger.debug(
+                    "[%s] Could not fetch referenced ticket %s",
+                    self.agent_name,
+                    rid,
+                )
+        self._referenced_artifacts = refs
+
     async def _transition_ticket(
         self, ticket_id: str, new_status: str, comment: str | None = None
     ) -> dict[str, Any]:
