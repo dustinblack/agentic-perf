@@ -3409,19 +3409,58 @@ async def execute_boot_time_test(
         cwd=str(output_dir),
         env=run_env,
     )
-    try:
-        stdout_bytes, stderr_bytes = await _asyncio.wait_for(
-            proc.communicate(),
-            timeout=benchmark_timeout,
-        )
-    except _asyncio.TimeoutError:
-        logger.warning(
-            f"[boot-time] Subprocess timed out after {benchmark_timeout}s, killing"
-        )
-        proc.kill()
-        stdout_bytes, stderr_bytes = await proc.communicate()
+    # Stall detection: poll every 60s for new artifact files.
+    # If no new files appear for 5 minutes, the script is
+    # stuck (e.g., serial pipe dead after cold reboot) and
+    # we kill it early instead of waiting for the full
+    # benchmark_timeout.
+    _STALL_CHECK_INTERVAL = 60
+    _STALL_TIMEOUT = 300  # 5 min with no new files
+    _start_time = _asyncio.get_event_loop().time()
+    _last_file_count = 0
+    _last_progress_time = _start_time
+    stall_killed = False
+
+    while proc.returncode is None:
+        try:
+            await _asyncio.wait_for(
+                proc.wait(),
+                timeout=_STALL_CHECK_INTERVAL,
+            )
+        except _asyncio.TimeoutError:
+            pass
+
+        elapsed = _asyncio.get_event_loop().time() - _start_time
+        if elapsed >= benchmark_timeout:
+            logger.warning(
+                f"[boot-time] Subprocess timed out after {benchmark_timeout}s, killing"
+            )
+            proc.kill()
+            break
+
+        # Count artifact files as progress indicator
+        try:
+            current_files = len(list(output_dir.glob("**/*")))
+        except OSError:
+            current_files = _last_file_count
+
+        if current_files > _last_file_count:
+            _last_file_count = current_files
+            _last_progress_time = _asyncio.get_event_loop().time()
+        elif _asyncio.get_event_loop().time() - _last_progress_time >= _STALL_TIMEOUT:
+            logger.warning(
+                "[boot-time] No new artifact files for %ds, killing stalled subprocess",
+                _STALL_TIMEOUT,
+            )
+            proc.kill()
+            stall_killed = True
+            break
+
+    stdout_bytes, stderr_bytes = await proc.communicate()
 
     exit_code = proc.returncode or 0
+    if stall_killed:
+        exit_code = -1
     stdout_str = stdout_bytes.decode(errors="replace")
     stderr_str = stderr_bytes.decode(errors="replace")
 
