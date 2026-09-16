@@ -382,20 +382,41 @@ class ChatAgent:
                 )
             except Exception as exc:
                 # LLM call failed (timeout, rate limit, etc.)
-                # Return partial results instead of crashing.
                 logger.warning(
                     "Chat LLM call failed on round %d: %s",
                     _round + 1,
                     exc,
                 )
-                text = "I encountered an issue while processing your request. "
                 if _round > 0:
-                    text += (
-                        "Here's what I found so far — try "
-                        "asking a follow-up for more details."
+                    # Later rounds: return partial results.
+                    text = (
+                        "I encountered an issue while processing "
+                        "your request. Here's what I found so "
+                        "far — try asking a follow-up for more "
+                        "details."
                     )
-                else:
-                    text += "Please try rephrasing or simplifying your request."
+                    session.add_assistant_message(text)
+                    return text
+
+                # Round 0: retry once without tools for a
+                # direct answer instead of giving up.
+                logger.info("Chat retrying round 0 without tools")
+                try:
+                    response = await self._llm.complete(
+                        system_prompt=system_prompt,
+                        messages=session.messages,
+                        tools=[],
+                    )
+                    session.record_usage(response.usage)
+                    text = response.text or (
+                        "I wasn't able to use my tools for "
+                        "this request. Could you try rephrasing?"
+                    )
+                except Exception:
+                    text = (
+                        "I'm having trouble processing your "
+                        "request right now. Please try again."
+                    )
                 session.add_assistant_message(text)
                 return text
 
