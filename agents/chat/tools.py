@@ -452,12 +452,20 @@ async def execute_tool(
         else:
             return json.dumps({"error": f"Unknown tool: {tool_name}"})
     except Exception as exc:
-        # Sanitize: do not expose internal paths or stack traces
+        # Sanitize: strip filesystem paths but preserve
+        # useful error details (HTTP status, API messages).
         msg = str(exc)
-        # Strip file paths and module references
-        if "/" in msg or "\\" in msg:
-            msg = "An internal error occurred"
-        return json.dumps({"error": msg[:200]})
+        import re
+
+        # Remove absolute file paths (/app/..., /home/...)
+        msg = re.sub(r"(?:/[\w.-]+){3,}", "[path]", msg)
+        # Remove Python module references (foo.bar.baz)
+        msg = re.sub(
+            r"\b[a-z_][a-z0-9_.]*\.[a-z_][a-z0-9_.]*\.[a-z_]\w*",
+            "[module]",
+            msg,
+        )
+        return json.dumps({"error": msg[:300]})
 
 
 async def _search_tickets(
