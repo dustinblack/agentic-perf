@@ -228,6 +228,22 @@ def _provision_sync(
     )
 
 
+def _parse_exporter_address(addr: Any) -> str:
+    """Extract IP from an exporter address string.
+
+    Handles formats: 'host:port', 'tcp://host:port', bare IP.
+    """
+    from urllib.parse import urlparse
+
+    addr_str = str(addr)
+    if "://" in addr_str:
+        parsed = urlparse(addr_str)
+        return parsed.hostname or ""
+    if ":" in addr_str:
+        return addr_str.split(":")[0]
+    return addr_str
+
+
 async def _provision_async(
     lease_name: str,
     flash_url: str | dict[str, str],
@@ -367,17 +383,7 @@ async def _run_provision_steps(
     ip = ""
     try:
         addr = await to_thread.run_sync(client.tcp.address)
-        # Format: "host:port" or "tcp://host:port"
-        addr_str = str(addr)
-        if "://" in addr_str:
-            from urllib.parse import urlparse
-
-            parsed = urlparse(addr_str)
-            ip = parsed.hostname or ""
-        elif ":" in addr_str:
-            ip = addr_str.split(":")[0]
-        else:
-            ip = addr_str
+        ip = _parse_exporter_address(addr)
         diag.append(f"IP discovered: {ip}")
     except Exception as exc:
         diag.append(f"TCP address failed: {exc}")
@@ -403,11 +409,7 @@ async def _run_provision_steps(
                 addr = await to_thread.run_sync(
                     client.tcp.address
                 )
-                addr_str = str(addr)
-                if ":" in addr_str:
-                    ip = addr_str.split(":")[0]
-                else:
-                    ip = addr_str
+                ip = _parse_exporter_address(addr)
                 diag.append(
                     f"IP discovered on retry "
                     f"{attempt + 1}: {ip}"
