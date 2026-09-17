@@ -367,23 +367,42 @@ async def _run_provision_steps(
         diag.append(f"IP discovered: {ip}")
     except Exception as exc:
         diag.append(f"TCP address failed: {exc}")
-        # Power cycle and retry
-        diag.append("Power cycling and retrying...")
-        try:
-            await to_thread.run_sync(lambda: client.power.cycle())
-        except Exception:
-            pass
-        await asyncio.sleep(_BOOT_WAIT)
-        try:
-            addr = await to_thread.run_sync(client.tcp.address)
-            addr_str = str(addr)
-            if ":" in addr_str:
-                ip = addr_str.split(":")[0]
-            else:
-                ip = addr_str
-            diag.append(f"IP discovered on retry: {ip}")
-        except Exception as exc2:
-            diag.append(f"TCP address retry failed: {exc2}")
+        # The exporter may have temporarily disconnected
+        # during reboot. Retry with backoff — the gRPC
+        # session often recovers after 30-60s.
+        _ADDR_RETRIES = 3
+        _ADDR_BACKOFF = [30, 45, 60]  # seconds between retries
+        for attempt in range(_ADDR_RETRIES):
+            wait = _ADDR_BACKOFF[attempt]
+            diag.append(
+                f"Retry {attempt + 1}/{_ADDR_RETRIES}: "
+                f"waiting {wait}s for exporter recovery..."
+            )
+            try:
+                await to_thread.run_sync(
+                    lambda: client.power.cycle()
+                )
+            except Exception:
+                pass
+            await asyncio.sleep(wait)
+            try:
+                addr = await to_thread.run_sync(
+                    client.tcp.address
+                )
+                addr_str = str(addr)
+                if ":" in addr_str:
+                    ip = addr_str.split(":")[0]
+                else:
+                    ip = addr_str
+                diag.append(
+                    f"IP discovered on retry "
+                    f"{attempt + 1}: {ip}"
+                )
+                break
+            except Exception as exc2:
+                diag.append(
+                    f"Retry {attempt + 1} failed: {exc2}"
+                )
 
     if not ip:
         diag.append("IP discovery failed")
