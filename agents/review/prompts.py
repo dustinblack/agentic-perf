@@ -144,8 +144,11 @@ Do NOT call request_clarification.
   distributions, and unexpected patterns ARE findings —
   describe them as observations, not reasons to be
   inconclusive.
-- When no hypothesis was stated, use hypothesis_confirmed
-  with your observations as the finding.
+- When no hypothesis was stated, choose the verdict that
+  best matches your observations: hypothesis_confirmed if
+  results look normal, hypothesis_refuted if a problem was
+  found (regression, anomaly), or inconclusive only if
+  data is truly missing.
 - Reserve inconclusive for: tool failures that prevented
   data access, empty/zero results, corrupted artifacts.
 
