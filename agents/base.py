@@ -1485,6 +1485,32 @@ class AgentBase(ABC):
                 return ToolResult(tool_use_id=tool_call.id, content=content)
             except (HITLDriftError, HITLTimeoutError, AgentAbortedError):
                 raise
+            except TypeError as e:
+                # Wrong parameter names — show the correct ones.
+                import inspect
+
+                try:
+                    sig = inspect.signature(handler)
+                    params = [
+                        f"{p.name} ({p.annotation.__name__})"
+                        if p.annotation != inspect.Parameter.empty
+                        else p.name
+                        for p in sig.parameters.values()
+                    ]
+                    hint = f"Tool error: {e}. Expected parameters: {', '.join(params)}"
+                except Exception:
+                    hint = f"Tool error: {e}"
+                logger.warning(
+                    "[%s] Tool %s parameter error: %s",
+                    self.agent_name,
+                    tool_call.name,
+                    e,
+                )
+                return ToolResult(
+                    tool_use_id=tool_call.id,
+                    content=hint,
+                    is_error=True,
+                )
             except Exception as e:
                 logger.exception(f"[{self.agent_name}] Tool {tool_call.name} failed")
                 return ToolResult(
