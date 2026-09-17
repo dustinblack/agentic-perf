@@ -430,7 +430,7 @@ async def execute_tool(
         import re
 
         # Remove absolute file paths (/app/..., /home/...)
-        msg = re.sub(r"(?:/[\w.-]+){3,}", "[path]", msg)
+        msg = re.sub(r"(?<![\w:/])(?:/[\w.-]+){3,}", "[path]", msg)
         # Remove Python module references (foo.bar.baz)
         msg = re.sub(
             r"\b[a-z_][a-z0-9_.]*\.[a-z_][a-z0-9_.]*\.[a-z_]\w*",
