@@ -3464,6 +3464,13 @@ async def execute_boot_time_test(
     stdout_str = stdout_bytes.decode(errors="replace")
     stderr_str = stderr_bytes.decode(errors="replace")
 
+    # ── Parse reboot method from script output ───────
+    reboot_method = ""
+    for line in stdout_str.split("\n"):
+        if line.startswith("Reboot mode:"):
+            reboot_method = line.split(":", 1)[1].strip()
+            break
+
     # ── Stall diagnostics ─────────────────────────────────
     # When the stall detector kills the process, capture
     # board state before reporting failure.
@@ -3800,6 +3807,25 @@ async def execute_boot_time_test(
 
     if stall_diag:
         response["stall_diagnostics"] = stall_diag
+
+    if reboot_method:
+        response["reboot_method"] = reboot_method
+        # Flag mismatch: cold boot requested but SSH reboot used
+        boot_type = (
+            _ticket.get("custom_fields", {}).get("directives", {})
+            .get("boot_type", "")
+            if _ticket
+            else ""
+        )
+        if (
+            boot_type == "cold"
+            and reboot_method == "ssh"
+        ):
+            response["reboot_method_mismatch"] = (
+                f"Cold boot requested but script used SSH "
+                f"reboots. Jumpstarter power control flags "
+                f"may not have been passed correctly."
+            )
 
     return json.dumps(response)
 
