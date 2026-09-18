@@ -3556,7 +3556,13 @@ async def execute_boot_time_test(
     # When the stall detector kills the process, capture
     # board state before reporting failure.
     stall_diag: dict[str, Any] = {}
-    if stall_killed and _ssh is not None and sut_host:
+    # Capture diagnostics on any failure, not just stall kills.
+    # The script may exit with code 1 (serial timeout, boot
+    # failure) before the stall detector triggers.
+    run_diag = stall_killed or (
+        exit_code != 0 and _last_file_count == 0
+    )
+    if run_diag and _ssh is not None and sut_host:
         logger.info("[boot-time] Capturing stall diagnostics for %s", sut_host)
         try:
             ping = await _ssh.run(
