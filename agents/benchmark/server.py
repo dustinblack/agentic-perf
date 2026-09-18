@@ -3545,6 +3545,55 @@ async def execute_boot_time_test(
     stdout_str = stdout_bytes.decode(errors="replace")
     stderr_str = stderr_bytes.decode(errors="replace")
 
+    # ── Stall diagnostics ─────────────────────────────────
+    # When the stall detector kills the process, capture
+    # board state before reporting failure.
+    stall_diag: dict[str, Any] = {}
+    if stall_killed and _ssh is not None and sut_host:
+        logger.info("[boot-time] Capturing stall diagnostics for %s", sut_host)
+        try:
+            ping = await _ssh.run(
+                sut_host, "echo ALIVE", timeout=5,
+            )
+            stall_diag["ssh_reachable"] = (
+                ping.exit_code == 0
+                and "ALIVE" in ping.stdout
+            )
+        except Exception:
+            stall_diag["ssh_reachable"] = False
+
+        if not stall_diag.get("ssh_reachable"):
+            # Board not reachable via SSH — try ping
+            try:
+                ping_proc = await _asyncio.create_subprocess_exec(
+                    "ping", "-c1", "-W3", sut_host,
+                    stdout=_asyncio.subprocess.DEVNULL,
+                    stderr=_asyncio.subprocess.DEVNULL,
+                )
+                await ping_proc.wait()
+                stall_diag["pingable"] = (
+                    ping_proc.returncode == 0
+                )
+            except Exception:
+                stall_diag["pingable"] = False
+
+        stall_diag["samples_before_stall"] = _last_file_count
+        stall_diag["stall_duration_s"] = _STALL_TIMEOUT
+
+        # Write diagnostics to artifact file
+        diag_file = output_dir / "stall-diagnostics.json"
+        try:
+            import json as _json
+            diag_file.write_text(
+                _json.dumps(stall_diag, indent=2)
+            )
+            logger.info(
+                "[boot-time] Stall diagnostics: %s",
+                stall_diag,
+            )
+        except Exception:
+            pass
+
     # ── Stop passive serial capture ─────────────────────────
     if serial_proc is not None:
         try:
@@ -3829,6 +3878,9 @@ async def execute_boot_time_test(
                 )
         except Exception:
             logger.warning("Failed to save output_dir", exc_info=True)
+
+    if stall_diag:
+        response["stall_diagnostics"] = stall_diag
 
     return json.dumps(response)
 
