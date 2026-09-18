@@ -675,6 +675,15 @@ class TriageAgent(AgentBase):
         # the workflow tool set.
         if directives.get("workflow_source"):
             directives["harness"] = "arcaflow"
+        # Code-enforce: boot-time needs only a client host.
+        # The orchestrator pod IS the controller — no separate
+        # controller host is needed.  The LLM often sets
+        # controller + client roles which causes the resource
+        # agent to search for a non-existent controller.
+        harness = directives.get("harness", "")
+        if harness == "boot-time":
+            required_hosts = [{"roles": ["client"]}]
+
         fields: dict[str, Any] = {
             "parsed_specs": result.get("parsed_specs", {}),
             "hypothesis": result.get("hypothesis", ""),
