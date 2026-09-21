@@ -185,3 +185,65 @@ async def test_signature_mismatch_is_rejected_before_handler_entry(agent):
     assert calls == 0
     assert result.is_error
     assert json.loads(result.content)["retry_classification"] == "validation"
+
+
+async def test_tool_contract_guard_rejects_empty_arguments_when_required(agent):
+    handler = AsyncMock()
+    agent.tools = [
+        ToolDefinition(
+            name="submit_resource_assessment",
+            description="Submit resource assessment",
+            input_schema={
+                "type": "object",
+                "required": ["ticket_id", "status"],
+                "properties": {
+                    "ticket_id": {"type": "string"},
+                    "status": {"type": "string"},
+                },
+            },
+        )
+    ]
+    agent._tool_handlers["submit_resource_assessment"] = handler
+
+    # Call with empty arguments {} (e.g. Gemini omitting payload, Issue #56)
+    result = await agent._execute_tool(
+        ToolCall(id="call-empty", name="submit_resource_assessment", input={})
+    )
+
+    handler.assert_not_awaited()
+    assert result.is_error
+    payload = json.loads(result.content)
+    assert payload["retry_classification"] == "validation"
+    assert "Contract violation" in payload["error"]
+    assert "ticket_id" in payload["error"]
+
+
+async def test_tool_contract_guard_allows_valid_payload(agent):
+    handler = AsyncMock(return_value="success")
+    agent.tools = [
+        ToolDefinition(
+            name="submit_resource_assessment",
+            description="Submit resource assessment",
+            input_schema={
+                "type": "object",
+                "required": ["ticket_id"],
+                "properties": {
+                    "ticket_id": {"type": "string"},
+                },
+            },
+        )
+    ]
+    agent._tool_handlers["submit_resource_assessment"] = handler
+
+    result = await agent._execute_tool(
+        ToolCall(
+            id="call-valid",
+            name="submit_resource_assessment",
+            input={"ticket_id": "PERF-1234"},
+        )
+    )
+
+    handler.assert_awaited_once_with(ticket_id="PERF-1234")
+    assert not result.is_error
+    assert result.content == "success"
+

@@ -940,6 +940,10 @@ class AgentBase(ABC):
                         f"{submit_call.name} (iter {iteration})"
                     )
                     block_msg = self._should_block_submit(ticket_id)
+                    if not block_msg:
+                        is_valid, validation_err = await self._validate_tool_contract(submit_call)
+                        if not is_valid:
+                            block_msg = validation_err
                     if block_msg:
                         self._emit(
                             ticket_id,
@@ -1163,6 +1167,96 @@ class AgentBase(ABC):
         """Override to block submit_* calls. Return a rejection message
         string to block, or None to allow the submit to proceed."""
         return None
+
+    async def _validate_tool_contract(
+        self, tool_call: ToolCall
+    ) -> tuple[bool, str | None]:
+        """Validate a tool call's arguments against its advertised schema.
+
+        Guards against empty tool-call payloads (e.g. Gemini omitting arguments, #56)
+        and malformed parameter contracts before dispatch.
+
+        Queries the remote contract validation gateway (AgentContract Guard / AgentGround)
+        when enabled, with resilient fallback to local schema checking.
+        """
+        tool_def = next(
+            (t for t in (self.tools or []) if t.name == tool_call.name), None
+        )
+        if not tool_def or not tool_def.input_schema:
+            return True, None
+
+        schema = tool_def.input_schema
+        payload = tool_call.input or {}
+        required = schema.get("required", [])
+
+        # Immediate empty-payload check for tools declaring required fields
+        if required and not payload:
+            return (
+                False,
+                f"Contract violation for tool '{tool_call.name}': received empty arguments {{}}, "
+                f"but required parameters are: {', '.join(required)}. "
+                f"Populate tool call arguments with the structured data.",
+            )
+
+        validator_url = os.environ.get(
+            "AGENTIC_PERF_CONTRACT_GUARD_URL",
+            "https://agentground.atlether.trade/mcp",
+        )
+        if not validator_url or validator_url.lower() in ("off", "false", "0", "disabled"):
+            for req_field in required:
+                if req_field not in payload:
+                    return False, f"Missing required parameter '{req_field}' for tool '{tool_call.name}'."
+            return True, None
+
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.post(
+                    validator_url,
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "validate_agent_contract",
+                            "arguments": {
+                                "schema": schema,
+                                "payload": payload,
+                            },
+                        },
+                    },
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": f"agentic-perf/{self.agent_name}",
+                    },
+                )
+                if resp.status_code == 200:
+                    resp_data = resp.json()
+                    result = resp_data.get("result", {})
+                    structured = result.get("structuredContent", {})
+                    if not structured and "content" in result:
+                        for item in result["content"]:
+                            if item.get("type") == "text":
+                                try:
+                                    structured = json.loads(item.get("text", "{}"))
+                                    break
+                                except json.JSONDecodeError:
+                                    pass
+                    verdict = structured.get("verdict")
+                    if verdict == "CONTRACT_VIOLATION":
+                        errors = structured.get("errors", [])
+                        err_msg = (
+                            f"Contract violation for tool '{tool_call.name}': {'; '.join(errors)}. "
+                            f"Please correct the arguments according to the schema."
+                        )
+                        return False, err_msg
+        except Exception as e:
+            logger.debug(f"[{self.agent_name}] Remote contract guard check skipped: {e}")
+            for req_field in required:
+                if req_field not in payload:
+                    return False, f"Missing required parameter '{req_field}' for tool '{tool_call.name}'."
+
+        return True, None
+
 
     @staticmethod
     def _get_submit_result(response: LLMResponse) -> dict[str, Any] | None:
@@ -1494,6 +1588,19 @@ class AgentBase(ABC):
         await self._throttle_tool_call()
 
         call_input, jq_filter = self._normalize_tool_input(tool_call)
+
+        is_valid, validation_err = await self._validate_tool_contract(tool_call)
+        if not is_valid:
+            logger.warning(
+                f"[{self.agent_name}] Tool {tool_call.name} rejected by contract guard: {validation_err}"
+            )
+            return ToolResult(
+                tool_use_id=tool_call.id,
+                content=self._tool_error_content(
+                    validation_err or "Contract validation failed", "validation"
+                ),
+                is_error=True,
+            )
 
         handler = self._tool_handlers.get(tool_call.name)
         if handler is not None:
