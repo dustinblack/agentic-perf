@@ -1893,8 +1893,11 @@ function ticketOutcome(ticket) {
 
   // Dedup match
   if (dedup && dedup.decision === 'MATCH_FOUND') {
-    return '<span class="outcome outcome-pass">DEDUP \u2014 ' +
-      escHtml(String(dedup.matched_investigation_id)) + '</span>';
+    var dId = escHtml(String(dedup.matched_investigation_id));
+    var dLink = dedup.record_url
+      ? '<a href="' + escHtml(dedup.record_url) + '" target="_blank" style="color:inherit">' + dId + '</a>'
+      : dId;
+    return '<span class="outcome outcome-pass">DEDUP \u2014 ' + dLink + '</span>';
   }
 
   // Synthesis outcome
@@ -2495,8 +2498,12 @@ function renderHypothesisCard(ticket) {
   }
   // Investigation pipeline outcomes
   if (!verdict && dedupResult && dedupResult.decision === 'MATCH_FOUND') {
+    var dedupId = escHtml(String(dedupResult.matched_investigation_id));
+    var dedupLink = dedupResult.record_url
+      ? '<a href="' + escHtml(dedupResult.record_url) + '" target="_blank" style="color:inherit; text-decoration:underline">' + dedupId + '</a>'
+      : dedupId;
     html += '<div class="result-verdict pass" style="margin-top:12px">' +
-      'DEDUP MATCH \u2014 ' + escHtml(String(dedupResult.matched_investigation_id)) + '</div>';
+      'DEDUP MATCH \u2014 ' + dedupLink + '</div>';
     html += '<div class="result-summary">' +
       'Confidence: ' + (dedupResult.match_confidence || 0) + ' \u2014 ' +
       expandableText(String(dedupResult.match_rationale || ''), 200) + '</div>';
