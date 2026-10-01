@@ -1992,7 +1992,13 @@ class TicketStore:
         terminal_values = {s.value for s in TERMINAL_STATUSES}
         deferred = 0
         loaded = 0
-        for path in sorted(self._persist_dir.glob("PERF-*.json")):
+        paths = sorted(self._persist_dir.glob("PERF-*.json"))
+        total = len(paths)
+        if total:
+            logger.info("Found %d ticket files to load", total)
+        for idx, path in enumerate(paths, 1):
+            if idx % 100 == 0:
+                logger.info("Loading tickets: %d/%d processed", idx, total)
             try:
                 raw = path.read_text(encoding="utf-8")
                 # Fast status check before full validation.
