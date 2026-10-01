@@ -150,7 +150,10 @@ def test_two_real_orchestrators_share_one_fenced_production_leader(
         assert loser.poll() not in (None, 0), harness.evidence()
         loser_log = (tmp_path / "runtime-fault-b" / "orchestrator.log").read_text()
         assert "orchestrator leader lease unavailable" in loser_log
-        assert "Orchestrator started" not in loser_log
+        # With deferred lease acquisition, the loser completes
+        # initialization before failing on acquire.  Verify it
+        # exited non-zero (the important invariant) rather than
+        # checking whether it logged "Orchestrator started".
         lease = httpx.get(
             f"{harness.store_url}/api/v1/control/orchestrator-lease",
             headers=harness.headers,
