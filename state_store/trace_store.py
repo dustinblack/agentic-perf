@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import sqlite3
 import threading
 import time
@@ -126,13 +127,20 @@ class TraceStore:
                     )
             except Exception:
                 pass  # Non-fatal — best-effort reclamation
-            check = self._startup_execute(
-                "PRAGMA integrity_check", deadline
-            ).fetchone()[0]
-            if check != "ok":
-                raise TraceStoreMigrationError(
-                    f"trace database integrity check failed: {check}"
-                )
+            # integrity_check reads the entire database file.
+            # On large databases (4GB+) over network storage
+            # (Ceph RBD) this takes 2+ minutes.  Skip by default;
+            # enable with TRACE_INTEGRITY_CHECK=1 for diagnostics.
+            if os.environ.get("TRACE_INTEGRITY_CHECK") == "1":
+                logger.info("Running trace database integrity check...")
+                check = self._startup_execute(
+                    "PRAGMA integrity_check", deadline
+                ).fetchone()[0]
+                if check != "ok":
+                    raise TraceStoreMigrationError(
+                        f"trace database integrity check failed: {check}"
+                    )
+                logger.info("Integrity check passed")
             self._connection.execute("BEGIN IMMEDIATE")
             try:
                 migrate(self._connection)
