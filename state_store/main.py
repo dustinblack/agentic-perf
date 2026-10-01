@@ -93,6 +93,7 @@ def mount_routers(
 
 def _initialize_runtime(app: FastAPI, port: int) -> None:
     """Construct writable runtime components only after the root lock is held."""
+    logger.info("Initializing trace store...")
     app.state.trace_store = TraceStore(TRACE_DB_PATH)
     app.state.trace_instance_id = get_instance_name()
     app.state.trace_health = {
@@ -224,6 +225,7 @@ def _initialize_runtime(app: FastAPI, port: int) -> None:
     )
     app.state.audit_log = audit_log
     app.state.event_bus = EventBus(redactor=audit_redactor)
+    logger.info("Loading tickets from disk...")
     app.state.store = TicketStore(
         audit_log=audit_log,
         event_bus=app.state.event_bus,
@@ -316,7 +318,9 @@ def _start_runtime(app: FastAPI, port: int) -> None:
         if getattr(app.state, "runtime_pid", None) == os.getpid():
             return
         _discard_inherited_runtime(app)
+    logger.info("Acquiring persistence root lock...")
     lock = _acquire_runtime_lock(port)
+    logger.info("Lock acquired (store_id=%s)", lock.store_id)
     app.state.process_lock = lock
     app.state.store_diagnostics = {
         "store_id": lock.store_id,
